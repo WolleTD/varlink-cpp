@@ -1,7 +1,12 @@
+varlink_wrapper(org.varlink.service.varlink)
+
 add_library(varlink++
         client.cpp
         service.cpp
         connection.cpp
-        )
+        org.varlink.service.varlink.cpp.inc
+        interface.cpp)
 
-target_include_directories(varlink++ PUBLIC ${PROJECT_SOURCE_DIR}/include)
+target_include_directories(varlink++
+        PUBLIC ${PROJECT_SOURCE_DIR}/include
+        PRIVATE ${PROJECT_SOURCE_DIR}/pegtl/include)

@@ -1,8 +1,14 @@
 #include <iostream>
 #include <string_view>
+#include <thread>
+#include <sstream>
+#include <chrono>
 #include <varlink.hpp>
+#include "lib/interface.hpp"
 #include "org.example.more.varlink.cpp.inc"
 
+#define TEST_SERVICE
+#define TEST_SCANNER
 struct TestData {
     std::string method;
     nlohmann::json parameters;
@@ -16,6 +22,22 @@ constexpr std::string_view getInterfaceName(const std::string_view description) 
     return description.substr(posInterface, lenInterface);
 }
 
+#ifdef TEST_SCANNER
+int main() {
+    varlink::Interface interface(std::string{org_example_more_varlink});
+    std::cout << "\n\n===========\n\n" << interface;
+    return 0;
+}
+#elif defined(TEST_SERVICE)
+int main() {
+    using namespace std::chrono_literals;
+    varlink::Service service("/tmp/test.socket", {"a", "b", "c", "d" });
+    std::cout << "waiting...\n";
+    std::this_thread::sleep_for(10s);
+    std::cout << "done\n";
+    return 0;
+}
+#else
 int main() {
     varlink::Client client("/tmp/test.sock1");
 
@@ -37,3 +59,4 @@ int main() {
 
     return 0;
 }
+#endif

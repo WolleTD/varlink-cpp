@@ -25,6 +25,6 @@ add_subdirectory(lib)
 varlink_wrapper(org.example.more.varlink)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 add_executable(test test.cpp org.example.more.varlink.cpp.inc)
-target_link_libraries(test varlink++)
+target_link_libraries(test varlink++ pthread)
 # END TEST DEV STUFF
 

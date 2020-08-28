@@ -1,4 +1,7 @@
 #include <varlink.hpp>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <exception>
 
 using namespace varlink;
 
@@ -24,6 +27,12 @@ Connection::Connection(int posix_fd) : socket_fd(posix_fd) {
     filebuf_out = __gnu_cxx::stdio_filebuf<char>(socket_fd, std::ios::out);
 }
 
+Connection::Connection(Connection&& src) noexcept {
+    std::swap(socket_fd, src.socket_fd);
+    filebuf_in = std::move(src.filebuf_in);
+    filebuf_out = std::move(src.filebuf_out);
+}
+
 void Connection::send(const nlohmann::json& message) {
     wstream << message << '\0' << std::flush;
 }
@@ -36,12 +45,13 @@ nlohmann::json Connection::receive() {
             std::perror("parse error");
         }
         return message;
-    } catch(...) {
-        std::string line;
-        getline(rstream, line, '\0');
-        if (line.length()) {
-            std::cout << "Couldn't parse: " << line << std::endl;
+    } catch(nlohmann::json::exception& e) {
+        if(rstream.eof()) {
+            return nullptr;
+        } else {
+            std::string input;
+            getline(rstream, input, '\0');
+            return {{"error", e.what()}, {"input", input}};
         }
-        return {};
     }
 }

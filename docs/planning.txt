@@ -1,0 +1,111 @@
+Motivation.
+
+varlink is basically a hipster RPC implementation using JSON. It's nicely debuggable though.
+However, the C-API sucks when you want to to modern C++ and a wrapper is either dirty and
+incomplete or a near reimplementation - so, a reimplementation it is.
+
+libvarlink structural recap.
+
+To the outside, libvarlink has Services and Connections, which are basically clients.
+There's also Arrays and Objects, but we use nlohmann/json for that. Interfaces only have
+a `struct` representation interally and are added with a variadic method to a Service.
+Another key element is the Scanner, which has to me implemented to parse the interface
+definition and the available methods. Each method will be mapped to a MethodCallback
+on adding the interface. A varlink Message is just another json object with additional
+information. The missing Client implementation makes implementing a client tedious as
+it requires an event loop with callback instead of a simple call-return-interface.
+
+Design planning
+
+This shall be a modern C++ API. The only external dependency shall be nlohmann/json.
+There are three layers of abstraction:
+1. Service/Client
+2. Connection/Message Stream
+3. Transport/Byte Stream
+
+Interface is not a separate layer. It's merely a collection of methods with the same URI
+prefix. This is human organisation and a varlink service doesn't actually care for this
+during method calls (with the exception of org.varlink.service.GetInterfaceDescription),
+but only for validation when adding interfaces/methods.
+I'd wish for some meaningful example on how to use the LISTEN_FD-stuff. I won't implement
+this until I get it.
+
+1.1. Service
+
+A Service behaves like so: The constructor requires at least a socket address, which it will
+connect to and listen. A service will provide the org.varlink.service interface at this point.
+One may add any amount of interfaces, which has it's own complex type abstraction all the
+parsing and validation of the specification and the methods requested by the user.
+Callbacks will be std::functions. For services, callbacks are a valid pattern.
+
+For processing the services events, there are two options: When varlink is running in a
+thread or as a standalone service, there should be a blocking waitforevent() function.
+If this returns a boolean, it allows for a
+    `while(waitforevent()) { processevent(); } teardown();`
+pattern. This should process exactly one event per loop.
+
+The other case would be to integrate varlink into the main loop of some program and carry
+on if there are no events. This requires some non-blocking hasevent() function and would
+result into some pattern like this:
+    `while(run) { if(hasevent()) { processevent(); } dostuff(); } teardown();`
+
+The implicitly declared processevent() function would now process the received message from
+the Connection layer and invoke the corresponding callback or send a protocol-layer error
+message.
+
+A service supports multiple connections. Callbacks shall be able to run asynchronously for
+different connections. (Problem for future me)
+
+Required public interfaces:
+* ctor with listen startup
+* interface addition
+* event interaction thingy
+
+Required private interfaces:
+* callback mapper
+* connection manager
+* error processing
+* call header decapsulation
+* reply header encapsulation
+
+Required services:
+* Interface specification parser
+* message-level read/write to connections
+
+1.2. Client
+
+A client supports a single connection to a varlink service. It should provide a simple,
+blocking function to call a varlink method and wait for the response. This is also suitable
+for "oneway" messages. However, for the "more" messages, separation is required. A generator
+pattern like
+    `for(reply: callmore(...)) { dostuff(); }`
+would be nice, but inside it would have to use separate send() and recv() calls anyway, so
+they should be public, too. That's probably a good place for the rare do-while-loop:
+    `call(more=true); do { reply=recv(); dostuff(); } while (reply.continues);`
+
+non-blocking as for the service.
+
+Required public interfaces:
+* ctor with connection startup
+* send message and wait for reply
+* send message
+* wait for reply
+
+Required private interfaces:
+* error handling
+* call header encapsulation
+* reply header decapsulation
+
+Required services:
+* message-level read/write to connections
+
+2. Connection / Message Stream
+
+A Connection will provide nlohmann/json interfaces for message-level read-write access
+to varlink. Headers will be written by the Service/Client. The only job of Connection
+is to convert json to a bytestream and send it off to Transport.
+So, this is operator<<, but with a template parameter on which Transport to use.
+
+3. Transport / Byte Stream (now: Connection)
+
+This encapsulates the dirty C stuff required for sockets. 
