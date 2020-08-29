@@ -1,7 +1,7 @@
 #include <tao/pegtl.hpp>
 #include <iostream>
 #include <iomanip>
-#include "interface.hpp"
+#include <varlink.hpp>
 
 namespace pegtl = TAO_PEGTL_NAMESPACE;
 
@@ -121,7 +121,7 @@ INSERTER(grammar::dict) {
 
 INSERTER(grammar::object_start) {
     if (input.position().byte > interface.stack.back().pos) {
-        interface.stack.emplace_back(State(input.position().byte));
+        interface.stack.emplace_back(State{.pos = input.position().byte});
     }
 }
 
@@ -204,8 +204,8 @@ INSERTER(grammar::kwarrow) {
 }
 
 INSERTER(grammar::interface_name) {
-    interface.name = input.string();
-    interface.stack.emplace_back(State(input.position().byte));
+    interface.ifname = input.string();
+    interface.stack.emplace_back(State{.pos = input.position().byte});
 }
 
 INSERTER(grammar::error) {
@@ -215,9 +215,15 @@ INSERTER(grammar::error) {
 
 INSERTER(grammar::method) {
     auto& state = interface.stack.back();
+    MethodCallback callback { nullptr };
+    auto cbit = interface.state.callbacks.find(interface.state.name);
+    if (cbit != interface.state.callbacks.end()) {
+        callback = cbit->second;
+        interface.state.callbacks.erase(cbit);
+    }
     interface.methods.emplace_back(Method{interface.state.name, interface.state.docstring,
                                           interface.state.method_params, state.last_element_type,
-                                          nullptr});
+                                          callback});
 }
 
 INSERTER(grammar::vtypedef) {
@@ -225,20 +231,37 @@ INSERTER(grammar::vtypedef) {
     interface.types.emplace_back(Type{interface.state.name, interface.state.docstring, state.last_element_type});
 }
 
-varlink::Interface::Interface(std::string fromDescription) : description(std::move(fromDescription)) {
+varlink::Interface::Interface(std::string fromDescription, std::map<std::string, MethodCallback> callbacks)
+        : description(std::move(fromDescription)), state({.callbacks = std::move(callbacks)}) {
     pegtl::string_input parser_in { description.c_str(), __FUNCTION__ };
     try {
         pegtl::parse<grammar::interface, inserter>(parser_in, *this);
+        if(!state.callbacks.empty()) {
+            throw std::invalid_argument("Unknown method");
+        }
     }
     catch ( const pegtl::parse_error& e) {
         const auto p = e.positions().front();
         std::cerr << e.what() << "\n" << parser_in.line_at(p) << "\n"
             << std::setw(p.column) << '^' << std::endl;
+        throw;
+    }
+    catch ( const std::invalid_argument& e) {
+        const auto method { state.callbacks.begin()->first };
+        std::cerr << e.what() << "\n" << method << std::endl;
+        throw;
     }
 }
 
+const varlink::Method &varlink::Interface::method(const std::string &name) const {
+    for(const auto& method : methods) {
+        if (method.name == name) return method;
+    }
+    throw std::invalid_argument("Invalid method");
+}
+
 std::ostream &varlink::operator<<(std::ostream &os, const varlink::Interface &interface) {
-    os << interface.documentation << "interface " << interface.name << "\n";
+    os << interface.documentation << "interface " << interface.ifname << "\n";
     for (const auto& type : interface.types) {
         os << "\n" << type;
     }

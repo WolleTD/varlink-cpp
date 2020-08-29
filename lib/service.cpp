@@ -53,6 +53,36 @@ Connection Service::nextClientConnection() const {
     return Connection(client_fd);
 }
 
+nlohmann::json Service::handle(const nlohmann::json &message, Connection &connection) {
+    if (!message.contains("method")) {
+        return nullptr;
+    }
+    const auto &fqmethod = message["method"].get<std::string>();
+    const auto dot = fqmethod.rfind('.');
+    if (dot == std::string::npos) {
+        return error("org.varlink.service.InterfaceNotFound", {{"interface", fqmethod}});
+    }
+    const auto ifname = fqmethod.substr(0, dot);
+    const auto methodname = fqmethod.substr(dot + 1);
+
+    for (const auto& interface : interfaces) {
+        if (interface.name() == ifname) {
+            try {
+                const auto& method = interface.method(methodname);
+                // TODO: Validate parameter types
+                return method.callback(message, connection);
+            }
+            catch (std::invalid_argument& e) {
+                return error("org.varlink.service.MethodNotFound", {{"method", methodname}});
+            }
+            catch (std::bad_function_call& e) {
+                return error("org.varlink.service.MethodNotImplemented", {{"method", methodname}});
+            }
+        }
+    }
+    return error("org.varlink.service.InterfaceNotFound", {{"interface", ifname}});
+}
+
 void Service::dispatchConnections() {
     for(;;) {
         try {
@@ -61,8 +91,10 @@ void Service::dispatchConnections() {
                 for (;;) {
                     auto message = conn.receive();
                     if (message.is_null()) break;
-                    std::cout << "Received: " << message.dump() << "this: " << this << std::endl;
-                    conn.send(message);
+                    auto reply = handle(message, conn);
+                    if (!reply.is_null() && !(message.contains("oneway") && message["oneway"])) {
+                        conn.send(reply);
+                    }
                 }
             }, std::move(conn)}.detach();
         } catch (std::system_error& e) {

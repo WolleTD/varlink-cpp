@@ -3,12 +3,13 @@
 #include <thread>
 #include <sstream>
 #include <chrono>
+#include <memory>
+#include <signal.h>
 #include <varlink.hpp>
-#include "lib/interface.hpp"
 #include "org.example.more.varlink.cpp.inc"
 
 #define TEST_SERVICE
-#define TEST_SCANNER
+//#define TEST_SCANNER
 struct TestData {
     std::string method;
     nlohmann::json parameters;
@@ -22,18 +23,59 @@ constexpr std::string_view getInterfaceName(const std::string_view description) 
     return description.substr(posInterface, lenInterface);
 }
 
+std::unique_ptr<varlink::Service> service;
+
+void signalHandler(int32_t signal) {
+    service.reset(nullptr);
+    exit(128 + signal);
+}
+
 #ifdef TEST_SCANNER
 int main() {
+    const auto start = std::chrono::system_clock::now();
     varlink::Interface interface(std::string{org_example_more_varlink});
-    std::cout << "\n\n===========\n\n" << interface;
+    const auto duration = std::chrono::system_clock::now() - start;
+    std::cout << "\n\n===========\n\n" << interface
+        << "\nParsing took " << duration.count() << "ns\n";
     return 0;
 }
 #elif defined(TEST_SERVICE)
 int main() {
     using namespace std::chrono_literals;
-    varlink::Service service("/tmp/test.socket", {"a", "b", "c", "d" });
+    signal(SIGTERM, signalHandler);
+    signal(SIGINT, signalHandler);
+    service = std::make_unique<varlink::Service>("/tmp/test.socket",
+                                                 varlink::Service::Description{"a", "b", "c", "d" });
+    service->addInterface(varlink::Interface{
+        std::string(org_example_more_varlink),
+        {
+            {"Ping", VarlinkCallback {
+                return varlink::reply({{"pong", message["parameters"]["ping"]}});
+            }},
+            {"TestMore", VarlinkCallback {
+                if (message["parameters"].contains("n") && message["more"]) {
+                    nlohmann::json state = {{"start", true}};
+                    connection.send(varlink::reply_continues({{"state", state}}));
+                    state.erase("start");
+                    auto n = message["parameters"]["n"].get<size_t>();
+                    for(size_t i = 0; i < n; i++) {
+                        state["progress"] = (100 / n) * i;
+                        connection.send(varlink::reply_continues({{"state", state}}));
+                        std::this_thread::sleep_for(std::chrono::seconds(1));
+                    }
+                    state["progress"] = 100;
+                    connection.send(varlink::reply_continues({{"state", state}}));
+                    state.erase("progress");
+                    state["end"] = true;
+                    return varlink::reply_continues({{"state", state}}, false);
+                } else {
+                    return varlink::error("org.varlink.service.InvalidParameter",
+                                          {{"parameter", "n"}});
+                }
+            }}
+        } });
     std::cout << "waiting...\n";
-    std::this_thread::sleep_for(10s);
+    std::this_thread::sleep_for(200s);
     std::cout << "done\n";
     return 0;
 }
