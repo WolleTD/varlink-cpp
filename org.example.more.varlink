@@ -16,6 +16,13 @@ type State (
   end: ?bool
 )
 
+type Klaus (
+  name: string,
+  age: int
+)
+
+type SomeEnum ( One, Two, Three, Four )
+
 # Returns the same string
 method Ping(ping: string) -> (pong: string)
 

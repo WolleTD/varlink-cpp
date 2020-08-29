@@ -7,6 +7,13 @@
 #include <nlohmann/json.hpp>
 
 namespace varlink {
+    struct _type {
+        nlohmann::json type;
+        bool maybe { false };
+        bool array { false };
+        bool dict { false };
+    };
+
     struct Type {
         std::string name;
         std::string description;
@@ -41,12 +48,27 @@ namespace varlink {
 
         template<typename Rule>
         struct inserter {};
+
         struct {
             std::string moving_docstring;
             std::string docstring;
             std::string name;
-            std::vector<nlohmann::json> stack;
+            nlohmann::json method_params;
         } state;
+
+        struct State {
+            std::vector<std::string> fields;
+            size_t pos { 0 };
+            nlohmann::json last_type;
+            nlohmann::json last_element_type;
+            nlohmann::json work;
+            bool maybe_type { false };
+            bool dict_type { false };
+            bool array_type { false };
+
+            explicit State(size_t position) : pos(position) { }
+        };
+        std::vector<State> stack;
 
     public:
         explicit Interface(std::string fromDescription);
@@ -58,7 +80,7 @@ namespace varlink {
     std::ostream& operator<<(std::ostream& os, const Error& error);
     std::ostream& operator<<(std::ostream& os, const Method& method);
     std::ostream& operator<<(std::ostream& os, const Interface& interface);
-    std::string element_to_string(const nlohmann::json& type);
+    std::string element_to_string(const nlohmann::json& type, size_t indent = 0);
     std::string vtype_to_string(const nlohmann::json& type);
 }
 
