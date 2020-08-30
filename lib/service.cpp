@@ -31,10 +31,10 @@ Service::Service(std::string address, Description desc)
     addInterface(Interface(std::string(org_varlink_service_varlink),
         {
              {"GetInfo", [this]VarlinkCallback {
-                 nlohmann::json info = description;
-                 info["interfaces"] = nlohmann::json::array();
+                 json info = description;
+                 info["interfaces"] = json::array();
                  for(const auto& interface : interfaces) {
-                     info["interfaces"].push_back(interface.name());
+                     info["interfaces"].push_back(interface.first);
                  }
                  return reply(info);
              }},
@@ -42,14 +42,14 @@ Service::Service(std::string address, Description desc)
                  if (!message["parameters"].contains("interface"))
                      return error("org.varlink.service.InvalidParameter", {{"parameter", "interface"}});
                  const auto& ifname = message["parameters"]["interface"].get<std::string>();
-                 for(const auto& interface : interfaces) {
-                     if (interface.name() == ifname) {
-                         std::stringstream ss;
-                         ss << interface;
-                         return reply({{"description", ss.str()}});
-                     }
+                 const auto interface = interfaces.find(ifname);
+                 if (interface != interfaces.cend()) {
+                     std::stringstream ss;
+                     ss << interface->second;
+                     return reply({{"description", ss.str()}});
+                 } else {
+                     return error("org.varlink.service.InterfaceNotFound", {{"interface", ifname}});
                  }
-                 return error("org.varlink.service.InterfaceNotFound", {{"interface", ifname}});
              }}
         }));
     listeningThread = std::thread { [this]() {
@@ -79,10 +79,7 @@ Connection Service::nextClientConnection() const {
     return Connection(client_fd);
 }
 
-nlohmann::json Service::handle(const nlohmann::json &message, Connection &connection) {
-    if (!message.contains("method")) {
-        return nullptr;
-    }
+json Service::handle(const json &message, Connection &connection) {
     const auto &fqmethod = message["method"].get<std::string>();
     const auto dot = fqmethod.rfind('.');
     if (dot == std::string::npos) {
@@ -91,22 +88,29 @@ nlohmann::json Service::handle(const nlohmann::json &message, Connection &connec
     const auto ifname = fqmethod.substr(0, dot);
     const auto methodname = fqmethod.substr(dot + 1);
 
-    for (const auto& interface : interfaces) {
-        if (interface.name() == ifname) {
-            try {
-                const auto& method = interface.method(methodname);
-                // TODO: Validate parameter types
-                return method.callback(message, connection);
-            }
-            catch (std::invalid_argument& e) {
-                return error("org.varlink.service.MethodNotFound", {{"method", methodname}});
-            }
-            catch (std::bad_function_call& e) {
-                return error("org.varlink.service.MethodNotImplemented", {{"method", methodname}});
+    const auto ifpair = interfaces.find(ifname);
+    if (ifpair != interfaces.cend()) {
+        const auto& interface = ifpair->second;
+        try {
+            const auto& method = interface.method(methodname);
+            auto res = interface.validate(message["parameters"], method.parameters);
+            if(res.is_boolean() && res) {
+                auto response =  method.callback(message, connection);
+                res = interface.validate(response, method.returnValue);
+                return response;
+            } else {
+                return error("org.varlink.service.InvalidParameter", res);
             }
         }
+        catch (std::invalid_argument& e) {
+            return error("org.varlink.service.MethodNotFound", {{"method", methodname}});
+        }
+        catch (std::bad_function_call& e) {
+            return error("org.varlink.service.MethodNotImplemented", {{"method", methodname}});
+        }
+    } else {
+        return error("org.varlink.service.InterfaceNotFound", {{"interface", ifname}});
     }
-    return error("org.varlink.service.InterfaceNotFound", {{"interface", ifname}});
 }
 
 void Service::dispatchConnections() {
@@ -117,9 +121,14 @@ void Service::dispatchConnections() {
                 for (;;) {
                     auto message = conn.receive();
                     if (message.is_null()) break;
-                    auto reply = handle(message, conn);
-                    if (!reply.is_null() && !(message.contains("oneway") && message["oneway"])) {
-                        conn.send(reply);
+                    if (message.contains("method")) {
+                        if (!message.contains("parameters")) {
+                            message["parameters"] = json::object();
+                        }
+                        auto reply = handle(message, conn);
+                        if (!(message.contains("oneway") && message["oneway"])) {
+                            conn.send(reply);
+                        }
                     }
                 }
             }, std::move(conn)}.detach();

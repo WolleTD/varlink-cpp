@@ -210,7 +210,8 @@ INSERTER(grammar::interface_name) {
 
 INSERTER(grammar::error) {
     auto& state = interface.stack.back();
-    interface.errors.emplace_back(Error{{interface.state.name, interface.state.docstring, state.last_element_type}});
+    interface.errors.emplace(interface.state.name, Error{{interface.state.name,
+                                                          interface.state.docstring, state.last_element_type}});
 }
 
 INSERTER(grammar::method) {
@@ -221,14 +222,15 @@ INSERTER(grammar::method) {
         callback = cbit->second;
         interface.state.callbacks.erase(cbit);
     }
-    interface.methods.emplace_back(Method{interface.state.name, interface.state.docstring,
+    interface.methods.emplace(interface.state.name, Method{interface.state.name, interface.state.docstring,
                                           interface.state.method_params, state.last_element_type,
                                           callback});
 }
 
 INSERTER(grammar::vtypedef) {
     auto& state = interface.stack.back();
-    interface.types.emplace_back(Type{interface.state.name, interface.state.docstring, state.last_element_type});
+    interface.types.emplace(interface.state.name, Type{interface.state.name,
+                                                       interface.state.docstring, state.last_element_type});
 }
 
 varlink::Interface::Interface(std::string fromDescription, std::map<std::string, MethodCallback> callbacks)
@@ -254,22 +256,35 @@ varlink::Interface::Interface(std::string fromDescription, std::map<std::string,
 }
 
 const varlink::Method &varlink::Interface::method(const std::string &name) const {
-    for(const auto& method : methods) {
-        if (method.name == name) return method;
+    const auto m = methods.find(name);
+    if (m != methods.cend()) {
+        return m->second;
+    } else {
+        throw std::invalid_argument("Invalid method");
     }
-    throw std::invalid_argument("Invalid method");
+}
+
+nlohmann::json varlink::Interface::validate(const json &data, const json &type) const {
+    auto error = [](std::string param) -> json { return {{"parameter", param}}; };
+    std::cout << type << "\n";
+    for (const auto& param : type.items()) {
+        if(!(param.value().contains("maybe_type") && param.value()["maybe_type"]) && !data.contains(param.key())) {
+            return error(param.key());
+        }
+    }
+    return true;
 }
 
 std::ostream &varlink::operator<<(std::ostream &os, const varlink::Interface &interface) {
     os << interface.documentation << "interface " << interface.ifname << "\n";
     for (const auto& type : interface.types) {
-        os << "\n" << type;
+        os << "\n" << type.second;
     }
     for (const auto& method : interface.methods) {
-        os << "\n" << method;
+        os << "\n" << method.second;
     }
     for (const auto& error : interface.errors) {
-        os << "\n" << error;
+        os << "\n" << error.second;
     }
     return os;
 }
@@ -292,7 +307,7 @@ std::ostream &varlink::operator<<(std::ostream &os, const varlink::Method &metho
         << element_to_string(method.returnValue) << "\n";
 }
 
-std::string varlink::element_to_string(const nlohmann::json &elem, size_t indent) {
+std::string varlink::element_to_string(const json &elem, size_t indent) {
     if (elem.is_string()) {
         return elem.get<std::string>();
     } else {
@@ -318,7 +333,7 @@ std::string varlink::element_to_string(const nlohmann::json &elem, size_t indent
     }
 }
 
-std::string varlink::vtype_to_string(const nlohmann::json &type) {
+std::string varlink::vtype_to_string(const json &type) {
     std::string s;
     if (type.contains("maybe_type") && type["maybe_type"]) s += "?";
     if (type.contains("array_type") && type["array_type"]) s += "[]";

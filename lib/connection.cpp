@@ -33,19 +33,19 @@ Connection::Connection(Connection&& src) noexcept {
     filebuf_out = std::move(src.filebuf_out);
 }
 
-void Connection::send(const nlohmann::json& message) {
+void Connection::send(const json& message) {
     wstream << message << '\0' << std::flush;
 }
 
-nlohmann::json Connection::receive() {
+json Connection::receive() {
     try {
-        nlohmann::json message;
+        json message;
         rstream >> message;
         if (rstream.get() != '\0') {
             std::perror("parse error");
         }
         return message;
-    } catch(nlohmann::json::exception& e) {
+    } catch(json::exception& e) {
         if(rstream.eof()) {
             return nullptr;
         } else {
