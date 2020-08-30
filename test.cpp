@@ -4,7 +4,7 @@
 #include <sstream>
 #include <chrono>
 #include <memory>
-#include <signal.h>
+#include <csignal>
 #include <varlink.hpp>
 #include "org.example.more.varlink.cpp.inc"
 
@@ -49,10 +49,10 @@ int main() {
     service->addInterface(varlink::Interface{
         std::string(org_example_more_varlink),
         {
-            {"Ping", VarlinkCallback {
+            {"Ping", []VarlinkCallback {
                 return varlink::reply({{"pong", message["parameters"]["ping"]}});
             }},
-            {"TestMore", VarlinkCallback {
+            {"TestMore", []VarlinkCallback {
                 if (message["parameters"].contains("n") && message["more"]) {
                     nlohmann::json state = {{"start", true}};
                     connection.send(varlink::reply_continues({{"state", state}}));

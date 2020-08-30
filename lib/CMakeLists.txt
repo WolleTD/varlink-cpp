@@ -1,3 +1,4 @@
+set(CMAKE_INCLUDE_CURRENT_DIR ON)
 varlink_wrapper(org.varlink.service.varlink)
 
 add_library(varlink++

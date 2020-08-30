@@ -2,10 +2,12 @@
 #include <string>
 #include <system_error>
 #include <thread>
-#include <varlink.hpp>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
+#include <varlink.hpp>
+#include <sstream>
+#include "org.varlink.service.varlink.cpp.inc"
 
 using namespace varlink;
 
@@ -26,6 +28,30 @@ Service::Service(std::string address, Description desc)
     if (listen(listen_fd, 1024) < 0) {
         throw;
     }
+    addInterface(Interface(std::string(org_varlink_service_varlink),
+        {
+             {"GetInfo", [this]VarlinkCallback {
+                 nlohmann::json info = description;
+                 info["interfaces"] = nlohmann::json::array();
+                 for(const auto& interface : interfaces) {
+                     info["interfaces"].push_back(interface.name());
+                 }
+                 return reply(info);
+             }},
+             {"GetInterfaceDescription", [this]VarlinkCallback {
+                 if (!message["parameters"].contains("interface"))
+                     return error("org.varlink.service.InvalidParameter", {{"parameter", "interface"}});
+                 const auto& ifname = message["parameters"]["interface"].get<std::string>();
+                 for(const auto& interface : interfaces) {
+                     if (interface.name() == ifname) {
+                         std::stringstream ss;
+                         ss << interface;
+                         return reply({{"description", ss.str()}});
+                     }
+                 }
+                 return error("org.varlink.service.InterfaceNotFound", {{"interface", ifname}});
+             }}
+        }));
     listeningThread = std::thread { [this]() {
         dispatchConnections();
     }};

@@ -10,7 +10,7 @@
 #include <ext/stdio_filebuf.h>
 
 #define VarlinkCallback \
-    []([[maybe_unused]] nlohmann::json message, [[maybe_unused]] varlink::Connection& connection) -> nlohmann::json
+    ([[maybe_unused]] const nlohmann::json& message, [[maybe_unused]] varlink::Connection& connection) -> nlohmann::json
 
 namespace varlink {
 
@@ -38,7 +38,7 @@ namespace varlink {
         [[nodiscard]] nlohmann::json receive();
     };
 
-    using MethodCallback = std::function<nlohmann::json(nlohmann::json, Connection& connection)>;
+    using MethodCallback = std::function<nlohmann::json(const nlohmann::json&, Connection& connection)>;
 
     struct Type {
         const std::string name;
@@ -146,6 +146,15 @@ namespace varlink {
     }
     inline nlohmann::json error(std::string what, nlohmann::json params) {
         return {{"error", std::move(what)}, {"parameters", std::move(params)}};
+    }
+
+    inline void to_json(nlohmann::json& j, const Service::Description& desc) {
+        j = nlohmann::json{
+                {"vendor", desc.vendor},
+                {"product", desc.product},
+                {"version", desc.version},
+                {"url", desc.url}
+        };
     }
 
     class Client {
