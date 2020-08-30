@@ -22,15 +22,21 @@ Connection::Connection(const std::string& address) {
     filebuf_out = __gnu_cxx::stdio_filebuf<char>(socket_fd, std::ios::out);
 }
 
-Connection::Connection(int posix_fd) : socket_fd(posix_fd) {
-    filebuf_in = __gnu_cxx::stdio_filebuf<char>(socket_fd, std::ios::in);
-    filebuf_out = __gnu_cxx::stdio_filebuf<char>(socket_fd, std::ios::out);
-}
+Connection::Connection(int posix_fd) : socket_fd(posix_fd),
+    filebuf_in(__gnu_cxx::stdio_filebuf<char>(socket_fd, std::ios::in)),
+    filebuf_out(__gnu_cxx::stdio_filebuf<char>(socket_fd, std::ios::out)) {}
 
-Connection::Connection(Connection&& src) noexcept {
-    std::swap(socket_fd, src.socket_fd);
-    filebuf_in = std::move(src.filebuf_in);
-    filebuf_out = std::move(src.filebuf_out);
+Connection::Connection(Connection&& src) noexcept :
+    socket_fd(std::exchange(src.socket_fd, -1)),
+    filebuf_in(std::move(src.filebuf_in)),
+    filebuf_out(std::move(src.filebuf_out)) {}
+
+Connection& Connection::operator=(Connection &&rhs) noexcept {
+    Connection c(std::move(rhs));
+    std::swap(socket_fd, c.socket_fd);
+    std::swap(filebuf_in, c.filebuf_in);
+    std::swap(filebuf_out, c.filebuf_out);
+    return *this;
 }
 
 void Connection::send(const json& message) {

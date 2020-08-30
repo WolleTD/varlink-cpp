@@ -25,7 +25,7 @@ std::function<json()> Client::call(const std::string& method, const json& parame
         if (mode != CallMode::Oneway && continues) {
             auto reply = conn.receive();
             if (mode == CallMode::More && reply.contains("continues")) {
-                continues = reply["continues"];
+                continues = reply["continues"].get<bool>();
             } else {
                 continues = false;
             }

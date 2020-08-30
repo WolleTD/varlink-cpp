@@ -7,6 +7,7 @@
 #include <thread>
 #include <atomic>
 #include <map>
+#define JSON_USE_IMPLICIT_CONVERSIONS 0
 #include <nlohmann/json.hpp>
 #include <ext/stdio_filebuf.h>
 
@@ -18,13 +19,12 @@ namespace varlink {
 
     class Connection {
     private:
+        int socket_fd { -1 };
         __gnu_cxx::stdio_filebuf<char> filebuf_in;
         __gnu_cxx::stdio_filebuf<char> filebuf_out;
 
         std::istream rstream { &filebuf_in };
         std::ostream wstream { &filebuf_out };
-
-        int socket_fd { -1 };
     public:
         // Connect to a service via address
         explicit Connection(const std::string& address);
@@ -33,7 +33,9 @@ namespace varlink {
         explicit Connection(int posix_fd);
 
         Connection(const Connection& src) = delete;
+        Connection& operator=(const Connection&) = delete;
         Connection(Connection&& src) noexcept;
+        Connection& operator=(Connection&& rhs) noexcept;
 
         void send(const json& message);
 
@@ -102,7 +104,7 @@ namespace varlink {
                            std::map<std::string, MethodCallback> callbacks = {});
         [[nodiscard]] const std::string& name() const noexcept { return ifname; }
         [[nodiscard]] const Method& method(const std::string& name) const;
-        [[nodiscard]] json validate(const json& data, const json& type) const;
+        void validate(const json& data, const json& type) const;
 
         friend std::ostream& operator<<(std::ostream& os, const Interface& interface);
     };
@@ -134,7 +136,9 @@ namespace varlink {
     public:
         Service(std::string address, Description desc);
         Service(const Service& src) = delete;
+        Service& operator=(const Service&) = delete;
         Service(Service&& src) noexcept;
+        Service& operator=(Service&& rhs) noexcept;
         ~Service();
 
         [[nodiscard]] Connection nextClientConnection() const;
@@ -142,12 +146,15 @@ namespace varlink {
     };
 
     inline json reply(json params) {
+        assert(params.is_object());
         return {{"parameters", std::move(params)}};
     }
     inline json reply_continues(json params, bool continues = true) {
+        assert(params.is_object());
         return {{"parameters", std::move(params)}, {"continues", continues}};
     }
     inline json error(std::string what, json params) {
+        assert(params.is_object());
         return {{"error", std::move(what)}, {"parameters", std::move(params)}};
     }
 

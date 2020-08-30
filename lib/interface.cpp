@@ -256,23 +256,51 @@ varlink::Interface::Interface(std::string fromDescription, std::map<std::string,
 }
 
 const varlink::Method &varlink::Interface::method(const std::string &name) const {
-    const auto m = methods.find(name);
-    if (m != methods.cend()) {
-        return m->second;
-    } else {
-        throw std::invalid_argument("Invalid method");
-    }
+    return methods.at(name);
 }
 
-nlohmann::json varlink::Interface::validate(const json &data, const json &type) const {
-    auto error = [](std::string param) -> json { return {{"parameter", param}}; };
+void varlink::Interface::validate(const json &data, const json &type) const {
     std::cout << type << "\n";
     for (const auto& param : type.items()) {
-        if(!(param.value().contains("maybe_type") && param.value()["maybe_type"]) && !data.contains(param.key())) {
-            return error(param.key());
+        const auto& name = param.key();
+        const auto& spec = param.value();
+        if(!(spec.contains("maybe_type") && spec["maybe_type"].get<bool>())
+                && (!data.contains(name) || data[name].is_null())) {
+            throw std::invalid_argument(name);
+        } else if (data.contains(name)) {
+            const auto& value = data[name];
+            if ((spec.contains("dict_type") && spec["dict_type"].get<bool>())
+                    && value.is_object()) {
+                continue;
+            } else if ((spec.contains("array_type") && spec["array_type"].get<bool>())
+                    && value.is_array()) {
+                continue;
+            } else if (spec["type"].is_object() && value.is_object()) {
+                validate(value, spec["type"]);
+                continue;
+            } else if (spec["type"].is_string()) {
+                const auto& valtype = spec["type"].get<std::string>();
+                if (valtype == "string" && value.is_string()) {
+                    continue;
+                } else if (valtype == "int" && value.is_number()) {
+                    continue;
+                } else if (valtype == "float" && value.is_number_float()) {
+                    continue;
+                } else if (valtype == "bool" && value.is_boolean()) {
+                    continue;
+                } else if (valtype == "object" && !value.is_null()) {
+                    continue;
+                } else if (types.find(valtype) != types.cend()) {
+                    validate(value, types.at(valtype).data);
+                    continue;
+                } else {
+                    throw std::invalid_argument(name);
+                }
+            } else {
+                throw std::invalid_argument(name);
+            }
         }
     }
-    return true;
 }
 
 std::ostream &varlink::operator<<(std::ostream &os, const varlink::Interface &interface) {
@@ -335,9 +363,9 @@ std::string varlink::element_to_string(const json &elem, size_t indent) {
 
 std::string varlink::vtype_to_string(const json &type) {
     std::string s;
-    if (type.contains("maybe_type") && type["maybe_type"]) s += "?";
-    if (type.contains("array_type") && type["array_type"]) s += "[]";
-    if (type.contains("dict_type") && type["dict_type"]) s+= "[string]";
+    if (type.contains("maybe_type") && type["maybe_type"].get<bool>()) s += "?";
+    if (type.contains("array_type") && type["array_type"].get<bool>()) s += "[]";
+    if (type.contains("dict_type") && type["dict_type"].get<bool>()) s+= "[string]";
     s += element_to_string(type["type"]);
     return s;
 }

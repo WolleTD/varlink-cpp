@@ -57,11 +57,19 @@ Service::Service(std::string address, Description desc)
     }};
 }
 
-Service::Service(Service &&src) noexcept {
-    socketAddress = std::move(src.socketAddress);
-    description = std::move(src.description);
-    listeningThread = std::move(src.listeningThread);
-    std::swap(listen_fd, src.listen_fd);
+Service::Service(Service &&src) noexcept :
+    socketAddress(std::exchange(src.socketAddress, {})),
+    description(std::exchange(src.description, {})),
+    listeningThread(std::exchange(src.listeningThread, {})),
+    listen_fd(std::exchange(src.listen_fd, -1)) {}
+
+Service& Service::operator=(Service &&rhs) noexcept {
+    Service s(std::move(rhs));
+    std::swap(socketAddress, s.socketAddress);
+    std::swap(description, s.description);
+    std::swap(listeningThread, s.listeningThread);
+    std::swap(listen_fd, s.listen_fd);
+    return *this;
 }
 
 Service::~Service() {
@@ -88,27 +96,30 @@ json Service::handle(const json &message, Connection &connection) {
     const auto ifname = fqmethod.substr(0, dot);
     const auto methodname = fqmethod.substr(dot + 1);
 
-    const auto ifpair = interfaces.find(ifname);
-    if (ifpair != interfaces.cend()) {
-        const auto& interface = ifpair->second;
+    try {
+        const auto& interface = interfaces.at(ifname);
         try {
-            const auto& method = interface.method(methodname);
-            auto res = interface.validate(message["parameters"], method.parameters);
-            if(res.is_boolean() && res) {
-                auto response =  method.callback(message, connection);
-                res = interface.validate(response, method.returnValue);
-                return response;
-            } else {
-                return error("org.varlink.service.InvalidParameter", res);
+            const auto &method = interface.method(methodname);
+            interface.validate(message["parameters"], method.parameters);
+            auto response = method.callback(message, connection);
+            try {
+                interface.validate(response["parameters"], method.returnValue);
+            } catch(std::invalid_argument& e) {
+                std::cout << "Response validation error: " << e.what() << std::endl;
             }
+            return response;
+        }
+        catch (std::out_of_range& e) {
+            return error("org.varlink.service.MethodNotFound", {{"method", methodname}});
         }
         catch (std::invalid_argument& e) {
-            return error("org.varlink.service.MethodNotFound", {{"method", methodname}});
+            return error("org.varlink.service.InvalidParameter", {{"parameter", e.what()}});
         }
         catch (std::bad_function_call& e) {
             return error("org.varlink.service.MethodNotImplemented", {{"method", methodname}});
         }
-    } else {
+    }
+    catch (std::out_of_range& e) {
         return error("org.varlink.service.InterfaceNotFound", {{"interface", ifname}});
     }
 }
