@@ -44,16 +44,16 @@ int main() {
     using namespace std::chrono_literals;
     signal(SIGTERM, signalHandler);
     signal(SIGINT, signalHandler);
+    signal(SIGPIPE, SIG_IGN);
     service = std::make_unique<varlink::Service>("/tmp/test.socket",
                                                  varlink::Service::Description{"a", "b", "c", "d" });
-    service->addInterface(varlink::Interface{
-        std::string(org_example_more_varlink),
+    service->addInterface(org_example_more_varlink,
         {
             {"Ping", []VarlinkCallback {
                 return varlink::reply({{"pong", message["parameters"]["ping"]}});
             }},
             {"TestMore", []VarlinkCallback {
-                if (message["parameters"].contains("n") && message["more"]) {
+                if (message["parameters"].contains("n") && more) {
                     nlohmann::json state = {{"start", true}};
                     connection.send(varlink::reply_continues({{"state", state}}));
                     state.erase("start");
@@ -73,7 +73,7 @@ int main() {
                                           {{"parameter", "n"}});
                 }
             }}
-        } });
+        });
     std::cout << "waiting...\n";
     std::this_thread::sleep_for(200s);
     std::cout << "done\n";

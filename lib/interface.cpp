@@ -233,9 +233,9 @@ INSERTER(grammar::vtypedef) {
                                                        interface.state.docstring, state.last_element_type});
 }
 
-varlink::Interface::Interface(std::string fromDescription, std::map<std::string, MethodCallback> callbacks)
-        : description(std::move(fromDescription)), state({.callbacks = std::move(callbacks)}) {
-    pegtl::string_input parser_in { description.c_str(), __FUNCTION__ };
+varlink::Interface::Interface(std::string_view fromDescription, std::map<std::string, MethodCallback> callbacks)
+        : description(fromDescription), state({.callbacks = std::move(callbacks)}) {
+    pegtl::string_input parser_in { description, __FUNCTION__ };
     try {
         pegtl::parse<grammar::interface, inserter>(parser_in, *this);
         if(!state.callbacks.empty()) {

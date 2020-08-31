@@ -41,6 +41,7 @@ Connection& Connection::operator=(Connection &&rhs) noexcept {
 
 void Connection::send(const json& message) {
     wstream << message << '\0' << std::flush;
+    if (!wstream.good()) throw std::system_error(std::make_error_code(std::errc::broken_pipe));
 }
 
 json Connection::receive() {

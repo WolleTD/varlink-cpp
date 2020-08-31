@@ -12,7 +12,9 @@
 #include <ext/stdio_filebuf.h>
 
 #define VarlinkCallback \
-    ([[maybe_unused]] const varlink::json& message, [[maybe_unused]] varlink::Connection& connection) -> varlink::json
+    ([[maybe_unused]] const varlink::json& message, \
+     [[maybe_unused]] varlink::Connection& connection, \
+     [[maybe_unused]] bool more) -> varlink::json
 
 namespace varlink {
     using nlohmann::json;
@@ -42,7 +44,7 @@ namespace varlink {
         [[nodiscard]] json receive();
     };
 
-    using MethodCallback = std::function<json(const json&, Connection& connection)>;
+    using MethodCallback = std::function<json(const json&, Connection& connection, bool more)>;
 
     struct Type {
         const std::string name;
@@ -70,7 +72,7 @@ namespace varlink {
     private:
         std::string ifname;
         std::string documentation;
-        std::string description;
+        std::string_view description;
 
         std::map<std::string, Type> types;
         std::map<std::string, Method> methods;
@@ -100,11 +102,12 @@ namespace varlink {
         std::vector<State> stack;
 
     public:
-        explicit Interface(std::string fromDescription,
+        explicit Interface(std::string_view fromDescription,
                            std::map<std::string, MethodCallback> callbacks = {});
         [[nodiscard]] const std::string& name() const noexcept { return ifname; }
         [[nodiscard]] const Method& method(const std::string& name) const;
         void validate(const json& data, const json& type) const;
+        json call(const std::string& method, const json& parameters);
 
         friend std::ostream& operator<<(std::ostream& os, const Interface& interface);
     };
@@ -143,6 +146,7 @@ namespace varlink {
 
         [[nodiscard]] Connection nextClientConnection() const;
         void addInterface(Interface interface) { interfaces.emplace(interface.name(), std::move(interface)); }
+        void addInterface(std::string_view interface, std::map<std::string, MethodCallback> callbacks);
     };
 
     inline json reply(json params) {

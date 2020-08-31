@@ -28,7 +28,7 @@ Service::Service(std::string address, Description desc)
     if (listen(listen_fd, 1024) < 0) {
         throw;
     }
-    addInterface(Interface(std::string(org_varlink_service_varlink),
+    addInterface(org_varlink_service_varlink,
         {
              {"GetInfo", [this]VarlinkCallback {
                  json info = description;
@@ -51,7 +51,7 @@ Service::Service(std::string address, Description desc)
                      return error("org.varlink.service.InterfaceNotFound", {{"interface", ifname}});
                  }
              }}
-        }));
+        });
     listeningThread = std::thread { [this]() {
         dispatchConnections();
     }};
@@ -101,7 +101,8 @@ json Service::handle(const json &message, Connection &connection) {
         try {
             const auto &method = interface.method(methodname);
             interface.validate(message["parameters"], method.parameters);
-            auto response = method.callback(message, connection);
+            const bool more = (message.contains("more") && message["more"].get<bool>());
+            auto response = method.callback(message, connection, more);
             try {
                 interface.validate(response["parameters"], method.returnValue);
             } catch(std::invalid_argument& e) {
@@ -130,16 +131,21 @@ void Service::dispatchConnections() {
             auto conn = nextClientConnection();
             std::thread{[this](Connection conn) {
                 for (;;) {
-                    auto message = conn.receive();
-                    if (message.is_null()) break;
-                    if (message.contains("method")) {
-                        if (!message.contains("parameters")) {
-                            message["parameters"] = json::object();
+                    try {
+                        auto message = conn.receive();
+                        if (message.is_null()) break;
+                        if (message.contains("method")) {
+                            if (!message.contains("parameters")) {
+                                message["parameters"] = json::object();
+                            }
+                            auto reply = handle(message, conn);
+                            if (!(message.contains("oneway") && message["oneway"])) {
+                                conn.send(reply);
+                            }
                         }
-                        auto reply = handle(message, conn);
-                        if (!(message.contains("oneway") && message["oneway"])) {
-                            conn.send(reply);
-                        }
+                    } catch(std::system_error& e) {
+                        std::cerr << "Terminate connection: " << e.what() << std::endl;
+                        break;
                     }
                 }
             }, std::move(conn)}.detach();
@@ -152,4 +158,9 @@ void Service::dispatchConnections() {
             }
         }
     }
+}
+
+void Service::addInterface(std::string_view interface, std::map<std::string, MethodCallback> callbacks) {
+    Interface i(interface, std::move(callbacks));
+    interfaces.emplace(i.name(), std::move(i));
 }
