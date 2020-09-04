@@ -160,7 +160,7 @@ void Service::dispatchConnections() {
     }
 }
 
-void Service::addInterface(std::string_view interface, std::map<std::string, MethodCallback> callbacks) {
+void Service::addInterface(std::string_view interface, CallbackMap callbacks) {
     Interface i(interface, std::move(callbacks));
     interfaces.emplace(i.name(), std::move(i));
 }

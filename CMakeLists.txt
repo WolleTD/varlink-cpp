@@ -19,12 +19,12 @@ add_compile_options(-Wall -Wextra -fvisibility=hidden)
 
 add_subdirectory(lib)
 #add_subdirectory(tool)
-#add_subdirectory(test)
+add_subdirectory(test)
 
 # TEST DEV STUFF
 varlink_wrapper(org.example.more.varlink)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
-add_executable(test test.cpp org.example.more.varlink.cpp.inc)
-target_link_libraries(test varlink++ pthread)
+add_executable(testdev test.cpp org.example.more.varlink.cpp.inc)
+target_link_libraries(testdev varlink++ pthread)
 # END TEST DEV STUFF
 

@@ -184,18 +184,22 @@ INSERTER(grammar::type) {
 
 INSERTER(grammar::kwinterface) {
     interface.documentation = interface.state.moving_docstring;
+    interface.state.moving_docstring.clear();
 }
 
 INSERTER(grammar::kwerror) {
     interface.state.docstring = interface.state.moving_docstring;
+    interface.state.moving_docstring.clear();
 }
 
 INSERTER(grammar::kwtype) {
     interface.state.docstring = interface.state.moving_docstring;
+    interface.state.moving_docstring.clear();
 }
 
 INSERTER(grammar::kwmethod) {
     interface.state.docstring = interface.state.moving_docstring;
+    interface.state.moving_docstring.clear();
 }
 
 INSERTER(grammar::kwarrow) {
@@ -209,12 +213,20 @@ INSERTER(grammar::interface_name) {
 }
 
 INSERTER(grammar::error) {
+    for(const auto& m : interface.errors) {
+        if (m.name == interface.state.name)
+            throw std::invalid_argument("Multiple definition of error " + interface.state.name);
+    }
     auto& state = interface.stack.back();
-    interface.errors.emplace(interface.state.name, Error{{interface.state.name,
-                                                          interface.state.docstring, state.last_element_type}});
+    interface.errors.emplace_back(Error{{interface.state.name,
+                                         interface.state.docstring, state.last_element_type}});
 }
 
 INSERTER(grammar::method) {
+    for(const auto& m : interface.methods) {
+        if (m.name == interface.state.name)
+            throw std::invalid_argument("Multiple definition of method " + interface.state.name);
+    }
     auto& state = interface.stack.back();
     MethodCallback callback { nullptr };
     auto cbit = interface.state.callbacks.find(interface.state.name);
@@ -222,46 +234,52 @@ INSERTER(grammar::method) {
         callback = cbit->second;
         interface.state.callbacks.erase(cbit);
     }
-    interface.methods.emplace(interface.state.name, Method{interface.state.name, interface.state.docstring,
+    interface.methods.emplace_back(Method{interface.state.name, interface.state.docstring,
                                           interface.state.method_params, state.last_element_type,
                                           callback});
 }
 
 INSERTER(grammar::vtypedef) {
+    for(const auto& m : interface.types) {
+        if (m.name == interface.state.name)
+            throw std::invalid_argument("Multiple definition of type " + interface.state.name);
+    }
     auto& state = interface.stack.back();
-    interface.types.emplace(interface.state.name, Type{interface.state.name,
-                                                       interface.state.docstring, state.last_element_type});
+    interface.types.emplace_back(Type{interface.state.name,
+                                      interface.state.docstring, state.last_element_type});
 }
 
-varlink::Interface::Interface(std::string_view fromDescription, std::map<std::string, MethodCallback> callbacks)
+varlink::Interface::Interface(std::string_view fromDescription, CallbackMap callbacks)
         : description(fromDescription), state({.callbacks = std::move(callbacks)}) {
     pegtl::string_input parser_in { description, __FUNCTION__ };
     try {
         pegtl::parse<grammar::interface, inserter>(parser_in, *this);
         if(!state.callbacks.empty()) {
-            throw std::invalid_argument("Unknown method");
+            throw std::invalid_argument("Unknown method " + state.callbacks.begin()->first);
         }
     }
     catch ( const pegtl::parse_error& e) {
-        const auto p = e.positions().front();
-        std::cerr << e.what() << "\n" << parser_in.line_at(p) << "\n"
-            << std::setw(p.column) << '^' << std::endl;
-        throw;
-    }
-    catch ( const std::invalid_argument& e) {
-        const auto method { state.callbacks.begin()->first };
-        std::cerr << e.what() << "\n" << method << std::endl;
-        throw;
+        throw std::invalid_argument(e.what());
     }
 }
 
 const varlink::Method &varlink::Interface::method(const std::string &name) const {
-    return methods.at(name);
+    for(const auto& m : methods) {
+        if (m.name == name) return m;
+    }
+    throw std::out_of_range(name);
 }
 
-void varlink::Interface::validate(const json &data, const json &type) const {
-    std::cout << type << "\n";
-    for (const auto& param : type.items()) {
+const varlink::Type &varlink::Interface::type(const std::string &name) const {
+    for(const auto& t : types) {
+        if (t.name == name) return t;
+    }
+    throw std::out_of_range(name);
+}
+
+void varlink::Interface::validate(const json &data, const json &typespec) const {
+    std::cout << typespec << "\n";
+    for (const auto& param : typespec.items()) {
         const auto& name = param.key();
         const auto& spec = param.value();
         if(!(spec.contains("maybe_type") && spec["maybe_type"].get<bool>())
@@ -290,11 +308,13 @@ void varlink::Interface::validate(const json &data, const json &type) const {
                     continue;
                 } else if (valtype == "object" && !value.is_null()) {
                     continue;
-                } else if (types.find(valtype) != types.cend()) {
-                    validate(value, types.at(valtype).data);
-                    continue;
                 } else {
-                    throw std::invalid_argument(name);
+                    try {
+                        validate(value, type(valtype).data);
+                        continue;
+                    } catch(std::out_of_range&) {
+                        throw std::invalid_argument(name);
+                    }
                 }
             } else {
                 throw std::invalid_argument(name);
@@ -306,13 +326,13 @@ void varlink::Interface::validate(const json &data, const json &type) const {
 std::ostream &varlink::operator<<(std::ostream &os, const varlink::Interface &interface) {
     os << interface.documentation << "interface " << interface.ifname << "\n";
     for (const auto& type : interface.types) {
-        os << "\n" << type.second;
+        os << "\n" << type;
     }
     for (const auto& method : interface.methods) {
-        os << "\n" << method.second;
+        os << "\n" << method;
     }
     for (const auto& error : interface.errors) {
-        os << "\n" << error.second;
+        os << "\n" << error;
     }
     return os;
 }
@@ -320,28 +340,42 @@ std::ostream &varlink::operator<<(std::ostream &os, const varlink::Interface &in
 std::ostream &varlink::operator<<(std::ostream &os, const varlink::Type &type) {
     return os << type.description
             << "type " << type.name << " "
-            << element_to_string(type.data, 2) << "\n";
+            << element_to_string(type.data) << "\n";
 }
 
 std::ostream &varlink::operator<<(std::ostream &os, const varlink::Error &error) {
     return os << error.description
             << "error " << error.name << " "
-            << element_to_string(error.data) << "\n";
+            << element_to_string(error.data, -1) << "\n";
 }
 
 std::ostream &varlink::operator<<(std::ostream &os, const varlink::Method &method) {
     return os << method.description << "method " << method.name
-        << element_to_string(method.parameters) << " -> "
+        << element_to_string(method.parameters, -1) << " -> "
         << element_to_string(method.returnValue) << "\n";
 }
 
-std::string varlink::element_to_string(const json &elem, size_t indent) {
+std::string varlink::element_to_string(const json &elem, int indent, size_t depth) {
     if (elem.is_string()) {
         return elem.get<std::string>();
     } else {
-        const std::string spaces(indent, ' ');
-        const std::string sep = (indent > 0) ? ",\n" : ", ";
-        std::string s = (indent > 0) ? "(\n" : "(";
+        const auto is_multiline = [&]() -> bool {
+            if (indent < 0) return false;
+            if (elem.is_null() || elem.empty()) return false;
+            if (elem.is_object()) {
+                if (elem.size() > 2) return true;
+                for (const auto &member : elem) {
+                    if (member.contains("array_type") && member["array_type"].get<bool>()) return true;
+                    if (member["type"].is_object()) return true;
+                }
+            }
+            if(element_to_string(elem, -1, depth).size() > 40) return true;
+            return false;
+        };
+        const bool multiline { is_multiline() };
+        const std::string spaces = multiline ? std::string(indent * (depth + 1), ' ') : "";
+        const std::string sep = multiline ? ",\n" : ", ";
+        std::string s = multiline ? "(\n" : "(";
         bool first = true;
         if(elem.is_array()) {
             for (const auto &member : elem) {
@@ -353,19 +387,15 @@ std::string varlink::element_to_string(const json &elem, size_t indent) {
             for (const auto &member : elem.items()) {
                 if (first) first = false;
                 else s += sep;
-                s += spaces + member.key() + ": " + vtype_to_string(member.value());
+                s += spaces + member.key() + ": ";
+                auto type = member.value();
+                if (type.contains("maybe_type") && type["maybe_type"].get<bool>()) s += "?";
+                if (type.contains("array_type") && type["array_type"].get<bool>()) s += "[]";
+                if (type.contains("dict_type") && type["dict_type"].get<bool>()) s+= "[string]";
+                s += element_to_string(type["type"], indent, depth + 1);
             }
         }
-        s += (indent > 0) ? "\n)" : ")";
+        s += multiline ? "\n" + std::string(indent * depth, ' ') + ")" : ")";
         return s;
     }
-}
-
-std::string varlink::vtype_to_string(const json &type) {
-    std::string s;
-    if (type.contains("maybe_type") && type["maybe_type"].get<bool>()) s += "?";
-    if (type.contains("array_type") && type["array_type"].get<bool>()) s += "[]";
-    if (type.contains("dict_type") && type["dict_type"].get<bool>()) s+= "[string]";
-    s += element_to_string(type["type"]);
-    return s;
 }

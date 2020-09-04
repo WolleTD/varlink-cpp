@@ -6,7 +6,7 @@
 #include <string>
 #include <thread>
 #include <atomic>
-#include <map>
+#include <unordered_map>
 #define JSON_USE_IMPLICIT_CONVERSIONS 0
 #include <nlohmann/json.hpp>
 #include <ext/stdio_filebuf.h>
@@ -45,6 +45,7 @@ namespace varlink {
     };
 
     using MethodCallback = std::function<json(const json&, Connection& connection, bool more)>;
+    using CallbackMap = std::unordered_map<std::string, MethodCallback>;
 
     struct Type {
         const std::string name;
@@ -74,9 +75,9 @@ namespace varlink {
         std::string documentation;
         std::string_view description;
 
-        std::map<std::string, Type> types;
-        std::map<std::string, Method> methods;
-        std::map<std::string, Error> errors;
+        std::vector<Type> types;
+        std::vector<Method> methods;
+        std::vector<Error> errors;
 
         template<typename Rule>
         struct inserter {};
@@ -85,7 +86,7 @@ namespace varlink {
             std::string moving_docstring {};
             std::string docstring {};
             std::string name {};
-            std::map<std::string, MethodCallback> callbacks {};
+            CallbackMap callbacks {};
             json method_params {};
         } state;
 
@@ -103,9 +104,11 @@ namespace varlink {
 
     public:
         explicit Interface(std::string_view fromDescription,
-                           std::map<std::string, MethodCallback> callbacks = {});
+                           CallbackMap callbacks = {});
         [[nodiscard]] const std::string& name() const noexcept { return ifname; }
+        [[nodiscard]] const std::string& doc() const noexcept { return documentation; }
         [[nodiscard]] const Method& method(const std::string& name) const;
+        [[nodiscard]] const Type& type(const std::string& name) const;
         void validate(const json& data, const json& type) const;
         json call(const std::string& method, const json& parameters);
 
@@ -116,8 +119,7 @@ namespace varlink {
     std::ostream& operator<<(std::ostream& os, const Error& error);
     std::ostream& operator<<(std::ostream& os, const Method& method);
     std::ostream& operator<<(std::ostream& os, const Interface& interface);
-    std::string element_to_string(const json& type, size_t indent = 0);
-    std::string vtype_to_string(const json& type);
+    std::string element_to_string(const json& elem, int indent = 4, size_t depth = 0);
 
     class Service {
     public:
@@ -146,7 +148,7 @@ namespace varlink {
 
         [[nodiscard]] Connection nextClientConnection() const;
         void addInterface(Interface interface) { interfaces.emplace(interface.name(), std::move(interface)); }
-        void addInterface(std::string_view interface, std::map<std::string, MethodCallback> callbacks);
+        void addInterface(std::string_view interface, CallbackMap callbacks);
     };
 
     inline json reply(json params) {
