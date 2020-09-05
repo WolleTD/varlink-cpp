@@ -18,6 +18,11 @@
      [[maybe_unused]] varlink::Connection& connection, \
      [[maybe_unused]] bool more) -> varlink::json
 
+#define VarlinkTemplateCallback \
+    ([[maybe_unused]] const varlink::json& message, \
+     [[maybe_unused]] ConnectionT& connection, \
+     [[maybe_unused]] bool more) -> varlink::json
+
 namespace varlink {
     using nlohmann::json;
 
@@ -210,16 +215,12 @@ namespace varlink {
         void clientLoop(ConnectionT conn) {
             for (;;) {
                 try {
-                    auto message = conn.receive();
-                    if (message.is_null()) break;
-                    if (message.contains("method")) {
-                        if (!message.contains("parameters")) {
-                            message["parameters"] = json::object();
-                        }
-                        auto reply = handle(message, conn);
-                        if (!(message.contains("oneway") && message["oneway"])) {
-                            conn.send(reply);
-                        }
+                    json message = conn.receive();
+                    if (message.is_null() || !message.contains("method")) break;
+                    message.merge_patch(R"({"parameters":{}})"_json);
+                    auto reply = handle(message, conn);
+                    if (!(message.contains("oneway") && message["oneway"].get<bool>())) {
+                        conn.send(reply);
                     }
                 } catch(std::system_error& e) {
                     std::cerr << "Terminate connection: " << e.what() << std::endl;
@@ -236,33 +237,32 @@ namespace varlink {
                      }),
                      serviceVendor{std::move(vendor)}, serviceProduct{std::move(product)},
                      serviceVersion{std::move(version)}, serviceUrl{std::move(url)} {
-            addInterface(org_varlink_service_description(),
-                         {
-                                 {"GetInfo", [this]VarlinkCallback {
-                                     json info = {
-                                             {"vendor", serviceVendor},
-                                             {"product", serviceProduct},
-                                             {"version", serviceVersion},
-                                             {"url", serviceUrl}
-                                     };
-                                     info["interfaces"] = json::array();
-                                     for(const auto& interface : interfaces) {
-                                         info["interfaces"].push_back(interface.first);
-                                     }
-                                     return reply(info);
-                                 }},
-                                 {"GetInterfaceDescription", [this]VarlinkCallback {
-                                     const auto& ifname = message["parameters"]["interface"].get<std::string>();
-                                     const auto interface = interfaces.find(ifname);
-                                     if (interface != interfaces.cend()) {
-                                         std::stringstream ss;
-                                         ss << interface->second;
-                                         return reply({{"description", ss.str()}});
-                                     } else {
-                                         return error("org.varlink.service.InterfaceNotFound", {{"interface", ifname}});
-                                     }
-                                 }}
-                         });
+            addInterface(org_varlink_service_description(), {
+                {"GetInfo", [this]VarlinkTemplateCallback {
+                    json info = {
+                        {"vendor", serviceVendor},
+                        {"product", serviceProduct},
+                        {"version", serviceVersion},
+                        {"url", serviceUrl}
+                    };
+                    info["interfaces"] = json::array();
+                    for(const auto& interface : interfaces) {
+                        info["interfaces"].push_back(interface.first);
+                    }
+                    return reply(info);
+                }},
+                {"GetInterfaceDescription", [this]VarlinkTemplateCallback {
+                    const auto& ifname = message["parameters"]["interface"].get<std::string>();
+                    const auto interface = interfaces.find(ifname);
+                    if (interface != interfaces.cend()) {
+                        std::stringstream ss;
+                        ss << interface->second;
+                        return reply({{"description", ss.str()}});
+                    } else {
+                        return error("org.varlink.service.InterfaceNotFound", {{"interface", ifname}});
+                    }
+                }}
+            });
         }
 
         void addInterface(InterfaceT interface) { interfaces.emplace(interface.name(), std::move(interface)); }
@@ -276,7 +276,7 @@ namespace varlink {
     template<typename ConnectionT>
     class BasicClient {
     private:
-        ConnectionT conn;
+        std::unique_ptr<ConnectionT> conn;
     public:
         enum class CallMode {
             Basic,
@@ -284,11 +284,16 @@ namespace varlink {
             More,
             Upgrade,
         };
-        explicit BasicClient(const std::string& address) : conn(address) {}
+        explicit BasicClient(const std::string& address) : conn(std::make_unique<ConnectionT>(address)) {}
+        explicit BasicClient(std::unique_ptr<ConnectionT> connection) : conn(std::move(connection)) {}
+
         std::function<json()> call(const std::string& method,
                                              const json& parameters,
                                              CallMode mode = CallMode::Basic) {
             json message { { "method", method } };
+            if (!parameters.is_null() && !parameters.is_object()) {
+                throw std::invalid_argument("parameters is not an object");
+            }
             if (!parameters.empty()) {
                 message["parameters"] = parameters;
             }
@@ -301,11 +306,11 @@ namespace varlink {
                 message["upgrade"] = true;
             }
 
-            conn.send(message);
+            conn->send(message);
 
             return [this, mode, continues = true]() mutable -> json {
                 if (mode != CallMode::Oneway && continues) {
-                    json reply = conn.receive();
+                    json reply = conn->receive();
                     if (mode == CallMode::More && reply.contains("continues")) {
                         continues = reply["continues"].get<bool>();
                     } else {

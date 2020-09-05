@@ -1,7 +1,5 @@
 add_subdirectory(googletest EXCLUDE_FROM_ALL)
-include(CTest)
 
-link_libraries(gtest gtest_main varlink++)
-
-add_executable(test_interface interface.cpp)
-add_test(interface test_interface)
+add_executable(gtest_units interface.cpp client.cpp)
+target_link_libraries(gtest_units PRIVATE gtest gmock gtest_main varlink++)
+add_test(unittests gtest_units)

@@ -31,9 +31,7 @@ ServiceConnection::ServiceConnection(std::string address, std::function<void(int
     listeningThread = std::thread { [this]() {
         for(;;) {
             try {
-                std::thread{[this](int fd) {
-                    connectionCallback(fd);
-                }, nextClientFd()}.detach();
+                std::thread{connectionCallback, nextClientFd()}.detach();
             } catch (std::system_error& e) {
                 if (e.code() == std::errc::invalid_argument) {
                     // accept() fails with EINVAL when the socket isn't listening, i.e. shutdown

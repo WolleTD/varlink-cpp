@@ -19,6 +19,7 @@ add_compile_options(-Wall -Wextra -fvisibility=hidden)
 
 add_subdirectory(lib)
 #add_subdirectory(tool)
+include(CTest)
 add_subdirectory(test)
 
 # TEST DEV STUFF
