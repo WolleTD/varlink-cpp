@@ -45,8 +45,7 @@ int main() {
     signal(SIGTERM, signalHandler);
     signal(SIGINT, signalHandler);
     signal(SIGPIPE, SIG_IGN);
-    service = std::make_unique<varlink::Service>("/tmp/test.socket",
-                                                 varlink::Service::Description{"a", "b", "c", "d" });
+    service = std::make_unique<varlink::Service>("/tmp/test.socket", "a", "b", "c", "d" );
     service->addInterface(org_example_more_varlink,
         {
             {"Ping", []VarlinkCallback {

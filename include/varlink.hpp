@@ -4,11 +4,13 @@
 
 #include <iostream>
 #include <string>
+#include <sstream>
 #include <thread>
 #include <atomic>
 #include <unordered_map>
 #define JSON_USE_IMPLICIT_CONVERSIONS 0
 #include <nlohmann/json.hpp>
+#include <utility>
 #include <ext/stdio_filebuf.h>
 
 #define VarlinkCallback \
@@ -125,36 +127,6 @@ namespace varlink {
     std::ostream& operator<<(std::ostream& os, const Interface& interface);
     std::string element_to_string(const json& elem, int indent = 4, size_t depth = 0);
 
-    class Service {
-    public:
-        struct Description {
-            std::string vendor;
-            std::string product;
-            std::string version;
-            std::string url;
-        };
-    private:
-        std::string socketAddress;
-        Description description;
-        std::map<std::string, Interface> interfaces;
-        std::thread listeningThread;
-        int listen_fd { -1 };
-
-        json handle(const json &message, Connection &connection);
-        void dispatchConnections();
-    public:
-        Service(std::string address, Description desc);
-        Service(const Service& src) = delete;
-        Service& operator=(const Service&) = delete;
-        Service(Service&& src) noexcept;
-        Service& operator=(Service&& rhs) noexcept;
-        ~Service();
-
-        [[nodiscard]] Connection nextClientConnection() const;
-        void addInterface(Interface interface) { interfaces.emplace(interface.name(), std::move(interface)); }
-        void addInterface(std::string_view interface, CallbackMap callbacks);
-    };
-
     inline json reply(json params) {
         assert(params.is_object());
         return {{"parameters", std::move(params)}};
@@ -168,18 +140,143 @@ namespace varlink {
         return {{"error", std::move(what)}, {"parameters", std::move(params)}};
     }
 
-    inline void to_json(json& j, const Service::Description& desc) {
-        j = json{
-                {"vendor", desc.vendor},
-                {"product", desc.product},
-                {"version", desc.version},
-                {"url", desc.url}
-        };
-    }
+    std::string_view org_varlink_service_description();
 
-    class Client {
+    class ServiceConnection {
     private:
-        Connection conn;
+        std::string socketAddress;
+        std::thread listeningThread;
+        int listen_fd { -1 };
+        std::function<void(int)> connectionCallback;
+    public:
+        explicit ServiceConnection(std::string address, std::function<void(int)> callback);
+        ServiceConnection(const ServiceConnection& src) = delete;
+        ServiceConnection& operator=(const ServiceConnection&) = delete;
+        ServiceConnection(ServiceConnection&& src) noexcept;
+        ServiceConnection& operator=(ServiceConnection&& rhs) noexcept;
+        ~ServiceConnection();
+
+        [[nodiscard]] int nextClientFd();
+    };
+
+    template<typename ConnectionT, typename InterfaceT>
+    class BasicService {
+    private:
+        ServiceConnection serviceConnection;
+        std::string serviceVendor;
+        std::string serviceProduct;
+        std::string serviceVersion;
+        std::string serviceUrl;
+        std::map<std::string, InterfaceT> interfaces;
+
+        json handle(const json &message, ConnectionT &connection) {
+            const auto &fqmethod = message["method"].get<std::string>();
+            const auto dot = fqmethod.rfind('.');
+            if (dot == std::string::npos) {
+                return error("org.varlink.service.InterfaceNotFound", {{"interface", fqmethod}});
+            }
+            const auto ifname = fqmethod.substr(0, dot);
+            const auto methodname = fqmethod.substr(dot + 1);
+
+            try {
+                const auto& interface = interfaces.at(ifname);
+                try {
+                    const auto &method = interface.method(methodname);
+                    interface.validate(message["parameters"], method.parameters);
+                    const bool more = (message.contains("more") && message["more"].get<bool>());
+                    auto response = method.callback(message, connection, more);
+                    try {
+                        interface.validate(response["parameters"], method.returnValue);
+                    } catch(std::invalid_argument& e) {
+                        std::cout << "Response validation error: " << e.what() << std::endl;
+                    }
+                    return response;
+                }
+                catch (std::out_of_range& e) {
+                    return error("org.varlink.service.MethodNotFound", {{"method", methodname}});
+                }
+                catch (std::invalid_argument& e) {
+                    return error("org.varlink.service.InvalidParameter", {{"parameter", e.what()}});
+                }
+                catch (std::bad_function_call& e) {
+                    return error("org.varlink.service.MethodNotImplemented", {{"method", methodname}});
+                }
+            }
+            catch (std::out_of_range& e) {
+                return error("org.varlink.service.InterfaceNotFound", {{"interface", ifname}});
+            }
+        }
+
+        void clientLoop(ConnectionT conn) {
+            for (;;) {
+                try {
+                    auto message = conn.receive();
+                    if (message.is_null()) break;
+                    if (message.contains("method")) {
+                        if (!message.contains("parameters")) {
+                            message["parameters"] = json::object();
+                        }
+                        auto reply = handle(message, conn);
+                        if (!(message.contains("oneway") && message["oneway"])) {
+                            conn.send(reply);
+                        }
+                    }
+                } catch(std::system_error& e) {
+                    std::cerr << "Terminate connection: " << e.what() << std::endl;
+                    break;
+                }
+            }
+        }
+
+    public:
+        BasicService(const std::string& address, std::string  vendor, std::string  product,
+                     std::string  version, std::string  url)
+                     : serviceConnection(address, [this](int fd) {
+                         clientLoop(ConnectionT(fd));
+                     }),
+                     serviceVendor{std::move(vendor)}, serviceProduct{std::move(product)},
+                     serviceVersion{std::move(version)}, serviceUrl{std::move(url)} {
+            addInterface(org_varlink_service_description(),
+                         {
+                                 {"GetInfo", [this]VarlinkCallback {
+                                     json info = {
+                                             {"vendor", serviceVendor},
+                                             {"product", serviceProduct},
+                                             {"version", serviceVersion},
+                                             {"url", serviceUrl}
+                                     };
+                                     info["interfaces"] = json::array();
+                                     for(const auto& interface : interfaces) {
+                                         info["interfaces"].push_back(interface.first);
+                                     }
+                                     return reply(info);
+                                 }},
+                                 {"GetInterfaceDescription", [this]VarlinkCallback {
+                                     const auto& ifname = message["parameters"]["interface"].get<std::string>();
+                                     const auto interface = interfaces.find(ifname);
+                                     if (interface != interfaces.cend()) {
+                                         std::stringstream ss;
+                                         ss << interface->second;
+                                         return reply({{"description", ss.str()}});
+                                     } else {
+                                         return error("org.varlink.service.InterfaceNotFound", {{"interface", ifname}});
+                                     }
+                                 }}
+                         });
+        }
+
+        void addInterface(InterfaceT interface) { interfaces.emplace(interface.name(), std::move(interface)); }
+        void addInterface(std::string_view interface, const CallbackMap& callbacks) {
+            addInterface(InterfaceT(interface, callbacks));
+        }
+    };
+
+    using Service = BasicService<Connection, Interface>;
+
+    template<typename ConnectionT>
+    class BasicClient {
+    private:
+        ConnectionT conn;
     public:
         enum class CallMode {
             Basic,
@@ -187,11 +284,42 @@ namespace varlink {
             More,
             Upgrade,
         };
-        explicit Client(const std::string& address);
+        explicit BasicClient(const std::string& address) : conn(address) {}
         std::function<json()> call(const std::string& method,
                                              const json& parameters,
-                                             CallMode mode = CallMode::Basic);
+                                             CallMode mode = CallMode::Basic) {
+            json message { { "method", method } };
+            if (!parameters.empty()) {
+                message["parameters"] = parameters;
+            }
+
+            if (mode == CallMode::Oneway) {
+                message["oneway"] = true;
+            } else if (mode == CallMode::More) {
+                message["more"] = true;
+            } else if (mode == CallMode::Upgrade) {
+                message["upgrade"] = true;
+            }
+
+            conn.send(message);
+
+            return [this, mode, continues = true]() mutable -> json {
+                if (mode != CallMode::Oneway && continues) {
+                    json reply = conn.receive();
+                    if (mode == CallMode::More && reply.contains("continues")) {
+                        continues = reply["continues"].get<bool>();
+                    } else {
+                        continues = false;
+                    }
+                    return reply;
+                } else {
+                    return {};
+                }
+            };
+        }
     };
+
+    using Client = BasicClient<Connection>;
 }
 
 #endif // LIBVARLINK_VARLINK_HPP
