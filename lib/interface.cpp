@@ -263,22 +263,44 @@ varlink::Interface::Interface(std::string_view fromDescription, CallbackMap call
     }
 }
 
+template<typename T>
+inline const T& find_member(const std::vector<T>& list, const std::string &name) {
+    auto i = std::find_if(list.begin(), list.end(), [&](const T& e) { return e.name == name; });
+    if (i == list.end())
+        throw std::out_of_range(name);
+    return *i;
+}
+
 const varlink::Method &varlink::Interface::method(const std::string &name) const {
-    for(const auto& m : methods) {
-        if (m.name == name) return m;
-    }
-    throw std::out_of_range(name);
+    return find_member(methods, name);
 }
 
 const varlink::Type &varlink::Interface::type(const std::string &name) const {
-    for(const auto& t : types) {
-        if (t.name == name) return t;
-    }
-    throw std::out_of_range(name);
+    return find_member(types, name);
+}
+
+const varlink::Error &varlink::Interface::error(const std::string &name) const {
+    return find_member(errors, name);
+}
+
+template<typename T>
+inline bool has_member(const std::vector<T>& list, const std::string &name) {
+    return std::any_of(list.begin(), list.end(), [&name](const T& e){ return e.name == name; });
+}
+
+bool varlink::Interface::has_method(const std::string &name) const noexcept {
+    return has_member(methods, name);
+}
+
+bool varlink::Interface::has_type(const std::string &name) const noexcept {
+    return has_member(types, name);
+}
+
+bool varlink::Interface::has_error(const std::string &name) const noexcept {
+    return has_member(errors, name);
 }
 
 void varlink::Interface::validate(const json &data, const json &typespec) const {
-    std::cout << typespec << "\n";
     for (const auto& param : typespec.items()) {
         const auto& name = param.key();
         const auto& spec = param.value();
@@ -287,12 +309,18 @@ void varlink::Interface::validate(const json &data, const json &typespec) const 
             throw std::invalid_argument(name);
         } else if (data.contains(name)) {
             const auto& value = data[name];
-            if ((spec.contains("dict_type") && spec["dict_type"].get<bool>())
+            if((spec.contains("maybe_type") && spec["maybe_type"].get<bool>())
+                && value.is_null()) {
+                continue;
+            } else if ((spec.contains("dict_type") && spec["dict_type"].get<bool>())
                     && value.is_object()) {
                 continue;
-            } else if ((spec.contains("array_type") && spec["array_type"].get<bool>())
-                    && value.is_array()) {
-                continue;
+            } else if (spec.contains("array_type") && spec["array_type"].get<bool>()) {
+                if (value.is_array()) {
+                    continue;
+                } else {
+                    throw std::invalid_argument(name);
+                }
             } else if (spec["type"].is_object() && value.is_object()) {
                 validate(value, spec["type"]);
                 continue;
@@ -300,9 +328,9 @@ void varlink::Interface::validate(const json &data, const json &typespec) const 
                 const auto& valtype = spec["type"].get<std::string>();
                 if (valtype == "string" && value.is_string()) {
                     continue;
-                } else if (valtype == "int" && value.is_number()) {
+                } else if (valtype == "int" && value.is_number_integer()) {
                     continue;
-                } else if (valtype == "float" && value.is_number_float()) {
+                } else if (valtype == "float" && value.is_number()) {
                     continue;
                 } else if (valtype == "bool" && value.is_boolean()) {
                     continue;

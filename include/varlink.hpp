@@ -109,6 +109,10 @@ namespace varlink {
         [[nodiscard]] const std::string& doc() const noexcept { return documentation; }
         [[nodiscard]] const Method& method(const std::string& name) const;
         [[nodiscard]] const Type& type(const std::string& name) const;
+        [[nodiscard]] const Error& error(const std::string& name) const;
+        [[nodiscard]] bool has_method(const std::string& name) const noexcept;
+        [[nodiscard]] bool has_type(const std::string& name) const noexcept;
+        [[nodiscard]] bool has_error(const std::string& name) const noexcept;
         void validate(const json& data, const json& type) const;
         json call(const std::string& method, const json& parameters);
 

@@ -195,6 +195,7 @@ TEST(Interface, Types) {
     EXPECT_NO_THROW(Interface("interface org.test\ntype I (i: int)"));
     EXPECT_NO_THROW(Interface("interface org.test\ntype I (f: float)"));
     EXPECT_NO_THROW(Interface("interface org.test\ntype I (b: []bool)"));
+    EXPECT_NO_THROW(Interface("interface org.test\ntype I (i: ?int)"));
     EXPECT_ANY_THROW(Interface("interface org.test\ntype I (b: bool[])"));
     EXPECT_ANY_THROW(Interface("interface org.test\ntype I (b: bool[ ])"));
     EXPECT_ANY_THROW(Interface("interface org.test\ntype I (b: bool[1])"));
@@ -210,4 +211,97 @@ TEST(Interface, Duplicate) {
     EXPECT_ANY_THROW(Interface("interface org.test\ntype T()\ntype T()"));
     EXPECT_ANY_THROW(Interface("interface org.test\nmethod F()->()\nmethod F()->()"));
     EXPECT_ANY_THROW(Interface("interface org.test\nerror E()\nerror E()"));
+}
+
+TEST(Interface, MethodAccess) {
+    Interface interface("interface org.test\nmethod Test()->()");
+    EXPECT_TRUE(interface.has_method("Test"));
+    EXPECT_FALSE(interface.has_method("Other"));
+    EXPECT_NO_THROW((void)interface.method("Test"));
+    EXPECT_THROW((void)interface.method("Other"), std::out_of_range);
+}
+
+TEST(Interface, TypeAccess) {
+    Interface interface("interface org.test\ntype T()");
+    EXPECT_TRUE(interface.has_type("T"));
+    EXPECT_FALSE(interface.has_type("O"));
+    EXPECT_NO_THROW((void)interface.type("T"));
+    EXPECT_THROW((void)interface.type("O"), std::out_of_range);
+}
+
+TEST(Interface, ErrorAccess) {
+    Interface interface("interface org.test\nerror E()");
+    EXPECT_TRUE(interface.has_error("E"));
+    EXPECT_FALSE(interface.has_error("F"));
+    EXPECT_NO_THROW((void)interface.error("E"));
+    EXPECT_THROW((void)interface.error("F"), std::out_of_range);
+}
+
+TEST(Interface, Validate1) {
+    Interface interface("interface org.test\ntype T(n: ?int)");
+    struct Testdata {
+        json data;
+        json type;
+    };
+    std::vector<Testdata> testdata {
+        {R"({"a":0})"_json, R"({"a":{"type":"int"}})"_json},
+        {R"({"a":1337})"_json, R"({"a":{"type":"int"}})"_json},
+        {R"({"a":-123})"_json, R"({"a":{"type":"int"}})"_json},
+        {R"({"a":"a string"})"_json, R"({"a":{"type":"string"}})"_json},
+        {R"({"a":""})"_json, R"({"a":{"type":"string"}})"_json},
+        {R"({"a":true})"_json, R"({"a":{"type":"bool"}})"_json},
+        {R"({"a":false})"_json, R"({"a":{"type":"bool"}})"_json},
+        {R"({"a":145})"_json, R"({"a":{"type":"float"}})"_json},
+        {R"({"a":10.45})"_json, R"({"a":{"type":"float"}})"_json},
+        {R"({"a":-10.45})"_json, R"({"a":{"type":"float"}})"_json},
+        {R"({"a":"object"})"_json, R"({"a":{"type":"object"}})"_json},
+        {R"({"a":null})"_json, R"({"a":{"type":"int","maybe_type":true}})"_json},
+        {R"({})"_json, R"({"a":{"type":"int","maybe_type":true}})"_json},
+        {R"({"a":[]})"_json, R"({"a":{"type":"int","array_type":true}})"_json},
+        {R"({"a":[1,2,3]})"_json, R"({"a":{"type":"int","array_type":true}})"_json},
+        {R"({"a":null})"_json, R"({"a":{"type":"int","array_type":true,"maybe_type":true}})"_json},
+        {R"({})"_json, R"({"a":{"type":"int","maybe_type":true,"array_type":true}})"_json},
+        {R"({"a":{"key1":"value1"}})"_json, R"({"a":{"type":"string","dict_type":true}})"_json},
+        {R"({"a":{}})"_json, R"({"a":{"type":"int","dict_type":true}})"_json},
+        {R"({"a":{"b":"string"}})"_json, R"({"a":{"type":{"b":{"type":"string"}}}})"_json},
+        {R"({"a":{"b":"string"}})"_json, R"({"a":{"type":{"b":{"type":"string","maybe_type":true}}}})"_json},
+        {R"({"a":{}})"_json, R"({"a":{"type":{"b":{"type":"string","maybe_type":true}}}})"_json},
+        {R"({"a":{"n":1}})"_json, R"({"a":{"type":"T"}})"_json},
+        {R"({"a":{}})"_json, R"({"a":{"type":"T"}})"_json},
+    };
+    for(const auto& test : testdata) {
+        EXPECT_NO_THROW(interface.validate(test.data, test.type));
+    }
+}
+
+TEST(Interface, Validate2) {
+    Interface interface("interface org.test\ntype T(n: int)");
+    struct Testdata {
+        json data;
+        json type;
+    };
+    std::vector<Testdata> testdata {
+            {R"({"a":"string"})"_json, R"({"a":{"type":"int"}})"_json},
+            {R"({"b":1337})"_json, R"({"a":{"type":"int"}})"_json},
+            {R"({"a":10})"_json, R"({"a":{"type":"string"}})"_json},
+            {R"({"a":0})"_json, R"({"a":{"type":"bool"}})"_json},
+            {R"({"a":"string"})"_json, R"({"a":{"type":"float"}})"_json},
+            {R"({"a":null})"_json, R"({"a":{"type":"object"}})"_json},
+            {R"({"a":null})"_json, R"({"a":{"type":"int","maybe_type":false}})"_json},
+            {R"({})"_json, R"({"a":{"type":"int"}})"_json},
+            {R"({"a":[1,2,3]})"_json, R"({"a":{"type":"int"}})"_json},
+            {R"({"a":1})"_json, R"({"a":{"type":"int","array_type":true}})"_json},
+            {R"({"a":null})"_json, R"({"a":{"type":"int","array_type":true,"maybe_type":false}})"_json},
+            {R"({})"_json, R"({"a":{"type":"int","array_type":true}})"_json},
+            {R"({"a":{"key1":"value1"}})"_json, R"({"a":{"type":"string"}})"_json},
+            {R"({"a":[]})"_json, R"({"a":{"type":"int","dict_type":true}})"_json},
+            {R"({"a":{"a":"string"}})"_json, R"({"a":{"type":{"b":{"type":"string"}}}})"_json},
+            {R"({"a":10})"_json, R"({"a":{"type":{"b":{"type":"string","maybe_type":true}}}})"_json},
+            {R"({"a":{}})"_json, R"({"a":{"type":{"b":{"type":"string"}}}})"_json},
+            {R"({"a":{"n":"string"}})"_json, R"({"a":{"type":"T"}})"_json},
+            {R"({"a":{}})"_json, R"({"a":{"type":"T"}})"_json},
+    };
+    for(const auto& test : testdata) {
+        EXPECT_THROW(interface.validate(test.data, test.type), std::invalid_argument);
+    }
 }
