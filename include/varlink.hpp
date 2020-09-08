@@ -15,12 +15,7 @@
 
 #define VarlinkCallback \
     ([[maybe_unused]] const varlink::json& message, \
-     [[maybe_unused]] varlink::Connection& connection, \
-     [[maybe_unused]] bool more) -> varlink::json
-
-#define VarlinkTemplateCallback \
-    ([[maybe_unused]] const varlink::json& message, \
-     [[maybe_unused]] ConnectionT& connection, \
+     [[maybe_unused]] const std::function<void(varlink::json)>& sendmore, \
      [[maybe_unused]] bool more) -> varlink::json
 
 namespace varlink {
@@ -51,7 +46,7 @@ namespace varlink {
         [[nodiscard]] json receive();
     };
 
-    using MethodCallback = std::function<json(const json&, Connection& connection, bool more)>;
+    using MethodCallback = std::function<json(const json&, const std::function<void(json)>&, bool)>;
     using CallbackMap = std::unordered_map<std::string, MethodCallback>;
 
     struct Type {
@@ -152,9 +147,8 @@ namespace varlink {
         std::string socketAddress;
         std::thread listeningThread;
         int listen_fd { -1 };
-        std::function<void(int)> connectionCallback;
     public:
-        explicit ServiceConnection(std::string address, std::function<void(int)> callback);
+        explicit ServiceConnection(std::string address);
         ServiceConnection(const ServiceConnection& src) = delete;
         ServiceConnection& operator=(const ServiceConnection&) = delete;
         ServiceConnection(ServiceConnection&& src) noexcept;
@@ -162,19 +156,20 @@ namespace varlink {
         ~ServiceConnection();
 
         [[nodiscard]] int nextClientFd();
+        void listen(const std::function<void()>& listener);
     };
 
-    template<typename ConnectionT, typename InterfaceT>
+    template<typename ListenConnT, typename ClientConnT, typename InterfaceT>
     class BasicService {
     private:
-        ServiceConnection serviceConnection;
+        std::unique_ptr<ListenConnT> serviceConnection;
         std::string serviceVendor;
         std::string serviceProduct;
         std::string serviceVersion;
         std::string serviceUrl;
         std::map<std::string, InterfaceT> interfaces;
 
-        json handle(const json &message, ConnectionT &connection) {
+        json handle(const json &message, ClientConnT &connection) {
             const auto &fqmethod = message["method"].get<std::string>();
             const auto dot = fqmethod.rfind('.');
             if (dot == std::string::npos) {
@@ -189,7 +184,10 @@ namespace varlink {
                     const auto &method = interface.method(methodname);
                     interface.validate(message["parameters"], method.parameters);
                     const bool more = (message.contains("more") && message["more"].get<bool>());
-                    auto response = method.callback(message, connection, more);
+                    auto response = method.callback(message, [&connection,more](const json& msg){
+                        if (more) connection.send(msg);
+                        else throw std::invalid_argument{"more"};
+                    }, more);
                     try {
                         interface.validate(response["parameters"], method.returnValue);
                     } catch(std::invalid_argument& e) {
@@ -212,7 +210,7 @@ namespace varlink {
             }
         }
 
-        void clientLoop(ConnectionT conn) {
+        void clientLoop(ClientConnT conn) {
             for (;;) {
                 try {
                     json message = conn.receive();
@@ -229,41 +227,88 @@ namespace varlink {
             }
         }
 
+        void addServiceInterface() {
+            addInterface(org_varlink_service_description(), {
+                    {"GetInfo", [this]VarlinkCallback {
+                        json info = {
+                                {"vendor", serviceVendor},
+                                {"product", serviceProduct},
+                                {"version", serviceVersion},
+                                {"url", serviceUrl}
+                        };
+                        info["interfaces"] = json::array();
+                        for(const auto& interface : interfaces) {
+                            info["interfaces"].push_back(interface.first);
+                        }
+                        return reply(info);
+                    }},
+                    {"GetInterfaceDescription", [this]VarlinkCallback {
+                        const auto& ifname = message["parameters"]["interface"].get<std::string>();
+                        const auto interface = interfaces.find(ifname);
+                        if (interface != interfaces.cend()) {
+                            std::stringstream ss;
+                            ss << interface->second;
+                            return reply({{"description", ss.str()}});
+                        } else {
+                            return error("org.varlink.service.InterfaceNotFound", {{"interface", ifname}});
+                        }
+                    }}
+            });
+        }
+
     public:
         BasicService(const std::string& address, std::string  vendor, std::string  product,
                      std::string  version, std::string  url)
-                     : serviceConnection(address, [this](int fd) {
-                         clientLoop(ConnectionT(fd));
-                     }),
+                     : serviceConnection(std::make_unique<ListenConnT>(address)),
                      serviceVendor{std::move(vendor)}, serviceProduct{std::move(product)},
                      serviceVersion{std::move(version)}, serviceUrl{std::move(url)} {
-            addInterface(org_varlink_service_description(), {
-                {"GetInfo", [this]VarlinkTemplateCallback {
-                    json info = {
-                        {"vendor", serviceVendor},
-                        {"product", serviceProduct},
-                        {"version", serviceVersion},
-                        {"url", serviceUrl}
-                    };
-                    info["interfaces"] = json::array();
-                    for(const auto& interface : interfaces) {
-                        info["interfaces"].push_back(interface.first);
+            serviceConnection->listen([this]() {
+                for(;;) {
+                    try {
+                        std::thread{[this](int fd) {
+                            clientLoop(ClientConnT(fd));
+                        }, serviceConnection->nextClientFd()}.detach();
+                    } catch (std::system_error& e) {
+                        if (e.code() == std::errc::invalid_argument) {
+                            // accept() fails with EINVAL when the socket isn't listening, i.e. shutdown
+                            break;
+                        } else {
+                            std::cerr << "Error accepting client (" << e.code() << "): " << e.what() << std::endl;
+                        }
                     }
-                    return reply(info);
-                }},
-                {"GetInterfaceDescription", [this]VarlinkTemplateCallback {
-                    const auto& ifname = message["parameters"]["interface"].get<std::string>();
-                    const auto interface = interfaces.find(ifname);
-                    if (interface != interfaces.cend()) {
-                        std::stringstream ss;
-                        ss << interface->second;
-                        return reply({{"description", ss.str()}});
-                    } else {
-                        return error("org.varlink.service.InterfaceNotFound", {{"interface", ifname}});
-                    }
-                }}
+                }
             });
+            addServiceInterface();
         }
+        explicit BasicService(std::unique_ptr<ListenConnT> listenConn)
+            : serviceConnection(std::move(listenConn)) {
+            serviceConnection->listen([this]() {
+                for(;;) {
+                    try {
+                        std::thread{[this](int fd) {
+                            clientLoop(ClientConnT(fd));
+                        }, serviceConnection->nextClientFd()}.detach();
+                    } catch (std::system_error& e) {
+                        if (e.code() == std::errc::invalid_argument) {
+                            // accept() fails with EINVAL when the socket isn't listening, i.e. shutdown
+                            break;
+                        } else {
+                            std::cerr << "Error accepting client (" << e.code() << "): " << e.what() << std::endl;
+                        }
+                    }
+                }
+            });
+            addServiceInterface();
+        }
+        /*BasicService(BasicService &&src) noexcept :
+                listeningThread(std::exchange(src.listeningThread, {})) {}
+
+        BasicService& operator=(BasicService &&rhs) noexcept {
+            BasicService s(std::move(rhs));
+            std::swap(listeningThread, s.listeningThread);
+            return *this;
+        }*/
+
 
         void addInterface(InterfaceT interface) { interfaces.emplace(interface.name(), std::move(interface)); }
         void addInterface(std::string_view interface, const CallbackMap& callbacks) {
@@ -271,7 +316,7 @@ namespace varlink {
         }
     };
 
-    using Service = BasicService<Connection, Interface>;
+    using Service = BasicService<ServiceConnection, Connection, Interface>;
 
     template<typename ConnectionT>
     class BasicClient {

@@ -5,14 +5,15 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
+#include <utility>
 #include <varlink.hpp>
 #include <sstream>
 #include "org.varlink.service.varlink.cpp.inc"
 
 using namespace varlink;
 
-ServiceConnection::ServiceConnection(std::string address, std::function<void(int)> callback)
-        : socketAddress(std::move(address)), connectionCallback(std::move(callback)) {
+ServiceConnection::ServiceConnection(std::string address)
+        : socketAddress(std::move(address)) {
     listen_fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
     if (listen_fd < 0) {
         throw;
@@ -25,23 +26,9 @@ ServiceConnection::ServiceConnection(std::string address, std::function<void(int
     if (bind(listen_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
         throw;
     }
-    if (listen(listen_fd, 1024) < 0) {
+    if (::listen(listen_fd, 1024) < 0) {
         throw;
     }
-    listeningThread = std::thread { [this]() {
-        for(;;) {
-            try {
-                std::thread{connectionCallback, nextClientFd()}.detach();
-            } catch (std::system_error& e) {
-                if (e.code() == std::errc::invalid_argument) {
-                    // accept() fails with EINVAL when the socket isn't listening, i.e. shutdown
-                    break;
-                } else {
-                    std::cerr << "Error accepting client (" << e.code() << "): " << e.what() << std::endl;
-                }
-            }
-        }
-    }};
 }
 
 ServiceConnection::ServiceConnection(ServiceConnection &&src) noexcept :
@@ -64,6 +51,10 @@ int ServiceConnection::nextClientFd() { //NOLINT (socket changes...)
     }
     return client_fd;
 }
+
+void ServiceConnection::listen(const std::function<void()>& listener) {
+    listeningThread = std::thread(listener);
+};
 
 ServiceConnection::~ServiceConnection() {
     shutdown(listen_fd, SHUT_RDWR);

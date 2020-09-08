@@ -54,16 +54,16 @@ int main() {
             {"TestMore", []VarlinkCallback {
                 if (message["parameters"].contains("n") && more) {
                     nlohmann::json state = {{"start", true}};
-                    connection.send(varlink::reply_continues({{"state", state}}));
+                    sendmore(varlink::reply_continues({{"state", state}}));
                     state.erase("start");
                     auto n = message["parameters"]["n"].get<size_t>();
                     for(size_t i = 0; i < n; i++) {
                         state["progress"] = (100 / n) * i;
-                        connection.send(varlink::reply_continues({{"state", state}}));
+                        sendmore(varlink::reply_continues({{"state", state}}));
                         std::this_thread::sleep_for(std::chrono::seconds(1));
                     }
                     state["progress"] = 100;
-                    connection.send(varlink::reply_continues({{"state", state}}));
+                    sendmore(varlink::reply_continues({{"state", state}}));
                     state.erase("progress");
                     state["end"] = true;
                     return varlink::reply_continues({{"state", state}}, false);
