@@ -148,7 +148,7 @@ namespace varlink {
         std::thread listeningThread;
         int listen_fd { -1 };
     public:
-        explicit ServiceConnection(std::string address);
+        explicit ServiceConnection(std::string address, const std::function<void()>& listener = nullptr);
         ServiceConnection(const ServiceConnection& src) = delete;
         ServiceConnection& operator=(const ServiceConnection&) = delete;
         ServiceConnection(ServiceConnection&& src) noexcept;
@@ -169,7 +169,8 @@ namespace varlink {
         std::string serviceUrl;
         std::map<std::string, InterfaceT> interfaces;
 
-        json handle(const json &message, ClientConnT &connection) {
+        // Template dependency: Interface
+        json handle(const json &message, const std::function<void(json)>& sendmore, bool more) {
             const auto &fqmethod = message["method"].get<std::string>();
             const auto dot = fqmethod.rfind('.');
             if (dot == std::string::npos) {
@@ -183,11 +184,7 @@ namespace varlink {
                 try {
                     const auto &method = interface.method(methodname);
                     interface.validate(message["parameters"], method.parameters);
-                    const bool more = (message.contains("more") && message["more"].get<bool>());
-                    auto response = method.callback(message, [&connection,more](const json& msg){
-                        if (more) connection.send(msg);
-                        else throw std::invalid_argument{"more"};
-                    }, more);
+                    auto response = method.callback(message, sendmore, more);
                     try {
                         interface.validate(response["parameters"], method.returnValue);
                     } catch(std::invalid_argument& e) {
@@ -210,13 +207,35 @@ namespace varlink {
             }
         }
 
+        void acceptLoop() {
+            for(;;) {
+                try {
+                    std::thread{[this](int fd) {
+                        clientLoop(ClientConnT(fd));
+                    }, serviceConnection->nextClientFd()}.detach();
+                } catch (std::system_error& e) {
+                    if (e.code() == std::errc::invalid_argument) {
+                        // accept() fails with EINVAL when the socket isn't listening, i.e. shutdown
+                        break;
+                    } else {
+                        std::cerr << "Error accepting client (" << e.code() << "): " << e.what() << std::endl;
+                    }
+                }
+            }
+        }
+
+        // Template dependency: ClientConnection
         void clientLoop(ClientConnT conn) {
             for (;;) {
                 try {
                     json message = conn.receive();
                     if (message.is_null() || !message.contains("method")) break;
                     message.merge_patch(R"({"parameters":{}})"_json);
-                    auto reply = handle(message, conn);
+                    const bool more = (message.contains("more") && message["more"].get<bool>());
+                    auto reply = handle(message, [&conn,more](const json& msg){
+                        if (more) conn.send(msg);
+                        else throw std::invalid_argument{"more"};
+                    }, more);
                     if (!(message.contains("oneway") && message["oneway"].get<bool>())) {
                         conn.send(reply);
                     }
@@ -227,6 +246,7 @@ namespace varlink {
             }
         }
 
+        // Template dependency: Interface
         void addServiceInterface() {
             addInterface(org_varlink_service_description(), {
                     {"GetInfo", [this]VarlinkCallback {
@@ -259,45 +279,14 @@ namespace varlink {
     public:
         BasicService(const std::string& address, std::string  vendor, std::string  product,
                      std::string  version, std::string  url)
-                     : serviceConnection(std::make_unique<ListenConnT>(address)),
+                     : serviceConnection(std::make_unique<ListenConnT>(address), [this](){acceptLoop();}),
                      serviceVendor{std::move(vendor)}, serviceProduct{std::move(product)},
                      serviceVersion{std::move(version)}, serviceUrl{std::move(url)} {
-            serviceConnection->listen([this]() {
-                for(;;) {
-                    try {
-                        std::thread{[this](int fd) {
-                            clientLoop(ClientConnT(fd));
-                        }, serviceConnection->nextClientFd()}.detach();
-                    } catch (std::system_error& e) {
-                        if (e.code() == std::errc::invalid_argument) {
-                            // accept() fails with EINVAL when the socket isn't listening, i.e. shutdown
-                            break;
-                        } else {
-                            std::cerr << "Error accepting client (" << e.code() << "): " << e.what() << std::endl;
-                        }
-                    }
-                }
-            });
             addServiceInterface();
         }
         explicit BasicService(std::unique_ptr<ListenConnT> listenConn)
             : serviceConnection(std::move(listenConn)) {
-            serviceConnection->listen([this]() {
-                for(;;) {
-                    try {
-                        std::thread{[this](int fd) {
-                            clientLoop(ClientConnT(fd));
-                        }, serviceConnection->nextClientFd()}.detach();
-                    } catch (std::system_error& e) {
-                        if (e.code() == std::errc::invalid_argument) {
-                            // accept() fails with EINVAL when the socket isn't listening, i.e. shutdown
-                            break;
-                        } else {
-                            std::cerr << "Error accepting client (" << e.code() << "): " << e.what() << std::endl;
-                        }
-                    }
-                }
-            });
+            serviceConnection->listen([this]() { acceptLoop(); });
             addServiceInterface();
         }
         /*BasicService(BasicService &&src) noexcept :

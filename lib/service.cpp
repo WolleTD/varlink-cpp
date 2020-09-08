@@ -12,7 +12,7 @@
 
 using namespace varlink;
 
-ServiceConnection::ServiceConnection(std::string address)
+ServiceConnection::ServiceConnection(std::string address, const std::function<void()>& listener)
         : socketAddress(std::move(address)) {
     listen_fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
     if (listen_fd < 0) {
@@ -29,6 +29,7 @@ ServiceConnection::ServiceConnection(std::string address)
     if (::listen(listen_fd, 1024) < 0) {
         throw;
     }
+    listeningThread = std::thread(listener);
 }
 
 ServiceConnection::ServiceConnection(ServiceConnection &&src) noexcept :
