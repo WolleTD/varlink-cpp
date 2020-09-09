@@ -1,17 +1,19 @@
 /* Varlink C++ implementation using nlohmann/json as data format */
-#ifndef LIBVARLINK_VARLINK_HPP
-#define LIBVARLINK_VARLINK_HPP
+#ifndef LIBVARLINK_VARLINK_SERVICE_HPP
+#define LIBVARLINK_VARLINK_SERVICE_HPP
 
+#define JSON_USE_IMPLICIT_CONVERSIONS 0
+#include <functional>
 #include <iostream>
+#include <nlohmann/json.hpp>
+#include <map>
+#include <memory>
 #include <string>
 #include <sstream>
 #include <thread>
-#include <atomic>
-#include <unordered_map>
-#define JSON_USE_IMPLICIT_CONVERSIONS 0
-#include <nlohmann/json.hpp>
 #include <utility>
-#include <ext/stdio_filebuf.h>
+
+#include "varlink/common.hpp"
 
 #define VarlinkCallback \
     ([[maybe_unused]] const varlink::json& message, \
@@ -19,113 +21,6 @@
      [[maybe_unused]] bool more) -> varlink::json
 
 namespace varlink {
-    using nlohmann::json;
-
-    class Connection {
-    private:
-        int socket_fd { -1 };
-        __gnu_cxx::stdio_filebuf<char> filebuf_in;
-        __gnu_cxx::stdio_filebuf<char> filebuf_out;
-
-        std::istream rstream { &filebuf_in };
-        std::ostream wstream { &filebuf_out };
-    public:
-        // Connect to a service via address
-        explicit Connection(const std::string& address);
-
-        // Setup message stream on existing connection
-        explicit Connection(int posix_fd);
-
-        Connection(const Connection& src) = delete;
-        Connection& operator=(const Connection&) = delete;
-        Connection(Connection&& src) noexcept;
-        Connection& operator=(Connection&& rhs) noexcept;
-
-        void send(const json& message);
-
-        [[nodiscard]] json receive();
-    };
-
-    using MethodCallback = std::function<json(const json&, const std::function<void(json)>&, bool)>;
-    using CallbackMap = std::unordered_map<std::string, MethodCallback>;
-
-    struct Type {
-        const std::string name;
-        const std::string description;
-        const json data;
-
-        friend std::ostream& operator<<(std::ostream& os, const Type& type);
-    };
-
-    struct Error : Type {
-        friend std::ostream& operator<<(std::ostream& os, const Error& error);
-    };
-
-    struct Method {
-        const std::string name;
-        const std::string description;
-        const json parameters;
-        const json returnValue;
-        const MethodCallback callback;
-
-        friend std::ostream& operator<<(std::ostream& os, const Method& method);
-    };
-
-    class Interface {
-    private:
-        std::string ifname;
-        std::string documentation;
-        std::string_view description;
-
-        std::vector<Type> types;
-        std::vector<Method> methods;
-        std::vector<Error> errors;
-
-        template<typename Rule>
-        struct inserter {};
-
-        struct {
-            std::string moving_docstring {};
-            std::string docstring {};
-            std::string name {};
-            CallbackMap callbacks {};
-            json method_params {};
-        } state;
-
-        struct State {
-            std::vector<std::string> fields {};
-            size_t pos { 0 };
-            json last_type {};
-            json last_element_type {};
-            json work {};
-            bool maybe_type { false };
-            bool dict_type { false };
-            bool array_type { false };
-        };
-        std::vector<State> stack;
-
-    public:
-        explicit Interface(std::string_view fromDescription,
-                           CallbackMap callbacks = {});
-        [[nodiscard]] const std::string& name() const noexcept { return ifname; }
-        [[nodiscard]] const std::string& doc() const noexcept { return documentation; }
-        [[nodiscard]] const Method& method(const std::string& name) const;
-        [[nodiscard]] const Type& type(const std::string& name) const;
-        [[nodiscard]] const Error& error(const std::string& name) const;
-        [[nodiscard]] bool has_method(const std::string& name) const noexcept;
-        [[nodiscard]] bool has_type(const std::string& name) const noexcept;
-        [[nodiscard]] bool has_error(const std::string& name) const noexcept;
-        void validate(const json& data, const json& type) const;
-        json call(const std::string& method, const json& parameters);
-
-        friend std::ostream& operator<<(std::ostream& os, const Interface& interface);
-    };
-
-    std::ostream& operator<<(std::ostream& os, const Type& type);
-    std::ostream& operator<<(std::ostream& os, const Error& error);
-    std::ostream& operator<<(std::ostream& os, const Method& method);
-    std::ostream& operator<<(std::ostream& os, const Interface& interface);
-    std::string element_to_string(const json& elem, int indent = 4, size_t depth = 0);
 
     inline json reply(json params) {
         assert(params.is_object());
@@ -277,8 +172,8 @@ namespace varlink {
         }
 
     public:
-        BasicService(const std::string& address, std::string  vendor, std::string  product,
-                     std::string  version, std::string  url)
+        BasicService(const std::string& address, std::string vendor, std::string product,
+                     std::string version, std::string url)
                      : serviceConnection(std::make_unique<ListenConnT>(address), [this](){acceptLoop();}),
                      serviceVendor{std::move(vendor)}, serviceProduct{std::move(product)},
                      serviceVersion{std::move(version)}, serviceUrl{std::move(url)} {
@@ -304,61 +199,6 @@ namespace varlink {
             addInterface(InterfaceT(interface, callbacks));
         }
     };
-
-    using Service = BasicService<ServiceConnection, Connection, Interface>;
-
-    template<typename ConnectionT>
-    class BasicClient {
-    private:
-        std::unique_ptr<ConnectionT> conn;
-    public:
-        enum class CallMode {
-            Basic,
-            Oneway,
-            More,
-            Upgrade,
-        };
-        explicit BasicClient(const std::string& address) : conn(std::make_unique<ConnectionT>(address)) {}
-        explicit BasicClient(std::unique_ptr<ConnectionT> connection) : conn(std::move(connection)) {}
-
-        std::function<json()> call(const std::string& method,
-                                             const json& parameters,
-                                             CallMode mode = CallMode::Basic) {
-            json message { { "method", method } };
-            if (!parameters.is_null() && !parameters.is_object()) {
-                throw std::invalid_argument("parameters is not an object");
-            }
-            if (!parameters.empty()) {
-                message["parameters"] = parameters;
-            }
-
-            if (mode == CallMode::Oneway) {
-                message["oneway"] = true;
-            } else if (mode == CallMode::More) {
-                message["more"] = true;
-            } else if (mode == CallMode::Upgrade) {
-                message["upgrade"] = true;
-            }
-
-            conn->send(message);
-
-            return [this, mode, continues = true]() mutable -> json {
-                if (mode != CallMode::Oneway && continues) {
-                    json reply = conn->receive();
-                    if (mode == CallMode::More && reply.contains("continues")) {
-                        continues = reply["continues"].get<bool>();
-                    } else {
-                        continues = false;
-                    }
-                    return reply;
-                } else {
-                    return {};
-                }
-            };
-        }
-    };
-
-    using Client = BasicClient<Connection>;
 }
 
 #endif // LIBVARLINK_VARLINK_HPP

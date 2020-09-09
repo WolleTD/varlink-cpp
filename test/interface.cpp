@@ -1,4 +1,4 @@
-#include <varlink.hpp>
+#include <varlink/interface.hpp>
 #include <gtest/gtest.h>
 #include <string_view>
 

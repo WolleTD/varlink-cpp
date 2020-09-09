@@ -6,8 +6,8 @@
 #include <sys/un.h>
 #include <unistd.h>
 #include <utility>
-#include <varlink.hpp>
 #include <sstream>
+#include "varlink/service.hpp"
 #include "org.varlink.service.varlink.cpp.inc"
 
 using namespace varlink;

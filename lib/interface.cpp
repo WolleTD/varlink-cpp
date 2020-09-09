@@ -1,7 +1,6 @@
 #include <tao/pegtl.hpp>
 #include <iostream>
-#include <iomanip>
-#include <varlink.hpp>
+#include "varlink/interface.hpp"
 
 namespace pegtl = TAO_PEGTL_NAMESPACE;
 

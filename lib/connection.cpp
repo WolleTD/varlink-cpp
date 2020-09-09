@@ -1,7 +1,6 @@
-#include <varlink.hpp>
 #include <sys/socket.h>
 #include <sys/un.h>
-#include <exception>
+#include "varlink/connection.hpp"
 
 using namespace varlink;
 

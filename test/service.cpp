@@ -1,4 +1,4 @@
-#include <varlink.hpp>
+#include <varlink/varlink.hpp>
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 

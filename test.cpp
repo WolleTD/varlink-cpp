@@ -5,7 +5,7 @@
 #include <chrono>
 #include <memory>
 #include <csignal>
-#include <varlink.hpp>
+#include "varlink/varlink.hpp"
 #include "org.example.more.varlink.cpp.inc"
 
 #define TEST_SERVICE
