@@ -30,3 +30,16 @@ TEST(Service, CreateListenClose) {
             Throw(std::system_error(std::make_error_code(std::errc::invalid_argument))));
     auto svc = TestService(std::move(comm));
 }
+
+TEST(Service, SplitFQMethod) {
+    std::vector<std::pair<std::string, std::pair<std::string, std::string> > > testdata {
+            {"", {"", ""}},
+            {"test", {"test", ""}},
+            {"a.b", {"a", "b"}},
+            {"a.b.c", {"a.b", "c"}},
+            {"a.a.a.a.a.a.a", {"a.a.a.a.a.a", "a"}},
+    };
+    for (auto& test : testdata) {
+        EXPECT_EQ(test.second, splitFqMethod(test.first));
+    }
+}

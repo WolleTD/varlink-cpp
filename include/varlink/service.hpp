@@ -17,8 +17,7 @@
 
 #define VarlinkCallback \
     ([[maybe_unused]] const varlink::json& message, \
-     [[maybe_unused]] const std::function<void(varlink::json)>& sendmore, \
-     [[maybe_unused]] bool more) -> varlink::json
+     [[maybe_unused]] const varlink::SendMore& sendmore) -> varlink::json
 
 namespace varlink {
 
@@ -33,6 +32,13 @@ namespace varlink {
     inline json error(std::string what, json params) {
         assert(params.is_object());
         return {{"error", std::move(what)}, {"parameters", std::move(params)}};
+    }
+
+    inline std::pair<std::string, std::string> splitFqMethod(const std::string& fqmethod) {
+        const auto dot = fqmethod.rfind('.');
+        // When there is no dot at all, both fields contain the same value, but it's an invalid
+        // interface name anyway
+        return {fqmethod.substr(0, dot), fqmethod.substr(dot + 1)};
     }
 
     std::string_view org_varlink_service_description();
@@ -65,24 +71,18 @@ namespace varlink {
         std::map<std::string, InterfaceT> interfaces;
 
         // Template dependency: Interface
-        json handle(const json &message, const std::function<void(json)>& sendmore, bool more) {
-            const auto &fqmethod = message["method"].get<std::string>();
-            const auto dot = fqmethod.rfind('.');
-            if (dot == std::string::npos) {
-                return error("org.varlink.service.InterfaceNotFound", {{"interface", fqmethod}});
-            }
-            const auto ifname = fqmethod.substr(0, dot);
-            const auto methodname = fqmethod.substr(dot + 1);
+        json handle(const json &message, const SendMore& sendmore) {
+            const auto [ifname, methodname] = splitFqMethod(message["method"].get<std::string>());
 
             try {
                 const auto& interface = interfaces.at(ifname);
                 try {
                     const auto &method = interface.method(methodname);
                     interface.validate(message["parameters"], method.parameters);
-                    auto response = method.callback(message, sendmore, more);
+                    auto response = method.callback(message, sendmore);
                     try {
                         interface.validate(response["parameters"], method.returnValue);
-                    } catch(std::invalid_argument& e) {
+                    } catch(varlink_error& e) {
                         std::cout << "Response validation error: " << e.what() << std::endl;
                     }
                     return response;
@@ -126,11 +126,11 @@ namespace varlink {
                     json message = conn.receive();
                     if (message.is_null() || !message.contains("method")) break;
                     message.merge_patch(R"({"parameters":{}})"_json);
+
                     const bool more = (message.contains("more") && message["more"].get<bool>());
-                    auto reply = handle(message, [&conn,more](const json& msg){
-                        if (more) conn.send(msg);
-                        else throw std::invalid_argument{"more"};
-                    }, more);
+                    const auto sendmore = more ? SendMore([&conn](const json& msg) { conn.send(msg); }) : SendMore(nullptr);
+
+                    auto reply = handle(message, sendmore);
                     if (!(message.contains("oneway") && message["oneway"].get<bool>())) {
                         conn.send(reply);
                     }
@@ -174,7 +174,7 @@ namespace varlink {
     public:
         BasicService(const std::string& address, std::string vendor, std::string product,
                      std::string version, std::string url)
-                     : serviceConnection(std::make_unique<ListenConnT>(address), [this](){acceptLoop();}),
+                     : serviceConnection(std::make_unique<ListenConnT>(address, [this](){acceptLoop();})),
                      serviceVendor{std::move(vendor)}, serviceProduct{std::move(product)},
                      serviceVersion{std::move(version)}, serviceUrl{std::move(url)} {
             addServiceInterface();

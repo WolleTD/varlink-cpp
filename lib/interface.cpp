@@ -300,12 +300,13 @@ bool varlink::Interface::has_error(const std::string &name) const noexcept {
 }
 
 void varlink::Interface::validate(const json &data, const json &typespec) const {
+    //std::cout << data << "\n" << typespec << "\n";
     for (const auto& param : typespec.items()) {
         const auto& name = param.key();
         const auto& spec = param.value();
         if(!(spec.contains("maybe_type") && spec["maybe_type"].get<bool>())
                 && (!data.contains(name) || data[name].is_null())) {
-            throw std::invalid_argument(name);
+            throw varlink_error("org.varlink.service.InvalidParameter", {{"parameter", name}});
         } else if (data.contains(name)) {
             const auto& value = data[name];
             if((spec.contains("maybe_type") && spec["maybe_type"].get<bool>())
@@ -318,7 +319,7 @@ void varlink::Interface::validate(const json &data, const json &typespec) const 
                 if (value.is_array()) {
                     continue;
                 } else {
-                    throw std::invalid_argument(name);
+                    throw varlink_error("org.varlink.service.InvalidParameter", {{"parameter", name}});
                 }
             } else if (spec["type"].is_object() && value.is_object()) {
                 validate(value, spec["type"]);
@@ -340,11 +341,11 @@ void varlink::Interface::validate(const json &data, const json &typespec) const 
                         validate(value, type(valtype).data);
                         continue;
                     } catch(std::out_of_range&) {
-                        throw std::invalid_argument(name);
+                        throw varlink_error("org.varlink.service.InvalidParameter", {{"parameter", name}});
                     }
                 }
             } else {
-                throw std::invalid_argument(name);
+                throw varlink_error("org.varlink.service.InvalidParameter", {{"parameter", name}});
             }
         }
     }

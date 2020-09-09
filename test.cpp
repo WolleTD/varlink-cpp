@@ -52,7 +52,7 @@ int main() {
                 return varlink::reply({{"pong", message["parameters"]["ping"]}});
             }},
             {"TestMore", []VarlinkCallback {
-                if (message["parameters"].contains("n") && more) {
+                if (message["parameters"].contains("n") && sendmore) {
                     nlohmann::json state = {{"start", true}};
                     sendmore(varlink::reply_continues({{"state", state}}));
                     state.erase("start");
@@ -69,7 +69,7 @@ int main() {
                     return varlink::reply_continues({{"state", state}}, false);
                 } else {
                     return varlink::error("org.varlink.service.InvalidParameter",
-                                          {{"parameter", "n"}});
+                                          {{"parameter", (sendmore ? "n" : "more")}});
                 }
             }}
         });
