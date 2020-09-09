@@ -76,26 +76,10 @@ namespace varlink {
 
             try {
                 const auto& interface = interfaces.at(ifname);
-                try {
-                    const auto &method = interface.method(methodname);
-                    interface.validate(message["parameters"], method.parameters);
-                    auto response = method.callback(message, sendmore);
-                    try {
-                        interface.validate(response["parameters"], method.returnValue);
-                    } catch(varlink_error& e) {
-                        std::cout << "Response validation error: " << e.what() << std::endl;
-                    }
-                    return response;
-                }
-                catch (std::out_of_range& e) {
-                    return error("org.varlink.service.MethodNotFound", {{"method", methodname}});
-                }
-                catch (std::invalid_argument& e) {
-                    return error("org.varlink.service.InvalidParameter", {{"parameter", e.what()}});
-                }
-                catch (std::bad_function_call& e) {
-                    return error("org.varlink.service.MethodNotImplemented", {{"method", methodname}});
-                }
+                return interface.call(methodname, message, sendmore);
+            }
+            catch (varlink_error& e) {
+                return error(e.what(), e.args());
             }
             catch (std::out_of_range& e) {
                 return error("org.varlink.service.InterfaceNotFound", {{"interface", ifname}});

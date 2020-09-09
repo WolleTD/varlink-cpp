@@ -351,6 +351,26 @@ void varlink::Interface::validate(const json &data, const json &typespec) const 
     }
 }
 
+varlink::json varlink::Interface::call(const std::string &methodname, const json &message, const SendMore &sendmore) const {
+    try {
+        const auto &method = this->method(methodname);
+        validate(message["parameters"], method.parameters);
+        auto response = method.callback(message, sendmore);
+        try {
+            validate(response["parameters"], method.returnValue);
+        } catch(varlink_error& e) {
+            std::cout << "Response validation error: " << e.args().dump() << std::endl;
+        }
+        return response;
+    }
+    catch (std::out_of_range& e) {
+        throw varlink_error("org.varlink.service.MethodNotFound", {{"method", methodname}});
+    }
+    catch (std::bad_function_call& e) {
+        throw varlink_error("org.varlink.service.MethodNotImplemented", {{"method", methodname}});
+    }
+}
+
 std::ostream &varlink::operator<<(std::ostream &os, const varlink::Interface &interface) {
     os << interface.documentation << "interface " << interface.ifname << "\n";
     for (const auto& type : interface.types) {
