@@ -128,10 +128,13 @@ namespace varlink {
                     message.merge_patch(R"({"parameters":{}})"_json);
 
                     const bool more = (message.contains("more") && message["more"].get<bool>());
-                    const auto sendmore = more ? SendMore([&conn](const json& msg) { conn.send(msg); }) : SendMore(nullptr);
+                    const auto sendmore = more ? SendMore([&conn](const json& msg) {
+                        conn.send(reply_continues(msg));
+                    }) : SendMore(nullptr);
 
                     auto reply = handle(message, sendmore);
                     if (!(message.contains("oneway") && message["oneway"].get<bool>())) {
+                        if (more) reply["continues"] = false;
                         conn.send(reply);
                     }
                 } catch(std::system_error& e) {
