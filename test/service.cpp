@@ -34,7 +34,7 @@ TEST(Service, CreateListenClose) {
 TEST(Service, SplitFQMethod) {
     std::vector<std::pair<std::string, std::pair<std::string, std::string> > > testdata {
             {"", {"", ""}},
-            {"test", {"test", ""}},
+            {"test", {"test", "test"}},
             {"a.b", {"a", "b"}},
             {"a.b.c", {"a.b", "c"}},
             {"a.a.a.a.a.a.a", {"a.a.a.a.a.a", "a"}},

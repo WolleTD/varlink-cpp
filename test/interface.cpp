@@ -302,6 +302,6 @@ TEST(Interface, Validate2) {
             {R"({"a":{}})"_json, R"({"a":{"type":"T"}})"_json},
     };
     for(const auto& test : testdata) {
-        EXPECT_THROW(interface.validate(test.data, test.type), std::invalid_argument);
+        EXPECT_THROW(interface.validate(test.data, test.type), varlink_error);
     }
 }
