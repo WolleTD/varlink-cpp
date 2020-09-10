@@ -4,18 +4,24 @@
 
 using namespace varlink;
 
+namespace {
+    std::system_error systemErrorFromErrno(const std::string &what) {
+        return {std::error_code(errno, std::system_category()), what};
+    }
+}
+
 Connection::Connection(const std::string& address) {
     socket_fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
     if (socket_fd < 0) {
-        throw;
+        throw systemErrorFromErrno("socket() failed");
     }
     struct sockaddr_un addr { AF_UNIX , "" };
     if (address.length() + 1 > sizeof(addr.sun_path)) {
-        throw;
+        throw std::system_error{std::make_error_code(std::errc::filename_too_long)};
     }
     std::strcpy(addr.sun_path, address.c_str());
     if (connect(socket_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        throw;
+        throw systemErrorFromErrno("connect() failed");
     }
     filebuf_in = __gnu_cxx::stdio_filebuf<char>(socket_fd, std::ios::in);
     filebuf_out = __gnu_cxx::stdio_filebuf<char>(socket_fd, std::ios::out);
@@ -41,7 +47,7 @@ Connection& Connection::operator=(Connection &&rhs) noexcept {
 void Connection::send(const json& message) {
     wstream << message << '\0' << std::flush;
     if (!wstream.good())
-        throw std::system_error{std::error_code(errno, std::system_category()), std::strerror(errno)};
+        throw systemErrorFromErrno("Writing to stream failed");
 }
 
 json Connection::receive() {
@@ -56,7 +62,7 @@ json Connection::receive() {
         if(rstream.good()) {
             throw std::invalid_argument(e.what());
         } else {
-            throw std::system_error{std::error_code(errno, std::system_category()), std::strerror(errno)};
+            throw systemErrorFromErrno("Reading from stream failed");
         }
     }
 }

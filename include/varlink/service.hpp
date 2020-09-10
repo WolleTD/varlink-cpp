@@ -82,9 +82,14 @@ namespace varlink {
 
         // Template dependency: ClientConnection
         void clientLoop(ClientConnT conn) {
-            const auto error = [](std::string what, json params) -> json {
+            const auto error = [](const std::string &what, const json &params) -> json {
                 assert(params.is_object());
-                return {{"error", std::move(what)}, {"parameters", std::move(params)}};
+                return {{"error", what}, {"parameters", params}};
+            };
+            const auto sendmore = [&conn](const json &msg) {
+                assert(msg.is_object());
+                conn.send({{"parameters", msg},
+                           {"continues",  true}});
             };
 
             for (;;) {
@@ -92,11 +97,7 @@ namespace varlink {
                     const Message message{conn.receive()};
 
                     if (message.more()) {
-                        const auto reply = dispatch(message, [&conn](const json &msg) {
-                            assert(msg.is_object());
-                            conn.send({{"parameters", msg},
-                                       {"continues",  true}});
-                        });
+                        const auto reply = dispatch(message, sendmore);
                         conn.send({{"parameters", reply}, {"continues", false}});
                     } else {
                         const auto reply = dispatch(message, nullptr);
@@ -110,8 +111,9 @@ namespace varlink {
                     std::cerr << "Invalid message: " << e.what() << std::endl;
                     break;
                 } catch(std::system_error& e) {
-                    if (e.code() != std::error_code(0, std::system_category()))
+                    if (e.code() != std::error_code(0, std::system_category())) {
                         std::cerr << "Terminate connection: " << e.what() << std::endl;
+                    }
                     break;
                 }
             }

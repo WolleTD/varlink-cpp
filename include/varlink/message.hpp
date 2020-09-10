@@ -15,11 +15,13 @@ namespace varlink {
     public:
         Message() = default;
         explicit Message(const json& msg) : json(msg) {
-            if (!is_object() || !contains("method")) {
+            if (!is_object() || !contains("method") || !find("method")->is_string()) {
                 throw std::invalid_argument(msg.dump());
             }
             if (!contains("parameters")) {
                 emplace("parameters", json::object());
+            } else if(!find("parameters")->is_object()) {
+                throw(std::invalid_argument(msg.dump()));
             }
             hasmore = (msg.contains("more") && msg["more"].get<bool>());
             hasoneway = (msg.contains("oneway") && msg["oneway"].get<bool>());
