@@ -1,6 +1,7 @@
 #include <tao/pegtl.hpp>
 #include <iostream>
 #include "varlink/interface.hpp"
+#include "org.varlink.service.varlink.cpp.inc"
 
 namespace pegtl = TAO_PEGTL_NAMESPACE;
 
@@ -351,7 +352,11 @@ void varlink::Interface::validate(const json &data, const json &typespec) const 
     }
 }
 
-varlink::json varlink::Interface::call(const std::string &methodname, const json &parameters, const SendMore &sendmore) const {
+varlink::json varlink::Interface::call(const std::string &methodname, const json &parameters, const SendMore &sendmore) const noexcept {
+    const auto error = [](const std::string &what, const json &params) -> json {
+        assert(params.is_object());
+        return {{"error", what}, {"parameters", params}};
+    };
     try {
         const auto &method = this->method(methodname);
         validate(parameters, method.parameters);
@@ -362,12 +367,14 @@ varlink::json varlink::Interface::call(const std::string &methodname, const json
             std::cout << "Response validation error: " << e.args().dump() << std::endl;
         }
         return response;
-    }
-    catch (std::out_of_range& e) {
-        throw varlink_error("org.varlink.service.MethodNotFound", {{"method", methodname}});
-    }
-    catch (std::bad_function_call& e) {
-        throw varlink_error("org.varlink.service.MethodNotImplemented", {{"method", methodname}});
+    } catch (std::out_of_range& e) {
+        return error("org.varlink.service.MethodNotFound", {{"method", methodname}});
+    } catch (std::bad_function_call& e) {
+        return error("org.varlink.service.MethodNotImplemented", {{"method", methodname}});
+    } catch (varlink_error& e) {
+        return error(e.what(), e.args());
+    } catch (std::exception& e) {
+        return error("org.varlink.service.InternalError", {{"what", e.what()}});
     }
 }
 
@@ -446,4 +453,8 @@ std::string varlink::element_to_string(const json &elem, int indent, size_t dept
         s += multiline ? "\n" + std::string(indent * depth, ' ') + ")" : ")";
         return s;
     }
+}
+
+std::string_view varlink::org_varlink_service_description() {
+    return org_varlink_service_varlink;
 }

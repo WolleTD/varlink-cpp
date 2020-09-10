@@ -1,10 +1,11 @@
 #include <iostream>
 #include <string_view>
 #include <thread>
-#include <sstream>
 #include <chrono>
 #include <memory>
 #include <csignal>
+#include <exception>
+#include <string>
 #include "varlink/varlink.hpp"
 #include "org.example.more.varlink.cpp.inc"
 
@@ -12,18 +13,18 @@
 //#define TEST_SCANNER
 struct TestData {
     std::string method;
-    nlohmann::json parameters;
+    varlink::json parameters;
     varlink::Client::CallMode mode {varlink::Client::CallMode::Basic };
 };
 
 constexpr std::string_view getInterfaceName(const std::string_view description) {
     constexpr std::string_view searchKey {"interface "};
     const size_t posInterface { description.find(searchKey) + searchKey.length() };
-    const size_t lenInterface { description.find("\n", posInterface) - posInterface };
+    const size_t lenInterface { description.find('\n', posInterface) - posInterface };
     return description.substr(posInterface, lenInterface);
 }
 
-std::unique_ptr<varlink::Service> service;
+std::unique_ptr<varlink::ThreadedServer> service;
 
 void signalHandler(int32_t signal) {
     service.reset(nullptr);
@@ -46,7 +47,7 @@ int main() {
     signal(SIGINT, signalHandler);
     signal(SIGPIPE, SIG_IGN);
     try {
-        service = std::make_unique<varlink::Service>("/tmp/test.socket", "a", "b", "c", "d");
+        service = std::make_unique<varlink::ThreadedServer>("/tmp/test.socket", "a", "b", "c", "d");
     } catch(std::exception& e) {
         std::cerr << "Couldn't start service: " << e.what() << "\n";
         return 1;

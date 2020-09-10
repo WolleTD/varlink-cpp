@@ -13,7 +13,7 @@ public:
     MOCK_METHOD(void, listen, (const std::function<void()>&));
 };
 
-using TestService = BasicService<MockServiceConnection, Connection, Interface>;
+using TestService = BasicServer<MockServiceConnection, Connection>;
 
 TEST(Service, CreateListenClose) {
     auto comm = std::make_unique<MockServiceConnection>();

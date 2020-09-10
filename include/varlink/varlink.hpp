@@ -8,9 +8,10 @@
 #include "varlink/interface.hpp"
 #include "varlink/message.hpp"
 #include "varlink/service.hpp"
+#include "varlink/server.hpp"
 
 namespace varlink {
-    using Service = BasicService<ServiceConnection, Connection, Interface>;
+    using ThreadedServer = BasicServer<ListeningSocket, Connection>;
     using Client = BasicClient<Connection>;
 }
 

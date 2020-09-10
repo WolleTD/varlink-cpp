@@ -2,7 +2,7 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 varlink_wrapper(org.varlink.service.varlink)
 
 add_library(varlink++
-        service.cpp
+        server.cpp
         connection.cpp
         org.varlink.service.varlink.cpp.inc
         interface.cpp)

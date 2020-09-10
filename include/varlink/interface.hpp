@@ -82,7 +82,7 @@ namespace varlink {
         [[nodiscard]] bool has_type(const std::string& name) const noexcept;
         [[nodiscard]] bool has_error(const std::string& name) const noexcept;
         void validate(const json& data, const json& type) const;
-        json call(const std::string &methodname, const json &parameters, const SendMore &sendmore) const;
+        json call(const std::string &methodname, const json &parameters, const SendMore &sendmore) const noexcept;
 
         friend std::ostream& operator<<(std::ostream& os, const Interface& interface);
     };
@@ -92,6 +92,8 @@ namespace varlink {
     std::ostream& operator<<(std::ostream& os, const Method& method);
     std::ostream& operator<<(std::ostream& os, const Interface& interface);
     std::string element_to_string(const json& elem, int indent = 4, size_t depth = 0);
+    std::string_view org_varlink_service_description();
+
 }
 
 #endif // LIBVARLINK_VARLINK_INTERFACE_HPP
