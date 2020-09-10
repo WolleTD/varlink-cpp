@@ -6,6 +6,7 @@
 #include "varlink/client.hpp"
 #include "varlink/connection.hpp"
 #include "varlink/interface.hpp"
+#include "varlink/message.hpp"
 #include "varlink/service.hpp"
 
 namespace varlink {

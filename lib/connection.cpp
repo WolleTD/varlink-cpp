@@ -40,7 +40,8 @@ Connection& Connection::operator=(Connection &&rhs) noexcept {
 
 void Connection::send(const json& message) {
     wstream << message << '\0' << std::flush;
-    if (!wstream.good()) throw std::system_error(std::make_error_code(std::errc::broken_pipe));
+    if (!wstream.good())
+        throw std::system_error{std::error_code(errno, std::system_category()), std::strerror(errno)};
 }
 
 json Connection::receive() {
@@ -48,16 +49,14 @@ json Connection::receive() {
         json message;
         rstream >> message;
         if (rstream.get() != '\0') {
-            std::perror("parse error");
+            throw std::invalid_argument("Trailing bytes in message");
         }
         return message;
     } catch(json::exception& e) {
-        if(rstream.eof()) {
-            return nullptr;
+        if(rstream.good()) {
+            throw std::invalid_argument(e.what());
         } else {
-            std::string input;
-            getline(rstream, input, '\0');
-            return {{"error", e.what()}, {"input", input}};
+            throw std::system_error{std::error_code(errno, std::system_category()), std::strerror(errno)};
         }
     }
 }

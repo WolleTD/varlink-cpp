@@ -14,32 +14,13 @@
 #include <utility>
 
 #include "varlink/common.hpp"
+#include "varlink/message.hpp"
 
 #define VarlinkCallback \
-    ([[maybe_unused]] const varlink::json& message, \
+    ([[maybe_unused]] const varlink::json& parameters, \
      [[maybe_unused]] const varlink::SendMore& sendmore) -> varlink::json
 
 namespace varlink {
-
-    inline json reply(json params) {
-        assert(params.is_object());
-        return {{"parameters", std::move(params)}};
-    }
-    inline json reply_continues(json params, bool continues = true) {
-        assert(params.is_object());
-        return {{"parameters", std::move(params)}, {"continues", continues}};
-    }
-    inline json error(std::string what, json params) {
-        assert(params.is_object());
-        return {{"error", std::move(what)}, {"parameters", std::move(params)}};
-    }
-
-    inline std::pair<std::string, std::string> splitFqMethod(const std::string& fqmethod) {
-        const auto dot = fqmethod.rfind('.');
-        // When there is no dot at all, both fields contain the same value, but it's an invalid
-        // interface name anyway
-        return {fqmethod.substr(0, dot), fqmethod.substr(dot + 1)};
-    }
 
     std::string_view org_varlink_service_description();
 
@@ -71,18 +52,14 @@ namespace varlink {
         std::map<std::string, InterfaceT> interfaces;
 
         // Template dependency: Interface
-        json handle(const json &message, const SendMore& sendmore) {
-            const auto [ifname, methodname] = splitFqMethod(message["method"].get<std::string>());
-
+        json dispatch(const Message &message, const SendMore& sendmore) {
+            const auto [ifname, methodname] = message.interfaceAndMethod();
             try {
                 const auto& interface = interfaces.at(ifname);
-                return interface.call(methodname, message, sendmore);
-            }
-            catch (varlink_error& e) {
-                return error(e.what(), e.args());
+                return interface.call(methodname, message.parameters(), sendmore);
             }
             catch (std::out_of_range& e) {
-                return error("org.varlink.service.InterfaceNotFound", {{"interface", ifname}});
+                throw varlink_error("org.varlink.service.InterfaceNotFound", {{"interface", ifname}});
             }
         }
 
@@ -105,24 +82,36 @@ namespace varlink {
 
         // Template dependency: ClientConnection
         void clientLoop(ClientConnT conn) {
+            const auto error = [](std::string what, json params) -> json {
+                assert(params.is_object());
+                return {{"error", std::move(what)}, {"parameters", std::move(params)}};
+            };
+
             for (;;) {
                 try {
-                    json message = conn.receive();
-                    if (message.is_null() || !message.contains("method")) break;
-                    message.merge_patch(R"({"parameters":{}})"_json);
+                    const Message message{conn.receive()};
 
-                    const bool more = (message.contains("more") && message["more"].get<bool>());
-                    const auto sendmore = more ? SendMore([&conn](const json& msg) {
-                        conn.send(reply_continues(msg));
-                    }) : SendMore(nullptr);
-
-                    auto reply = handle(message, sendmore);
-                    if (!(message.contains("oneway") && message["oneway"].get<bool>())) {
-                        if (more) reply["continues"] = false;
-                        conn.send(reply);
+                    if (message.more()) {
+                        const auto reply = dispatch(message, [&conn](const json &msg) {
+                            assert(msg.is_object());
+                            conn.send({{"parameters", msg},
+                                       {"continues",  true}});
+                        });
+                        conn.send({{"parameters", reply}, {"continues", false}});
+                    } else {
+                        const auto reply = dispatch(message, nullptr);
+                        if (!message.oneway()) {
+                            conn.send({{"parameters", reply}});
+                        }
                     }
+                } catch (varlink_error& e) {
+                    conn.send(error(e.what(), e.args()));
+                } catch(std::invalid_argument& e) {
+                    std::cerr << "Invalid message: " << e.what() << std::endl;
+                    break;
                 } catch(std::system_error& e) {
-                    std::cerr << "Terminate connection: " << e.what() << std::endl;
+                    if (e.code() != std::error_code(0, std::system_category()))
+                        std::cerr << "Terminate connection: " << e.what() << std::endl;
                     break;
                 }
             }
@@ -142,17 +131,17 @@ namespace varlink {
                         for(const auto& interface : interfaces) {
                             info["interfaces"].push_back(interface.first);
                         }
-                        return reply(info);
+                        return info;
                     }},
                     {"GetInterfaceDescription", [this]VarlinkCallback {
-                        const auto& ifname = message["parameters"]["interface"].get<std::string>();
+                        const auto& ifname = parameters["interface"].get<std::string>();
                         const auto interface = interfaces.find(ifname);
                         if (interface != interfaces.cend()) {
                             std::stringstream ss;
                             ss << interface->second;
-                            return reply({{"description", ss.str()}});
+                            return {{"description", ss.str()}};
                         } else {
-                            return error("org.varlink.service.InterfaceNotFound", {{"interface", ifname}});
+                            throw varlink_error("org.varlink.service.InterfaceNotFound", {{"interface", ifname}});
                         }
                     }}
             });

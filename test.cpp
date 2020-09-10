@@ -49,14 +49,14 @@ int main() {
     service->addInterface(org_example_more_varlink,
         {
             {"Ping", []VarlinkCallback {
-                return varlink::reply({{"pong", message["parameters"]["ping"]}});
+                return {{"pong", parameters["ping"]}};
             }},
             {"TestMore", []VarlinkCallback {
-                if (message["parameters"].contains("n") && sendmore) {
+                if (sendmore) {
                     nlohmann::json state = {{"start", true}};
                     sendmore({{"state", state}});
                     state.erase("start");
-                    auto n = message["parameters"]["n"].get<size_t>();
+                    auto n = parameters["n"].get<size_t>();
                     for(size_t i = 0; i < n; i++) {
                         state["progress"] = (100 / n) * i;
                         sendmore({{"state", state}});
@@ -66,10 +66,9 @@ int main() {
                     sendmore({{"state", state}});
                     state.erase("progress");
                     state["end"] = true;
-                    return varlink::reply({{"state", state}});
+                    return {{"state", state}};
                 } else {
-                    return varlink::error("org.varlink.service.InvalidParameter",
-                                          {{"parameter", (sendmore ? "n" : "more")}});
+                    throw varlink::varlink_error("org.varlink.service.InvalidParameter", {{"parameter", "more"}});
                 }
             }}
         });

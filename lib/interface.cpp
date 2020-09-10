@@ -351,13 +351,13 @@ void varlink::Interface::validate(const json &data, const json &typespec) const 
     }
 }
 
-varlink::json varlink::Interface::call(const std::string &methodname, const json &message, const SendMore &sendmore) const {
+varlink::json varlink::Interface::call(const std::string &methodname, const json &parameters, const SendMore &sendmore) const {
     try {
         const auto &method = this->method(methodname);
-        validate(message["parameters"], method.parameters);
-        auto response = method.callback(message, sendmore);
+        validate(parameters, method.parameters);
+        auto response = method.callback(parameters, sendmore);
         try {
-            validate(response["parameters"], method.returnValue);
+            validate(response, method.returnValue);
         } catch(varlink_error& e) {
             std::cout << "Response validation error: " << e.args().dump() << std::endl;
         }
