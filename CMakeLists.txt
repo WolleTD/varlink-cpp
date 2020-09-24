@@ -25,6 +25,8 @@ target_include_directories(varlink++ PUBLIC
 
 add_compile_definitions(_GNU_SOURCE __SANE_USERSPACE_TYPES__)
 add_compile_options(-Wall -Wextra -fvisibility=hidden)
+add_compile_options(-g -fprofile-arcs -ftest-coverage)
+link_libraries(gcov)
 
 #add_subdirectory(tool)
 include(CTest)
