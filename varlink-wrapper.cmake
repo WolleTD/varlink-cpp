@@ -7,5 +7,5 @@ string(REPLACE "." "_" cstring_name ${varlink_basename})
 
 file(READ ${CMAKE_ARGV3} varlink_if)
 set(varlink_cxxstring
-    "constexpr std::string_view ${cstring_name} = R\"INTERFACE(\n${varlink_if})INTERFACE\"\;\n")
+    "inline constexpr const std::string_view ${cstring_name} = R\"INTERFACE(\n${varlink_if})INTERFACE\"\;\n")
 file(WRITE ${CMAKE_ARGV4} ${varlink_cxxstring})

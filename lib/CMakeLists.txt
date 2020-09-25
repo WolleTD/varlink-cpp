@@ -4,7 +4,7 @@ varlink_wrapper(org.varlink.service.varlink)
 add_library(varlink++
         server.cpp
         connection.cpp
-        org.varlink.service.varlink.cpp.inc
+        org.varlink.service.varlink.hpp
         interface.cpp)
 
 target_include_directories(varlink++

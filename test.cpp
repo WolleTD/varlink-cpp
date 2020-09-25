@@ -7,7 +7,7 @@
 #include <exception>
 #include <string>
 #include "varlink/varlink.hpp"
-#include "org.example.more.varlink.cpp.inc"
+#include "org.example.more.varlink.hpp"
 
 #define TEST_SERVICE
 //#define TEST_SCANNER

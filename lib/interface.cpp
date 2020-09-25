@@ -1,7 +1,7 @@
 #include <tao/pegtl.hpp>
 #include <iostream>
 #include "varlink/interface.hpp"
-#include "org.varlink.service.varlink.cpp.inc"
+#include "org.varlink.service.varlink.hpp"
 
 namespace pegtl = TAO_PEGTL_NAMESPACE;
 

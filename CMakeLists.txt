@@ -5,11 +5,11 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 function(varlink_wrapper VARLINK_INTERFACE)
-    add_custom_command(OUTPUT "${VARLINK_INTERFACE}.cpp.inc"
+    add_custom_command(OUTPUT "${VARLINK_INTERFACE}.hpp"
             COMMAND "cmake" ARGS "-P"
             "${CMAKE_SOURCE_DIR}/varlink-wrapper.cmake"
             "${CMAKE_CURRENT_SOURCE_DIR}/${VARLINK_INTERFACE}"
-            "${CMAKE_CURRENT_BINARY_DIR}/${VARLINK_INTERFACE}.cpp.inc"
+            "${CMAKE_CURRENT_BINARY_DIR}/${VARLINK_INTERFACE}.hpp"
             DEPENDS "${VARLINK_INTERFACE}"
             )
 endfunction()
@@ -25,7 +25,7 @@ add_subdirectory(test)
 # TEST DEV STUFF
 varlink_wrapper(org.example.more.varlink)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
-add_executable(testdev test.cpp org.example.more.varlink.cpp.inc)
+add_executable(testdev test.cpp org.example.more.varlink.hpp)
 target_link_libraries(testdev varlink++ pthread)
 # END TEST DEV STUFF
 
