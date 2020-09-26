@@ -135,10 +135,10 @@ namespace varlink {
                                    const json &parameters,
                                    CallMode mode = CallMode::Basic) {
             json message{{"method", method}};
-            if (!parameters.is_null() && !parameters.is_object()) {
+            if (not parameters.is_null() and not parameters.is_object()) {
                 throw std::invalid_argument("parameters is not an object");
             }
-            if (!parameters.empty()) {
+            if (not parameters.empty()) {
                 message["parameters"] = parameters;
             }
 
@@ -153,13 +153,11 @@ namespace varlink {
             conn->send(message);
 
             return [this, mode, continues = true]() mutable -> json {
-                if (mode != CallMode::Oneway && continues) {
+                if ((mode != CallMode::Oneway) and continues) {
                     json reply = conn->receive();
-                    if (mode == CallMode::More && reply.contains("continues")) {
-                        continues = reply["continues"].get<bool>();
-                    } else {
-                        continues = false;
-                    }
+                    continues = ((mode == CallMode::More) and
+                                 reply.contains("continues") and
+                                 reply["continues"].get<bool>());
                     return reply;
                 } else {
                     return {};
