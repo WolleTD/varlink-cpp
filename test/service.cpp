@@ -94,6 +94,14 @@ TEST_F(ServiceTest, AddInterfaceCallException) {
     EXPECT_EQ(err["parameters"]["what"].get<string>(), "std::exception");
 }
 
+TEST_F(ServiceTest, AddInterfaceCallResponseError) {
+    service.addInterface(Interface(org_test_varlink, {{"Test", []VarlinkCallback{
+        return {{"pong", true}};
+    }}}));
+    auto pong = testcall("org.test.Test", {{"ping", "123"}})["parameters"];
+    EXPECT_TRUE(pong["pong"].get<bool>());
+}
+
 TEST_F(ServiceTest, InterfaceNotFound) {
     auto err = testcall("org.test.Test");
     EXPECT_EQ(err["error"].get<string>(), "org.varlink.service.InterfaceNotFound");

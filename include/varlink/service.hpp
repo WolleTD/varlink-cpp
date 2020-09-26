@@ -83,18 +83,19 @@ namespace varlink {
                 const auto &method = interface->method(methodname);
                 interface->validate(message.parameters(), method.parameters);
                 const auto sendmore = message.more() ? moreCallback : nullptr;
-                auto response = method.callback(message.parameters(), sendmore);
+                auto reply_params = method.callback(message.parameters(), sendmore);
+                assert(reply_params.is_object());
                 try {
-                    interface->validate(response, method.returnValue);
+                    interface->validate(reply_params, method.returnValue);
                 } catch(varlink_error& e) {
                     std::cout << "Response validation error: " << e.args().dump() << std::endl;
                 }
                 if (message.oneway()) {
                     return nullptr;
                 } else if (message.more()) {
-                    return {{"parameters", response}, {"continues", false}};
+                    return {{"parameters", reply_params}, {"continues", false}};
                 } else {
-                    return {{"parameters", response}};
+                    return {{"parameters", reply_params}};
                 }
             } catch (std::out_of_range& e) {
                 return error("org.varlink.service.MethodNotFound", {{"method", ifname + '.' + methodname}});
