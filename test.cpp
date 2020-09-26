@@ -48,9 +48,7 @@ int main() {
     signal(SIGINT, signalHandler);
     signal(SIGPIPE, SIG_IGN);
     try {
-        auto myservice = varlink::ThreadedServer("/tmp/test.socket", "a", "b", "c", "d");
-        auto mysvc2 = std::move(myservice);
-        service = std::make_unique<varlink::ThreadedServer>(std::move(mysvc2));
+        service = std::make_unique<varlink::ThreadedServer>("/tmp/test.socket", "a", "b", "c", "d");
     } catch(std::exception& e) {
         std::cerr << "Couldn't start service: " << e.what() << "\n";
         return 1;

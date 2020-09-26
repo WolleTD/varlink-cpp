@@ -70,6 +70,11 @@ namespace varlink {
         explicit BasicServer(std::unique_ptr<ListenConnT> listenConn)
                 : serviceConnection(std::move(listenConn)), service() {}
 
+        BasicServer(const BasicServer &src) = delete;
+        BasicServer &operator=(const BasicServer &) = delete;
+        BasicServer(BasicServer &&src) = delete;
+        BasicServer &operator=(BasicServer &&) = delete;
+
         template<typename... Args>
         void addInterface(Args&&... args) {
             service.addInterface(std::forward<Args>(args)...);
