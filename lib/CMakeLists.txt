@@ -6,5 +6,4 @@ add_library(varlink++
         interface.cpp)
 
 target_include_directories(varlink++
-        PUBLIC ${PROJECT_SOURCE_DIR}/include
-        PRIVATE ${PROJECT_SOURCE_DIR}/pegtl/include)
+        PUBLIC ${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/pegtl/include)

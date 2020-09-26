@@ -10,10 +10,16 @@
 #include <sstream>
 #include <string_view>
 #include <vector>
+#include <varlink/peg.hpp>
 
 #define VarlinkCallback \
     ([[maybe_unused]] const varlink::json& parameters, \
      [[maybe_unused]] const varlink::SendMore& sendmore) -> varlink::json
+
+namespace grammar {
+    template<typename Rule>
+    struct inserter;
+}
 
 namespace varlink {
 
@@ -39,10 +45,14 @@ namespace varlink {
         const std::string description;
         const json data;
 
+        Type(std::string Name, std::string Description, json Data)
+                : name(std::move(Name)), description(std::move(Description)), data(std::move(Data)) {}
         friend std::ostream& operator<<(std::ostream& os, const Type& type);
     };
 
     struct Error : Type {
+        Error(const std::string &Name, const std::string &Description, const json &Data)
+            : Type(Name, Description, Data) {}
         friend std::ostream& operator<<(std::ostream& os, const Error& error);
     };
 
@@ -53,6 +63,9 @@ namespace varlink {
         const json returnValue;
         const MethodCallback callback;
 
+        Method(std::string Name, std::string Description, json parameterType, json returnType, MethodCallback Callback)
+                : name(std::move(Name)), description(std::move(Description)), parameters(std::move(parameterType)),
+                returnValue(std::move(returnType)), callback(std::move(Callback)) {}
         friend std::ostream& operator<<(std::ostream& os, const Method& method);
     };
 
@@ -67,31 +80,17 @@ namespace varlink {
         std::vector<Error> errors;
 
         template<typename Rule>
-        struct inserter {};
-
-        struct {
-            std::string moving_docstring {};
-            std::string docstring {};
-            std::string name {};
-            CallbackMap callbacks {};
-            json method_params {};
-        } state;
-
-        struct State {
-            std::vector<std::string> fields {};
-            size_t pos { 0 };
-            json last_type {};
-            json last_element_type {};
-            json work {};
-            bool maybe_type { false };
-            bool dict_type { false };
-            bool array_type { false };
-        };
-        std::vector<State> stack;
+        friend struct grammar::inserter;
+        template<typename... Args>
+        void add_type(Args&&... args) { types.emplace_back(std::forward<Args>(args)...); }
+        template<typename... Args>
+        void add_method(Args&&... args) { methods.emplace_back(std::forward<Args>(args)...); }
+        template<typename... Args>
+        void add_error(Args&&... args) { errors.emplace_back(std::forward<Args>(args)...); }
 
     public:
         explicit Interface(std::string_view fromDescription,
-                           CallbackMap callbacks = {});
+                           const CallbackMap &callbacks = {});
         [[nodiscard]] const std::string& name() const noexcept { return ifname; }
         [[nodiscard]] const std::string& doc() const noexcept { return documentation; }
         [[nodiscard]] const Method& method(const std::string& name) const;
@@ -227,7 +226,6 @@ namespace varlink {
             } catch (std::exception& e) {
                 return error("org.varlink.service.InternalError", {{"what", e.what()}});
             }
-
         }
 
         void addInterface(const Interface& interface) { interfaces.push_back(interface); }
