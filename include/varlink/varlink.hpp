@@ -240,7 +240,7 @@ namespace varlink {
         Service(std::string vendor, std::string product, std::string version, std::string url) :
                 serviceVendor{std::move(vendor)}, serviceProduct{std::move(product)},
                 serviceVersion{std::move(version)}, serviceUrl{std::move(url)} {
-            addInterface(Interface{org_varlink_service_varlink, {
+            addInterface(org_varlink_service_varlink, CallbackMap{
                     {"GetInfo", [this]VarlinkCallback {
                         json info = {
                                 {"vendor", serviceVendor},
@@ -265,7 +265,7 @@ namespace varlink {
                             throw varlink_error("org.varlink.service.InterfaceNotFound", {{"interface", ifname}});
                         }
                     }}
-            }});
+            });
         }
 
         // Template dependency: Interface
@@ -309,8 +309,10 @@ namespace varlink {
             }
         }
 
-        void addInterface(const Interface& interface) { interfaces.push_back(interface); }
-
+        template<typename... Args>
+        void addInterface(Args&&... args) {
+            interfaces.emplace_back(std::forward<Args>(args)...);
+        }
     };
 
     inline std::string element_to_string(const json& elem, int indent = 4, size_t depth = 0) {

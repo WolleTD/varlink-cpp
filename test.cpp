@@ -6,6 +6,7 @@
 #include <csignal>
 #include <exception>
 #include <string>
+#include <varlink/client.hpp>
 #include <varlink/server.hpp>
 #include "org.example.more.varlink.hpp"
 
@@ -47,13 +48,15 @@ int main() {
     signal(SIGINT, signalHandler);
     signal(SIGPIPE, SIG_IGN);
     try {
-        service = std::make_unique<varlink::ThreadedServer>("/tmp/test.socket", "a", "b", "c", "d");
+        auto myservice = varlink::ThreadedServer("/tmp/test.socket", "a", "b", "c", "d");
+        auto mysvc2 = std::move(myservice);
+        service = std::make_unique<varlink::ThreadedServer>(std::move(mysvc2));
     } catch(std::exception& e) {
         std::cerr << "Couldn't start service: " << e.what() << "\n";
         return 1;
     }
     service->addInterface(varlink::org_example_more_varlink,
-        {
+        varlink::CallbackMap{
             {"Ping", []VarlinkCallback {
                 return {{"pong", parameters["ping"]}};
             }},
@@ -85,7 +88,7 @@ int main() {
 }
 #else
 int main() {
-    varlink::Client client("/tmp/test.sock1");
+    auto client = varlink::Client("/tmp/test.sock1");
 
     for(const auto& test : std::vector<TestData>{
             {"org.varlink.service.GetInfo", {}},
