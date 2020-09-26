@@ -311,11 +311,8 @@ void varlink::Interface::validate(const json &data, const json &typespec) const 
             throw varlink_error("org.varlink.service.InvalidParameter", {{"parameter", name}});
         } else if (data.contains(name)) {
             const auto& value = data[name];
-            if((spec.contains("maybe_type") && spec["maybe_type"].get<bool>())
-                && value.is_null()) {
-                continue;
-            } else if ((spec.contains("dict_type") && spec["dict_type"].get<bool>())
-                    && value.is_object()) {
+            if (((spec.contains("maybe_type") && spec["maybe_type"].get<bool>()) && value.is_null()) or
+                ((spec.contains("dict_type") && spec["dict_type"].get<bool>()) && value.is_object())) {
                 continue;
             } else if (spec.contains("array_type") && spec["array_type"].get<bool>()) {
                 if (value.is_array()) {
@@ -328,15 +325,11 @@ void varlink::Interface::validate(const json &data, const json &typespec) const 
                 continue;
             } else if (spec["type"].is_string()) {
                 const auto& valtype = spec["type"].get<std::string>();
-                if (valtype == "string" && value.is_string()) {
-                    continue;
-                } else if (valtype == "int" && value.is_number_integer()) {
-                    continue;
-                } else if (valtype == "float" && value.is_number()) {
-                    continue;
-                } else if (valtype == "bool" && value.is_boolean()) {
-                    continue;
-                } else if (valtype == "object" && !value.is_null()) {
+                if ((valtype == "string" && value.is_string()) or
+                    (valtype == "int" && value.is_number_integer()) or
+                    (valtype == "float" && value.is_number()) or
+                    (valtype == "bool" && value.is_boolean()) or
+                    (valtype == "object" && !value.is_null())) {
                     continue;
                 } else {
                     try {
