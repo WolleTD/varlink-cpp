@@ -96,23 +96,6 @@ namespace varlink {
         explicit SocketConnection(int posix_fd) : StreamingConnection(&filebuf_in, &filebuf_out), socket_fd(posix_fd),
                 filebuf_in(__gnu_cxx::stdio_filebuf<char>(socket_fd, std::ios::in)),
                 filebuf_out(__gnu_cxx::stdio_filebuf<char>(socket_fd, std::ios::out)) {}
-
-        SocketConnection(const SocketConnection &src) = delete;
-        SocketConnection &operator=(const SocketConnection &) = delete;
-
-        SocketConnection(SocketConnection &&src) noexcept :
-                StreamingConnection(&filebuf_in, &filebuf_out),
-                socket_fd(std::exchange(src.socket_fd, -1)),
-                filebuf_in(std::move(src.filebuf_in)),
-                filebuf_out(std::move(src.filebuf_out)) {}
-
-        SocketConnection &operator=(SocketConnection &&rhs) noexcept {
-            SocketConnection c(std::move(rhs));
-            std::swap(socket_fd, c.socket_fd);
-            std::swap(filebuf_in, c.filebuf_in);
-            std::swap(filebuf_out, c.filebuf_out);
-            return *this;
-        }
     };
 
     template<typename ConnectionT>
