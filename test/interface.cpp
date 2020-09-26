@@ -213,6 +213,14 @@ TEST(Interface, Duplicate) {
     EXPECT_ANY_THROW(Interface("interface org.test\nerror E()\nerror E()"));
 }
 
+TEST(Interface, AddCallback) {
+    EXPECT_NO_THROW(Interface("interface org.test\nmethod Test()->()", {{"Test", nullptr}}));
+}
+
+TEST(Interface, UnknownMethod) {
+    EXPECT_THROW(Interface("interface org.test\nmethod Test()->()", {{"Wrong", nullptr}}), std::invalid_argument);
+}
+
 TEST(Interface, MethodAccess) {
     Interface interface("interface org.test\nmethod Test()->()");
     EXPECT_TRUE(interface.has_method("Test"));

@@ -77,6 +77,23 @@ TEST_F(ServiceTest, AddInterfaceCallMore) {
     EXPECT_FALSE(pong["continues"].get<bool>());
 }
 
+TEST_F(ServiceTest, AddInterfaceCallError) {
+    service.addInterface(Interface(org_test_varlink, {{"Test", []VarlinkCallback{
+        throw varlink_error{"org.test.Error", json::object()};
+    }}}));
+    auto err = testcall("org.test.Test", {{"ping", "test"}});
+    EXPECT_EQ(err["error"].get<string>(), "org.test.Error");
+}
+
+TEST_F(ServiceTest, AddInterfaceCallException) {
+    service.addInterface(Interface(org_test_varlink, {{"Test", []VarlinkCallback{
+        throw std::exception();
+    }}}));
+    auto err = testcall("org.test.Test", {{"ping", "test"}});
+    EXPECT_EQ(err["error"].get<string>(), "org.varlink.service.InternalError");
+    EXPECT_EQ(err["parameters"]["what"].get<string>(), "std::exception");
+}
+
 TEST_F(ServiceTest, InterfaceNotFound) {
     auto err = testcall("org.test.Test");
     EXPECT_EQ(err["error"].get<string>(), "org.varlink.service.InterfaceNotFound");
