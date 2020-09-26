@@ -77,6 +77,16 @@ TEST_F(ServiceTest, AddInterfaceCallMore) {
     EXPECT_FALSE(pong["continues"].get<bool>());
 }
 
+TEST_F(ServiceTest, AddInterfaceCallMoreNull) {
+    service.addInterface(Interface(org_test_varlink, {{"Test", []VarlinkCallback{
+        sendmore({{"pong", parameters["ping"]}});
+        return {{"pong", parameters["ping"]}};
+    }}}));
+    std::string more_reply;
+    auto err = testcall("org.test.Test", {{"ping", "123"}}, true, false, nullptr);
+    EXPECT_EQ(err["error"].get<string>(), "org.varlink.service.MethodNotImplemented");
+}
+
 TEST_F(ServiceTest, AddInterfaceCallError) {
     service.addInterface(Interface(org_test_varlink, {{"Test", []VarlinkCallback{
         throw varlink_error{"org.test.Error", json::object()};
