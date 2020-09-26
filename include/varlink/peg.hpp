@@ -251,7 +251,7 @@ INSERTER(grammar::error) {
             throw std::invalid_argument("Multiple definition of error " + pstate.global.name);
     }
     auto& state = pstate.stack.back();
-    interface.add_error(pstate.global.name, pstate.global.docstring, state.last_element_type);
+    interface.errors.emplace_back(pstate.global.name, pstate.global.docstring, state.last_element_type);
 }
 
 INSERTER(grammar::method) {
@@ -268,8 +268,8 @@ INSERTER(grammar::method) {
         callback = cbit->callback;
         pstate.global.callbacks.erase(cbit);
     }
-    interface.add_method(pstate.global.name, pstate.global.docstring, pstate.global.method_params,
-                         state.last_element_type, callback);
+    interface.methods.emplace_back(pstate.global.name, pstate.global.docstring, pstate.global.method_params,
+                                   state.last_element_type, callback);
 }
 
 INSERTER(grammar::vtypedef) {
@@ -278,7 +278,7 @@ INSERTER(grammar::vtypedef) {
             throw std::invalid_argument("Multiple definition of type " + pstate.global.name);
     }
     auto& state = pstate.stack.back();
-    interface.add_type(pstate.global.name, pstate.global.docstring, state.last_element_type);
+    interface.types.emplace_back(pstate.global.name, pstate.global.docstring, state.last_element_type);
 }
 
 #endif
