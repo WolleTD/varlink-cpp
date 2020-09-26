@@ -6,7 +6,7 @@
 #include <csignal>
 #include <exception>
 #include <string>
-#include "varlink/varlink.hpp"
+#include <varlink/server.hpp>
 #include "org.example.more.varlink.hpp"
 
 #define TEST_SERVICE

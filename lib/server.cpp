@@ -7,7 +7,7 @@
 #include <sys/un.h>
 #include <unistd.h>
 #include <utility>
-#include "varlink/server.hpp"
+#include <varlink/server.hpp>
 
 using varlink::ListeningSocket;
 

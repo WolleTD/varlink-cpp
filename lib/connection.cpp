@@ -1,6 +1,17 @@
+#define JSON_USE_IMPLICIT_CONVERSIONS 0
+#include <cerrno>
+#include <ext/stdio_filebuf.h>
+#include <fstream>
+#include <nlohmann/json.hpp>
+#include <nlohmann/json_fwd.hpp>
+#include <stdexcept>
+#include <string>
+#include <system_error>
 #include <sys/socket.h>
 #include <sys/un.h>
-#include "varlink/connection.hpp"
+#include <utility>
+#include <varlink/client.hpp>
+#include <varlink/varlink.hpp>
 
 using namespace varlink;
 
@@ -19,7 +30,7 @@ Connection::Connection(const std::string& address) {
     if (address.length() + 1 > sizeof(addr.sun_path)) {
         throw std::system_error{std::make_error_code(std::errc::filename_too_long)};
     }
-    std::strcpy(addr.sun_path, address.c_str());
+    address.copy(addr.sun_path, address.length());
     if (connect(socket_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
         throw systemErrorFromErrno("connect() failed");
     }

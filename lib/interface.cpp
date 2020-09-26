@@ -1,6 +1,16 @@
+#define JSON_USE_IMPLICIT_CONVERSIONS 0
+#include <algorithm>
+#include <cassert>
+#include <nlohmann/json.hpp>
+#include <nlohmann/json_fwd.hpp>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 #include <tao/pegtl.hpp>
 #include <iostream>
-#include "varlink/interface.hpp"
+#include <varlink/varlink.hpp>
 #include "org.varlink.service.varlink.hpp"
 
 namespace pegtl = TAO_PEGTL_NAMESPACE;
