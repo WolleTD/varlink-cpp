@@ -52,7 +52,7 @@ int main() {
         std::cerr << "Couldn't start service: " << e.what() << "\n";
         return 1;
     }
-    service->addInterface(org_example_more_varlink,
+    service->addInterface(varlink::org_example_more_varlink,
         {
             {"Ping", []VarlinkCallback {
                 return {{"pong", parameters["ping"]}};

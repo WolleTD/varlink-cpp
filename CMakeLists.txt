@@ -14,10 +14,18 @@ function(varlink_wrapper VARLINK_INTERFACE)
             )
 endfunction()
 
+# INTERFACE target for main header library
+varlink_wrapper(include/varlink/org.varlink.service.varlink)
+add_library(varlink++ OBJECT include/varlink/org.varlink.service.varlink.hpp)
+target_include_directories(varlink++ PUBLIC
+        ${PROJECT_SOURCE_DIR}/include
+        ${PROJECT_BINARY_DIR}/include
+        ${PROJECT_SOURCE_DIR}/pegtl/include
+        )
+
 add_compile_definitions(_GNU_SOURCE __SANE_USERSPACE_TYPES__)
 add_compile_options(-Wall -Wextra -fvisibility=hidden)
 
-add_subdirectory(lib)
 #add_subdirectory(tool)
 include(CTest)
 add_subdirectory(test)

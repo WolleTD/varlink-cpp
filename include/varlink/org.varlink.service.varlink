@@ -27,3 +27,6 @@ error MethodNotImplemented (method: string)
 
 # One of the passed parameters is invalid.
 error InvalidParameter (parameter: string)
+
+# Another exception occurred internally
+error InternalError (exception: string)

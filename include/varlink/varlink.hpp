@@ -11,7 +11,7 @@
 #include <string_view>
 #include <vector>
 #include <varlink/peg.hpp>
-#include "org.varlink.service.varlink.hpp"
+#include <varlink/org.varlink.service.varlink.hpp>
 
 #define VarlinkCallback \
     ([[maybe_unused]] const varlink::json& parameters, \
@@ -108,7 +108,7 @@ namespace varlink {
         }
 
         template<typename T>
-        inline const T& find_member(const std::vector<T>& list, const std::string &name) const {
+        [[nodiscard]] inline const T& find_member(const std::vector<T>& list, const std::string &name) const {
             auto i = std::find_if(list.begin(), list.end(), [&](const T& e) { return e.name == name; });
             if (i == list.end())
                 throw std::out_of_range(name);
@@ -128,7 +128,7 @@ namespace varlink {
         }
 
         template<typename T>
-        inline bool has_member(const std::vector<T>& list, const std::string &name) const {
+        [[nodiscard]] inline bool has_member(const std::vector<T>& list, const std::string &name) const {
             return std::any_of(list.begin(), list.end(), [&name](const T& e){ return e.name == name; });
         }
 
