@@ -2,8 +2,15 @@
 #ifndef LIBVARLINK_VARLINK_SERVER_HPP
 #define LIBVARLINK_VARLINK_SERVER_HPP
 
+#include <cerrno>
+#include <functional>
 #include <string>
+#include <system_error>
 #include <thread>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
+#include <utility>
 #include <varlink/client.hpp>
 #include <varlink/varlink.hpp>
 
@@ -14,21 +21,61 @@ namespace varlink {
         std::thread listeningThread;
         int listen_fd{-1};
     public:
-        explicit ListeningSocket(std::string address, const std::function<void()> &listener = nullptr);
+
+        explicit ListeningSocket(std::string address, const std::function<void()> &listener = nullptr)
+                : socketAddress(std::move(address)) {
+            listen_fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+            if (listen_fd < 0) {
+                throw systemErrorFromErrno("socket() failed");
+            }
+            struct sockaddr_un addr{AF_UNIX, ""};
+            if (socketAddress.length() + 1 > sizeof(addr.sun_path)) {
+                throw std::system_error{std::make_error_code(std::errc::filename_too_long)};
+            }
+            socketAddress.copy(addr.sun_path, socketAddress.length());
+            if (bind(listen_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+                throw systemErrorFromErrno("bind() failed");
+            }
+            if (::listen(listen_fd, 1024) < 0) {
+                throw systemErrorFromErrno("listen() failed");
+            }
+            listeningThread = std::thread(listener);
+        }
 
         ListeningSocket(const ListeningSocket &src) = delete;
-
         ListeningSocket &operator=(const ListeningSocket &) = delete;
 
-        ListeningSocket(ListeningSocket &&src) noexcept;
+        ListeningSocket(ListeningSocket &&src) noexcept :
+                socketAddress(std::exchange(src.socketAddress, {})),
+                listeningThread(std::exchange(src.listeningThread, {})),
+                listen_fd(std::exchange(src.listen_fd, -1)) {}
 
-        ListeningSocket &operator=(ListeningSocket &&rhs) noexcept;
+        ListeningSocket& operator=(ListeningSocket &&rhs) noexcept {
+            ListeningSocket s(std::move(rhs));
+            std::swap(socketAddress, s.socketAddress);
+            std::swap(listeningThread, s.listeningThread);
+            std::swap(listen_fd, s.listen_fd);
+            return *this;
+        }
 
-        ~ListeningSocket();
+        [[nodiscard]] int nextClientFd() { //NOLINT (is not const: socket changes)
+            auto client_fd = accept(listen_fd, nullptr, nullptr);
+            if (client_fd < 0) {
+                throw systemErrorFromErrno("accept() failed");
+            }
+            return client_fd;
+        }
 
-        [[nodiscard]] int nextClientFd();
+        void listen(const std::function<void()>& listener) {
+            listeningThread = std::thread(listener);
+        };
 
-        void listen(const std::function<void()> &listener);
+        ~ListeningSocket() {
+            shutdown(listen_fd, SHUT_RDWR);
+            close(listen_fd);
+            listeningThread.join();
+            unlink(socketAddress.c_str());
+        }
     };
 
     template<typename ListenConnT, typename ClientConnT>
@@ -109,8 +156,7 @@ namespace varlink {
 
     };
 
-    using ThreadedServer = BasicServer<ListeningSocket, Connection>;
-    using Client = BasicClient<Connection>;
+    using ThreadedServer = BasicServer<ListeningSocket, SocketConnection>;
 }
 
 #endif
