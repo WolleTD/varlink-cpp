@@ -82,7 +82,6 @@ namespace varlink {
         [[nodiscard]] bool has_type(const std::string& name) const noexcept;
         [[nodiscard]] bool has_error(const std::string& name) const noexcept;
         void validate(const json& data, const json& type) const;
-        json call(const std::string &methodname, const json &parameters, const SendMore &sendmore) const noexcept;
 
         friend std::ostream& operator<<(std::ostream& os, const Interface& interface);
     };

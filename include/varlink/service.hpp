@@ -69,22 +69,43 @@ namespace varlink {
 
         // Template dependency: Interface
         json messageCall(const Message &message, const SendMore& moreCallback) noexcept {
+            const auto error = [](const std::string &what, const json &params) -> json {
+                assert(params.is_object());
+                return {{"error", what}, {"parameters", params}};
+            };
             const auto [ifname, methodname] = message.interfaceAndMethod();
             const auto interface = findInterface(ifname);
             if (interface == interfaces.cend()) {
-                return {{"error", "org.varlink.service.InterfaceNotFound"}, {"parameters", {{"interface", ifname}}}};
+                return error("org.varlink.service.InterfaceNotFound", {{"interface", ifname}});
             }
 
-            const auto sendmore = message.more() ? moreCallback : nullptr;
-            const auto reply = interface->call(methodname, message.parameters(), sendmore);
-
-            if (message.oneway()) {
-                return nullptr;
-            } else if (message.more()) {
-                return {{"parameters", reply}, {"continues", false}};
-            } else {
-                return {{"parameters", reply}};
+            try {
+                const auto &method = interface->method(methodname);
+                interface->validate(message.parameters(), method.parameters);
+                const auto sendmore = message.more() ? moreCallback : nullptr;
+                auto response = method.callback(message.parameters(), sendmore);
+                try {
+                    interface->validate(response, method.returnValue);
+                } catch(varlink_error& e) {
+                    std::cout << "Response validation error: " << e.args().dump() << std::endl;
+                }
+                if (message.oneway()) {
+                    return nullptr;
+                } else if (message.more()) {
+                    return {{"parameters", response}, {"continues", false}};
+                } else {
+                    return {{"parameters", response}};
+                }
+            } catch (std::out_of_range& e) {
+                return error("org.varlink.service.MethodNotFound", {{"method", ifname + '.' + methodname}});
+            } catch (std::bad_function_call& e) {
+                return error("org.varlink.service.MethodNotImplemented", {{"method", ifname + '.' + methodname}});
+            } catch (varlink_error& e) {
+                return error(e.what(), e.args());
+            } catch (std::exception& e) {
+                return error("org.varlink.service.InternalError", {{"what", e.what()}});
             }
+
         }
 
         void addInterface(const Interface& interface) { interfaces.push_back(interface); }
