@@ -223,15 +223,16 @@ INSERTER(grammar::error) {
 }
 
 INSERTER(grammar::method) {
-    for(const auto& m : interface.methods) {
-        if (m.name == interface.state.name)
-            throw std::invalid_argument("Multiple definition of method " + interface.state.name);
+    if (std::find_if(interface.methods.cbegin(), interface.methods.cend(),
+                     [name=interface.state.name](auto &m) { return (m.name == name); }) != interface.methods.cend()) {
+        throw std::invalid_argument("Multiple definition of method " + interface.state.name);
     }
     auto& state = interface.stack.back();
     MethodCallback callback { nullptr };
-    auto cbit = interface.state.callbacks.find(interface.state.name);
+    const auto cbit = std::find_if(interface.state.callbacks.begin(), interface.state.callbacks.end(),
+                 [name=interface.state.name](auto& p) { return p.method == name; });
     if (cbit != interface.state.callbacks.end()) {
-        callback = cbit->second;
+        callback = cbit->callback;
         interface.state.callbacks.erase(cbit);
     }
     interface.methods.emplace_back(Method{interface.state.name, interface.state.docstring,
@@ -255,7 +256,7 @@ varlink::Interface::Interface(std::string_view fromDescription, CallbackMap call
     try {
         pegtl::parse<grammar::interface, inserter>(parser_in, *this);
         if(!state.callbacks.empty()) {
-            throw std::invalid_argument("Unknown method " + state.callbacks.begin()->first);
+            throw std::invalid_argument("Unknown method " + std::string(state.callbacks[0].method));
         }
     }
     catch ( const pegtl::parse_error& e) {

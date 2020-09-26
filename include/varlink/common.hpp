@@ -7,13 +7,17 @@
 #include <functional>
 #include <nlohmann/json.hpp>
 #include <string>
-#include <unordered_map>
 #include <utility>
+#include <vector>
 
 namespace varlink {
     using nlohmann::json;
     using MethodCallback = std::function<json(const json&, const std::function<void(json)>&)>;
-    using CallbackMap = std::unordered_map<std::string, MethodCallback>;
+    struct CallbackEntry {
+        std::string_view method;
+        MethodCallback callback;
+    };
+    using CallbackMap = std::vector<CallbackEntry>;
 
     using SendMore = std::function<void(json)>;
 
