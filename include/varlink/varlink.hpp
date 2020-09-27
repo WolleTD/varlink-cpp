@@ -236,7 +236,6 @@ namespace varlink {
                                 [&ifname](auto &i) { return (ifname == i.name()); });
         }
     public:
-        Service() = default;
         Service(std::string vendor, std::string product, std::string version, std::string url) :
                 serviceVendor{std::move(vendor)}, serviceProduct{std::move(product)},
                 serviceVersion{std::move(version)}, serviceUrl{std::move(url)} {
@@ -267,6 +266,11 @@ namespace varlink {
                     }}
             });
         }
+
+        Service(const Service &src) = delete;
+        Service &operator=(const Service &) = delete;
+        Service(Service &&src) = delete;
+        Service &operator=(Service &&) = delete;
 
         // Template dependency: Interface
         json messageCall(const Message &message, const SendMore& moreCallback) noexcept {

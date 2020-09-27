@@ -16,7 +16,7 @@
 #include <varlink/varlink.hpp>
 
 namespace varlink {
-    std::system_error systemErrorFromErrno(const std::string &what) {
+    inline std::system_error systemErrorFromErrno(const std::string &what) {
         return {std::error_code(errno, std::system_category()), what};
     }
 
@@ -108,8 +108,11 @@ namespace varlink {
         int listen_fd{-1};
     public:
 
-        explicit ListeningSocket(std::string address, const std::function<void()> &listener = nullptr)
+        explicit ListeningSocket(std::string address, const std::function<void()> &listener)
                 : socketAddress(std::move(address)) {
+            if (not listener) {
+                throw std::invalid_argument("Listening thread function required!");
+            }
             listen_fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
             if (listen_fd < 0) {
                 throw systemErrorFromErrno("socket() failed");
