@@ -20,26 +20,79 @@ namespace varlink {
         return {std::error_code(errno, std::system_category()), what};
     }
 
-    class StreamingConnection {
+    class PosixSocket {
+    private:
+        int socket_fd{-1};
+    public:
+        PosixSocket(int domain, int type, int protocol) {
+            if ((socket_fd = socket(domain, type, protocol)) < 0) {
+                throw systemErrorFromErrno("socket() failed");
+            }
+        }
+
+        explicit PosixSocket(int fd) : socket_fd(fd) {}
+
+        ~PosixSocket() {
+            close(socket_fd);
+        }
+
+        template <typename SockaddrT>
+        void connect(SockaddrT &addr) {
+            if (::connect(socket_fd, (struct sockaddr *)&addr, sizeof(SockaddrT)) < 0) {
+                throw systemErrorFromErrno("connect() failed");
+            }
+        }
+
+        template <typename SockaddrT>
+        void bind(SockaddrT &addr) {
+            if (::bind(socket_fd, (struct sockaddr *)&addr, sizeof(SockaddrT)) < 0) {
+                throw systemErrorFromErrno("bind() failed");
+            }
+        }
+
+        void listen(size_t max_connections) {
+            if (::listen(socket_fd, max_connections) < 0) {
+                throw systemErrorFromErrno("listen() failed");
+            }
+        }
+
+        template <typename SockaddrT>
+        int accept(SockaddrT *addr) {
+            socklen_t addrlen = sizeof(SockaddrT);
+            auto fd = ::accept(socket_fd, (struct sockaddr *)addr, &addrlen);
+            if (fd < 0) {
+                throw systemErrorFromErrno("accept() failed");
+            }
+            return fd;
+        }
+
+        void shutdown(int how) {
+            ::shutdown(socket_fd, how);
+        }
+
+        [[nodiscard]] int fd() const { return socket_fd; }
+    };
+
+    class JsonConnection {
     private:
         std::istream rstream;
         std::ostream wstream;
     public:
         template<typename BufferT>
-        StreamingConnection(BufferT *input, BufferT *output) : rstream(input), wstream(output) {}
+        JsonConnection(BufferT *input, BufferT *output) : rstream(input), wstream(output) {}
 
-        StreamingConnection(const StreamingConnection &src) = delete;
+        JsonConnection(const JsonConnection &src) = delete;
 
-        StreamingConnection &operator=(const StreamingConnection &) = delete;
+        JsonConnection &operator=(const JsonConnection &) = delete;
 
-        StreamingConnection(StreamingConnection &&src) noexcept:
+        JsonConnection(JsonConnection &&src) noexcept:
                 rstream(src.rstream.rdbuf()),
                 wstream(src.wstream.rdbuf()) {
             src.rstream.rdbuf(nullptr);
             src.wstream.rdbuf(nullptr);
         }
 
-        StreamingConnection &operator=(StreamingConnection &&rhs) noexcept {
+        JsonConnection &operator=(JsonConnection &&rhs) noexcept {
             rstream.rdbuf(rhs.rstream.rdbuf());
             wstream.rdbuf(rhs.wstream.rdbuf());
             rhs.rstream.rdbuf(nullptr);
@@ -71,63 +124,51 @@ namespace varlink {
         }
     };
 
-    class SocketConnection : public StreamingConnection {
+    class SocketConnection : public JsonConnection {
     private:
-        int socket_fd{-1};
+        PosixSocket socket;
         __gnu_cxx::stdio_filebuf<char> filebuf_in;
         __gnu_cxx::stdio_filebuf<char> filebuf_out;
     public:
         // Connect to a service via address
-        explicit SocketConnection(const std::string &address) : StreamingConnection(&filebuf_in, &filebuf_out) {
-            socket_fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-            if (socket_fd < 0) {
-                throw systemErrorFromErrno("socket() failed");
-            }
+        explicit SocketConnection(const std::string &address) : JsonConnection(&filebuf_in, &filebuf_out),
+                                                                socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0) {
             struct sockaddr_un addr{AF_UNIX, ""};
             if (address.length() + 1 > sizeof(addr.sun_path)) {
                 throw std::system_error{std::make_error_code(std::errc::filename_too_long)};
             }
             address.copy(addr.sun_path, address.length());
-            if (connect(socket_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-                throw systemErrorFromErrno("connect() failed");
-            }
-            filebuf_in = __gnu_cxx::stdio_filebuf<char>(socket_fd, std::ios::in);
-            filebuf_out = __gnu_cxx::stdio_filebuf<char>(socket_fd, std::ios::out);
+            socket.connect(addr);
+
+            filebuf_in = __gnu_cxx::stdio_filebuf<char>(socket.fd(), std::ios::in);
+            filebuf_out = __gnu_cxx::stdio_filebuf<char>(socket.fd(), std::ios::out);
         }
 
         // Setup message stream on existing connection
-        explicit SocketConnection(int posix_fd) : StreamingConnection(&filebuf_in, &filebuf_out), socket_fd(posix_fd),
-                                                  filebuf_in(__gnu_cxx::stdio_filebuf<char>(socket_fd, std::ios::in)),
-                                                  filebuf_out(__gnu_cxx::stdio_filebuf<char>(socket_fd, std::ios::out)) {}
+        explicit SocketConnection(int posix_fd) : JsonConnection(&filebuf_in, &filebuf_out), socket(posix_fd),
+                                                  filebuf_in(__gnu_cxx::stdio_filebuf<char>(socket.fd(), std::ios::in)),
+                                                  filebuf_out(__gnu_cxx::stdio_filebuf<char>(socket.fd(), std::ios::out)) {}
     };
 
     class ListeningSocket {
     private:
         std::string socketAddress;
         std::thread listeningThread;
-        int listen_fd{-1};
+        PosixSocket socket;
     public:
 
         explicit ListeningSocket(std::string address, const std::function<void()> &listener)
-                : socketAddress(std::move(address)) {
+                : socketAddress(std::move(address)), socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0) {
             if (not listener) {
                 throw std::invalid_argument("Listening thread function required!");
-            }
-            listen_fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-            if (listen_fd < 0) {
-                throw systemErrorFromErrno("socket() failed");
             }
             struct sockaddr_un addr{AF_UNIX, ""};
             if (socketAddress.length() + 1 > sizeof(addr.sun_path)) {
                 throw std::system_error{std::make_error_code(std::errc::filename_too_long)};
             }
             socketAddress.copy(addr.sun_path, socketAddress.length());
-            if (bind(listen_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-                throw systemErrorFromErrno("bind() failed");
-            }
-            if (::listen(listen_fd, 1024) < 0) {
-                throw systemErrorFromErrno("listen() failed");
-            }
+            socket.bind(addr);
+            socket.listen(1024);
             listeningThread = std::thread(listener);
         }
 
@@ -137,18 +178,18 @@ namespace varlink {
         ListeningSocket(ListeningSocket &&src) noexcept :
                 socketAddress(std::exchange(src.socketAddress, {})),
                 listeningThread(std::exchange(src.listeningThread, {})),
-                listen_fd(std::exchange(src.listen_fd, -1)) {}
+                socket(std::exchange(src.socket, PosixSocket(-1))) {}
 
         ListeningSocket& operator=(ListeningSocket &&rhs) noexcept {
             ListeningSocket s(std::move(rhs));
             std::swap(socketAddress, s.socketAddress);
             std::swap(listeningThread, s.listeningThread);
-            std::swap(listen_fd, s.listen_fd);
+            std::swap(socket, s.socket);
             return *this;
         }
 
         [[nodiscard]] int nextClientFd() { //NOLINT (is not const: socket changes)
-            auto client_fd = accept(listen_fd, nullptr, nullptr);
+            auto client_fd = socket.accept((struct sockaddr_un *)nullptr);
             if (client_fd < 0) {
                 throw systemErrorFromErrno("accept() failed");
             }
@@ -156,8 +197,7 @@ namespace varlink {
         }
 
         ~ListeningSocket() {
-            shutdown(listen_fd, SHUT_RDWR);
-            close(listen_fd);
+            socket.shutdown(SHUT_RDWR);
             listeningThread.join();
             unlink(socketAddress.c_str());
         }

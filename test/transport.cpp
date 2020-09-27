@@ -8,7 +8,7 @@ using ::testing::Return;
 class ConnectionTest : public ::testing::Test {
 protected:
     std::stringstream ss{};
-    StreamingConnection conn{ss.rdbuf(), ss.rdbuf()};
+    JsonConnection conn{ss.rdbuf(), ss.rdbuf()};
 };
 
 TEST_F(ConnectionTest, Read) {
@@ -53,6 +53,6 @@ TEST_F(ConnectionTest, Write) {
 }
 
 TEST_F(ConnectionTest, WriteThrowEOF) {
-    auto conn = StreamingConnection((std::stringbuf *)nullptr, (std::stringbuf *)nullptr);
+    auto conn = JsonConnection((std::stringbuf *)nullptr, (std::stringbuf *)nullptr);
     EXPECT_THROW(conn.send(R"({"object":true})"_json), std::system_error);
 }
