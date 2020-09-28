@@ -43,6 +43,26 @@ namespace varlink {
             }
         }
 
+        template <typename IteratorT, typename = std::enable_if_t<
+                std::is_convertible_v<typename IteratorT::value_type,char> > >
+        IteratorT write(IteratorT begin, IteratorT end) {
+            const auto ret = ::write(socket_fd, &(*begin), end - begin);
+            if (ret < 0) {
+                throw systemErrorFromErrno("write() failed");
+            }
+            return begin + ret;
+        }
+
+        template <typename IteratorT, typename = std::enable_if_t<
+                std::is_convertible_v<typename IteratorT::value_type,char> > >
+        IteratorT read(IteratorT begin, IteratorT end) {
+            const auto ret = ::read(socket_fd, &(*begin), end - begin);
+            if (ret <= 0) {
+                throw systemErrorFromErrno("read() failed");
+            }
+            return begin + ret;
+        }
+
         template <typename SockaddrT>
         void bind(SockaddrT &addr) {
             if (::bind(socket_fd, (struct sockaddr *)&addr, sizeof(SockaddrT)) < 0) {
@@ -50,7 +70,7 @@ namespace varlink {
             }
         }
 
-        void listen(size_t max_connections) {
+        void listen(size_t max_connections) { //NOLINT (is not const: socket changes)
             if (::listen(socket_fd, max_connections) < 0) {
                 throw systemErrorFromErrno("listen() failed");
             }
@@ -66,98 +86,72 @@ namespace varlink {
             return fd;
         }
 
-        void shutdown(int how) {
+        void shutdown(int how) { //NOLINT (is not const: socket changes)
             ::shutdown(socket_fd, how);
         }
-
-        [[nodiscard]] int fd() const { return socket_fd; }
     };
 
+    template <typename SocketT>
     class JsonConnection {
     private:
-        std::istream rstream;
-        std::ostream wstream;
-    public:
-        template<typename BufferT>
-        JsonConnection(BufferT *input, BufferT *output) : rstream(input), wstream(output) {}
-
-        JsonConnection(const JsonConnection &src) = delete;
-
-        JsonConnection &operator=(const JsonConnection &) = delete;
-
-        JsonConnection(JsonConnection &&src) noexcept:
-                rstream(src.rstream.rdbuf()),
-                wstream(src.wstream.rdbuf()) {
-            src.rstream.rdbuf(nullptr);
-            src.wstream.rdbuf(nullptr);
-        }
-
-        JsonConnection &operator=(JsonConnection &&rhs) noexcept {
-            rstream.rdbuf(rhs.rstream.rdbuf());
-            wstream.rdbuf(rhs.wstream.rdbuf());
-            rhs.rstream.rdbuf(nullptr);
-            rhs.wstream.rdbuf(nullptr);
-            return *this;
-        }
-
-        void send(const json &message) {
-            wstream << message << '\0' << std::flush;
-            if (!wstream.good())
-                throw systemErrorFromErrno("Writing to stream failed");
-        }
-
-        [[nodiscard]] json receive() {
-            try {
-                json message;
-                rstream >> message;
-                if (rstream.get() != '\0') {
-                    throw std::invalid_argument("Trailing bytes in message");
-                }
-                return message;
-            } catch (json::exception &e) {
-                if (rstream.good()) {
-                    throw std::invalid_argument(e.what());
-                } else {
-                    throw systemErrorFromErrno("Reading from stream failed");
-                }
-            }
-        }
-    };
-
-    class SocketConnection : public JsonConnection {
-    private:
-        PosixSocket socket;
-        __gnu_cxx::stdio_filebuf<char> filebuf_in;
-        __gnu_cxx::stdio_filebuf<char> filebuf_out;
+        std::unique_ptr<SocketT> socket;
+        using byte_buffer = std::vector<char>;
+        byte_buffer readbuf;
+        byte_buffer::iterator read_end;
     public:
         // Connect to a service via address
-        explicit SocketConnection(const std::string &address) : JsonConnection(&filebuf_in, &filebuf_out),
-                                                                socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0) {
+        explicit JsonConnection(const std::string &address) : socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0),
+                                                              readbuf(BUFSIZ), read_end(readbuf.begin()) {
             struct sockaddr_un addr{AF_UNIX, ""};
             if (address.length() + 1 > sizeof(addr.sun_path)) {
                 throw std::system_error{std::make_error_code(std::errc::filename_too_long)};
             }
             address.copy(addr.sun_path, address.length());
             socket.connect(addr);
-
-            filebuf_in = __gnu_cxx::stdio_filebuf<char>(socket.fd(), std::ios::in);
-            filebuf_out = __gnu_cxx::stdio_filebuf<char>(socket.fd(), std::ios::out);
         }
 
         // Setup message stream on existing connection
-        explicit SocketConnection(int posix_fd) : JsonConnection(&filebuf_in, &filebuf_out), socket(posix_fd),
-                                                  filebuf_in(__gnu_cxx::stdio_filebuf<char>(socket.fd(), std::ios::in)),
-                                                  filebuf_out(__gnu_cxx::stdio_filebuf<char>(socket.fd(), std::ios::out)) {}
+        explicit JsonConnection(int posix_fd) : socket(std::make_unique<SocketT>(posix_fd)), readbuf(BUFSIZ), read_end(readbuf.begin()) {}
+        explicit JsonConnection(std::unique_ptr<SocketT> existingSocket) : socket(std::move(existingSocket)),
+                                                                           readbuf(BUFSIZ), read_end(readbuf.begin()) {}
+
+        void send(const json &message) {
+            const auto m = message.dump();
+            const auto end = m.end() + 1; // Include \0
+            auto sent = socket->write(m.begin(), end);
+            while (sent < end) {
+                sent = socket->write(sent, end);
+            }
+        }
+
+        [[nodiscard]] json receive() {
+            if (read_end == readbuf.begin()) {
+                read_end = socket->read(readbuf.begin(), readbuf.end());
+            }
+            const auto next_message_end = std::find(readbuf.begin(), read_end, '\0');
+            if (next_message_end == read_end) {
+                throw std::runtime_error("Incomplete message received: " + std::string(readbuf.begin(), read_end));
+            }
+            const auto message = std::string(readbuf.begin(), next_message_end);
+            read_end = std::copy(next_message_end + 1, read_end, readbuf.begin());
+            try {
+                return json::parse(message);
+            } catch (json::parse_error& e) {
+                throw std::runtime_error("Json parse error: " + message);
+            }
+        }
     };
 
-    class ListeningSocket {
+    template<typename SocketT>
+    class ListeningConnection {
     private:
         std::string socketAddress;
         std::thread listeningThread;
-        PosixSocket socket;
+        SocketT socket;
     public:
+        using ClientConnection = JsonConnection<SocketT>;
 
-        explicit ListeningSocket(std::string address, const std::function<void()> &listener)
+        explicit ListeningConnection(std::string address, const std::function<void()> &listener)
                 : socketAddress(std::move(address)), socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0) {
             if (not listener) {
                 throw std::invalid_argument("Listening thread function required!");
@@ -172,31 +166,20 @@ namespace varlink {
             listeningThread = std::thread(listener);
         }
 
-        ListeningSocket(const ListeningSocket &src) = delete;
-        ListeningSocket &operator=(const ListeningSocket &) = delete;
+        ListeningConnection(const ListeningConnection &src) = delete;
+        ListeningConnection &operator=(const ListeningConnection &) = delete;
+        ListeningConnection(ListeningConnection &&src) = delete;
+        ListeningConnection& operator=(ListeningConnection &&rhs) = delete;
 
-        ListeningSocket(ListeningSocket &&src) noexcept :
-                socketAddress(std::exchange(src.socketAddress, {})),
-                listeningThread(std::exchange(src.listeningThread, {})),
-                socket(std::exchange(src.socket, PosixSocket(-1))) {}
-
-        ListeningSocket& operator=(ListeningSocket &&rhs) noexcept {
-            ListeningSocket s(std::move(rhs));
-            std::swap(socketAddress, s.socketAddress);
-            std::swap(listeningThread, s.listeningThread);
-            std::swap(socket, s.socket);
-            return *this;
-        }
-
-        [[nodiscard]] int nextClientFd() { //NOLINT (is not const: socket changes)
-            auto client_fd = socket.accept((struct sockaddr_un *)nullptr);
-            if (client_fd < 0) {
+        [[nodiscard]] ClientConnection nextClient() {
+            if (auto client_fd = socket.accept((struct sockaddr_un *)nullptr); client_fd < 0) {
                 throw systemErrorFromErrno("accept() failed");
+            } else {
+                return ClientConnection(client_fd);
             }
-            return client_fd;
         }
 
-        ~ListeningSocket() {
+        ~ListeningConnection() {
             socket.shutdown(SHUT_RDWR);
             listeningThread.join();
             unlink(socketAddress.c_str());
