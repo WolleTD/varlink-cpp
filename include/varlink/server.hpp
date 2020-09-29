@@ -18,13 +18,14 @@ namespace varlink {
         using ClientConnT = typename ListenConnT::ClientConnection;
     private:
         std::unique_ptr<ListenConnT> serviceConnection;
+        std::thread listenThread;
         Service service;
 
         void acceptLoop() {
             for (;;) {
                 try {
                     std::thread{[this](auto conn) {
-                        clientLoop(conn);
+                        clientLoop(std::move(conn));
                     }, serviceConnection->nextClient()}.detach();
                 } catch (std::system_error &e) {
                     if (e.code() == std::errc::invalid_argument) {
@@ -67,7 +68,7 @@ namespace varlink {
     public:
         BasicServer(const std::string &address, const std::string &vendor, const std::string &product,
                     const std::string &version, const std::string &url)
-                : serviceConnection(std::make_unique<ListenConnT>(address, [this]() { acceptLoop(); })),
+                : serviceConnection(std::make_unique<ListenConnT>(address)), listenThread([this]() { acceptLoop(); }),
                   service(vendor, product, version, url) {}
 
         explicit BasicServer(std::unique_ptr<ListenConnT> listenConn)
@@ -78,6 +79,11 @@ namespace varlink {
         BasicServer(BasicServer &&src) = delete;
         BasicServer &operator=(BasicServer &&) = delete;
 
+        ~BasicServer() {
+            serviceConnection.reset(nullptr);
+            listenThread.join();
+        }
+
         template<typename... Args>
         void addInterface(Args&&... args) {
             service.addInterface(std::forward<Args>(args)...);
@@ -85,7 +91,8 @@ namespace varlink {
 
     };
 
-    using ThreadedServer = BasicServer<PosixSocket>;
+    template <typename Proto>
+    using ThreadedServer = BasicServer<PosixSocket<Proto> >;
 }
 
 #endif

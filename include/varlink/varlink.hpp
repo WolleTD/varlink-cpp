@@ -319,6 +319,45 @@ namespace varlink {
         }
     };
 
+    struct VarlinkURI {
+        enum class Type { Unix, TCP };
+        Type type{};
+        std::string_view host{};
+        std::string_view port{};
+        std::string_view path{};
+        std::string_view qualified_method{};
+        std::string_view interface{};
+        std::string_view method{};
+
+        constexpr explicit VarlinkURI(std::string_view uri, bool has_interface = false) {
+            uri = uri.substr(0, uri.find(';'));
+            if (has_interface or (uri.find("tcp:") == 0)) {
+                const auto end_of_host = uri.rfind('/');
+                path = uri.substr(0, end_of_host);
+                if (end_of_host != std::string_view::npos) {
+                    qualified_method = uri.substr(end_of_host + 1);
+                    const auto end_of_if = qualified_method.rfind('.');
+                    interface = qualified_method.substr(0, end_of_if);
+                    method = qualified_method.substr(end_of_if + 1);
+                }
+            } else {
+                path = uri;
+            }
+            if (uri.find("unix:") == 0) {
+                type = Type::Unix;
+                path = path.substr(5);
+            } else if (uri.find("tcp:") == 0) {
+                type = Type::TCP;
+                path = path.substr(4);
+                const auto colon = path.find(':');
+                host = path.substr(0, colon);
+                port = path.substr(colon + 1);
+            } else {
+                throw std::invalid_argument("Unknown protocol / bad URI");
+            }
+        }
+    };
+
     inline std::string element_to_string(const json& elem, int indent = 4, size_t depth = 0) {
         if (elem.is_string()) {
             return elem.get<std::string>();

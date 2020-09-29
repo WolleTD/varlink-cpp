@@ -20,24 +20,38 @@ namespace varlink {
         return {std::error_code(errno, std::system_category()), what};
     }
 
-    class PosixSocket {
+    class BasicPosixSocket {
+    public:
+        struct sockaddr_un : ::sockaddr_un {
+            explicit sockaddr_un(std::string_view address) : ::sockaddr_un{AF_UNIX, ""} {
+                if (address.length() + 1 > sizeof(sun_path)) {
+                    throw std::system_error{std::make_error_code(std::errc::filename_too_long)};
+                }
+                address.copy(sun_path, address.length());
+            }
+        };
     private:
         int socket_fd{-1};
-    public:
-        PosixSocket(int domain, int type, int protocol) {
-            if ((socket_fd = socket(domain, type, protocol)) < 0) {
+    protected:
+        BasicPosixSocket() = default;
+        void socket(int domain, int type, int protocol) {
+            if ((socket_fd = ::socket(domain, type, protocol)) < 0) {
                 throw systemErrorFromErrno("socket() failed");
             }
         }
+    public:
+        BasicPosixSocket(int domain, int type, int protocol) {
+            socket(domain, type, protocol);
+        }
 
-        explicit PosixSocket(int fd) : socket_fd(fd) {}
+        explicit BasicPosixSocket(int fd) : socket_fd(fd) {}
 
-        ~PosixSocket() {
+        ~BasicPosixSocket() {
             close(socket_fd);
         }
 
         template <typename SockaddrT>
-        void connect(SockaddrT &addr) {
+        void connect(const SockaddrT &addr) {
             if (::connect(socket_fd, (struct sockaddr *)&addr, sizeof(SockaddrT)) < 0) {
                 throw systemErrorFromErrno("connect() failed");
             }
@@ -64,7 +78,7 @@ namespace varlink {
         }
 
         template <typename SockaddrT>
-        void bind(SockaddrT &addr) {
+        void bind(const SockaddrT &addr) {
             if (::bind(socket_fd, (struct sockaddr *)&addr, sizeof(SockaddrT)) < 0) {
                 throw systemErrorFromErrno("bind() failed");
             }
@@ -91,6 +105,28 @@ namespace varlink {
         }
     };
 
+    struct Unix {
+        static constexpr int SOCK_FAMILY = AF_UNIX;
+    };
+
+    struct TCP {
+        static constexpr int SOCK_FAMILY = AF_INET;
+    };
+
+    // Abstracts varlink endpoint and URI from transport socket implementation
+    template <typename FamilyT>
+    class PosixSocket : public BasicPosixSocket {
+    private:
+        sockaddr_un socketAddress;
+    public:
+        explicit PosixSocket(const std::string& address) : socketAddress(address) {
+            socket(FamilyT::SOCK_FAMILY, SOCK_STREAM | SOCK_CLOEXEC, 0);
+        }
+        explicit PosixSocket(int fd) : BasicPosixSocket(fd), socketAddress("") {}
+        void connect() { BasicPosixSocket::connect(socketAddress); }
+        void bind() { BasicPosixSocket::bind(socketAddress); }
+    };
+
     template <typename SocketT>
     class JsonConnection {
     private:
@@ -100,14 +136,9 @@ namespace varlink {
         byte_buffer::iterator read_end;
     public:
         // Connect to a service via address
-        explicit JsonConnection(const std::string &address) : socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0),
+        explicit JsonConnection(const std::string &address) : socket(address),
                                                               readbuf(BUFSIZ), read_end(readbuf.begin()) {
-            struct sockaddr_un addr{AF_UNIX, ""};
-            if (address.length() + 1 > sizeof(addr.sun_path)) {
-                throw std::system_error{std::make_error_code(std::errc::filename_too_long)};
-            }
-            address.copy(addr.sun_path, address.length());
-            socket.connect(addr);
+            socket.connect();
         }
 
         // Setup message stream on existing connection
@@ -145,34 +176,26 @@ namespace varlink {
     template<typename SocketT>
     class ListeningConnection {
     private:
+        std::unique_ptr<SocketT> socket;
         std::string socketAddress;
-        std::thread listeningThread;
-        SocketT socket;
     public:
         using ClientConnection = JsonConnection<SocketT>;
 
-        explicit ListeningConnection(std::string address, const std::function<void()> &listener)
-                : socketAddress(std::move(address)), socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0) {
-            if (not listener) {
-                throw std::invalid_argument("Listening thread function required!");
-            }
-            struct sockaddr_un addr{AF_UNIX, ""};
-            if (socketAddress.length() + 1 > sizeof(addr.sun_path)) {
-                throw std::system_error{std::make_error_code(std::errc::filename_too_long)};
-            }
-            socketAddress.copy(addr.sun_path, socketAddress.length());
-            socket.bind(addr);
-            socket.listen(1024);
-            listeningThread = std::thread(listener);
+        explicit ListeningConnection(const std::string &address) : socket(std::make_unique<SocketT>(address)),
+                socketAddress(address) {
+            socket->bind();
+            socket->listen(1024);
         }
 
+        explicit ListeningConnection(std::unique_ptr<SocketT> existingSocket) : socket(std::move(existingSocket)),
+                socketAddress() {}
         ListeningConnection(const ListeningConnection &src) = delete;
         ListeningConnection &operator=(const ListeningConnection &) = delete;
         ListeningConnection(ListeningConnection &&src) = delete;
         ListeningConnection& operator=(ListeningConnection &&rhs) = delete;
 
         [[nodiscard]] ClientConnection nextClient() {
-            if (auto client_fd = socket.accept((struct sockaddr_un *)nullptr); client_fd < 0) {
+            if (auto client_fd = socket->accept((struct sockaddr_un *)nullptr); client_fd < 0) {
                 throw systemErrorFromErrno("accept() failed");
             } else {
                 return ClientConnection(client_fd);
@@ -180,8 +203,7 @@ namespace varlink {
         }
 
         ~ListeningConnection() {
-            socket.shutdown(SHUT_RDWR);
-            listeningThread.join();
+            socket->shutdown(SHUT_RDWR);
             unlink(socketAddress.c_str());
         }
     };

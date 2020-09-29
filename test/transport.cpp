@@ -101,6 +101,7 @@ TEST_F(ConnectionRead, ThrowTrailing) {
 }
 
 TEST_F(ConnectionRead, ThrowIncomplete) {
+    // TODO: This behaviour is invalid if we ever expect partial transmissions
     SetUp(std::vector<char>{'{', '"', 'c', 'd', 'e'});
     EXPECT_THROW((void)conn.receive(), std::runtime_error);
 }
@@ -147,4 +148,12 @@ TEST_F(ConnectionWrite, Partial) {
     conn.send(R"({"s":1})"_json);
     conn.send(R"({"object":true,"toolong":true})"_json);
     conn.send(R"({"last":true})"_json);
+}
+
+TEST(ConnectionListen, Accept) {
+    auto socket = std::make_unique<FakeSocket>();
+    EXPECT_CALL(*socket, accept(nullptr)).WillOnce(Return(8)).WillOnce(Return(-1));
+    auto conn = ListeningConnection<FakeSocket>(std::move(socket));
+    EXPECT_NO_THROW((void)conn.nextClient());
+    EXPECT_THROW((void)conn.nextClient(), std::system_error);
 }

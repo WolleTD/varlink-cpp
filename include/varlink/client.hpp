@@ -59,7 +59,7 @@ namespace varlink {
         }
     };
 
-    using Client = BasicClient<JsonConnection<PosixSocket> >;
+    using Client = BasicClient<JsonConnection<PosixSocket<Unix> > >;
 }
 
 #endif
