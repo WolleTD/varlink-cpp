@@ -17,14 +17,14 @@ class JsonConnection {
     byte_buffer::iterator read_end;
 
    public:
-    // Connect to a service via address
-    explicit JsonConnection(const std::string &address) : socket(address), readbuf(BUFSIZ), read_end(readbuf.begin()) {
-        socket.connect();
-    }
+    template <typename... Args>
+    explicit JsonConnection(Args &&...args)
+        : socket(std::make_unique<SocketT>(args...)), readbuf(BUFSIZ), read_end(readbuf.begin()) {}
 
     // Setup message stream on existing connection
     explicit JsonConnection(int posix_fd)
         : socket(std::make_unique<SocketT>(posix_fd)), readbuf(BUFSIZ), read_end(readbuf.begin()) {}
+
     explicit JsonConnection(std::unique_ptr<SocketT> existingSocket)
         : socket(std::move(existingSocket)), readbuf(BUFSIZ), read_end(readbuf.begin()) {}
 
@@ -52,36 +52,6 @@ class JsonConnection {
         } catch (json::parse_error &e) {
             throw std::runtime_error("Json parse error: " + message);
         }
-    }
-};
-
-template <typename SocketT>
-class ListeningConnection {
-   private:
-    std::unique_ptr<SocketT> socket;
-    std::string socketAddress;
-
-   public:
-    using ClientConnection = JsonConnection<SocketT>;
-
-    explicit ListeningConnection(const std::string &address)
-        : socket(std::make_unique<SocketT>(address)), socketAddress(address) {
-        socket->bind();
-        socket->listen(1024);
-    }
-
-    explicit ListeningConnection(std::unique_ptr<SocketT> existingSocket)
-        : socket(std::move(existingSocket)), socketAddress() {}
-    ListeningConnection(const ListeningConnection &src) = delete;
-    ListeningConnection &operator=(const ListeningConnection &) = delete;
-    ListeningConnection(ListeningConnection &&src) = delete;
-    ListeningConnection &operator=(ListeningConnection &&rhs) = delete;
-
-    [[nodiscard]] ClientConnection nextClient() { return ClientConnection(socket->accept(nullptr)); }
-
-    ~ListeningConnection() {
-        socket->shutdown(SHUT_RDWR);
-        unlink(socketAddress.c_str());
     }
 };
 

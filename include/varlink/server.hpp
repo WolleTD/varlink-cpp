@@ -11,21 +11,23 @@
 #include <varlink/varlink.hpp>
 
 namespace varlink {
-template <typename SocketT>
+template <template<enum socket::Mode Mode> typename SocketT>
 class BasicServer {
    public:
-    using ListenConnT = ListeningConnection<SocketT>;
-    using ClientConnT = typename ListenConnT::ClientConnection;
+    using ClientSockT = SocketT<socket::Mode::Connect>;
+    using ListenSockT = SocketT<socket::Mode::Listen>;
+    using ClientConnT = JsonConnection<ClientSockT>;
 
    private:
-    std::unique_ptr<ListenConnT> serviceConnection;
+    std::unique_ptr<ListenSockT> listenSocket;
     std::thread listenThread;
     Service service;
 
     void acceptLoop() {
         for (;;) {
             try {
-                std::thread{[this](auto conn) { clientLoop(std::move(conn)); }, serviceConnection->nextClient()}
+                std::thread{[this](auto conn) { clientLoop(std::move(conn)); },
+                            ClientConnT(listenSocket->accept(nullptr))}
                     .detach();
             } catch (std::system_error &e) {
                 if (e.code() == std::errc::invalid_argument) {
@@ -67,12 +69,12 @@ class BasicServer {
    public:
     BasicServer(const std::string &address, const std::string &vendor, const std::string &product,
                 const std::string &version, const std::string &url)
-        : serviceConnection(std::make_unique<ListenConnT>(address)),
+        : listenSocket(std::make_unique<ListenSockT>(address)),
           listenThread([this]() { acceptLoop(); }),
           service(vendor, product, version, url) {}
 
-    explicit BasicServer(std::unique_ptr<ListenConnT> listenConn)
-        : serviceConnection(std::move(listenConn)), service("", "", "", "") {}
+    explicit BasicServer(std::unique_ptr<ListenSockT> listenConn)
+        : listenSocket(std::move(listenConn)), service("", "", "", "") {}
 
     BasicServer(const BasicServer &src) = delete;
     BasicServer &operator=(const BasicServer &) = delete;
@@ -80,7 +82,7 @@ class BasicServer {
     BasicServer &operator=(BasicServer &&) = delete;
 
     ~BasicServer() {
-        serviceConnection.reset(nullptr);
+        listenSocket.reset(nullptr);
         listenThread.join();
     }
 
@@ -90,8 +92,7 @@ class BasicServer {
     }
 };
 
-template <typename Proto>
-using ThreadedServer = BasicServer<PosixSocket<Proto> >;
+using ThreadedServer = BasicServer<socket::UnixSocket>;
 }  // namespace varlink
 
 #endif

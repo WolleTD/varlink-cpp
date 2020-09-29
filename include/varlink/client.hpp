@@ -57,7 +57,7 @@ class BasicClient {
     }
 };
 
-using Client = BasicClient<JsonConnection<PosixSocket<Unix> > >;
+using Client = BasicClient<JsonConnection<socket::UnixSocket<socket::Mode::Connect> > >;
 }  // namespace varlink
 
 #endif

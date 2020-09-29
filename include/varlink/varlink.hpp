@@ -335,6 +335,9 @@ struct VarlinkURI {
             type = Type::TCP;
             path = path.substr(4);
             const auto colon = path.find(':');
+            if (colon == std::string_view::npos) {
+                throw std::invalid_argument("Missing port");
+            }
             host = path.substr(0, colon);
             port = path.substr(colon + 1);
         } else {

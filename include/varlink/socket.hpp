@@ -15,48 +15,47 @@
 #include <utility>
 #include <varlink/varlink.hpp>
 
-namespace varlink {
+namespace varlink::socket {
 inline std::system_error systemErrorFromErrno(const std::string &what) {
     return {std::error_code(errno, std::system_category()), what};
 }
 
-struct Unix {
-    static constexpr const int SOCK_FAMILY = AF_UNIX;
-    static constexpr const int SOCK_TYPE = SOCK_STREAM;
-
-    struct sockaddr : ::sockaddr_un {
-        constexpr sockaddr() : ::sockaddr_un{AF_UNIX, ""} {}
-
-        constexpr explicit sockaddr(std::string_view address) : sockaddr() {
-            if (address.length() + 1 > sizeof(sun_path)) {
-                throw std::system_error{std::make_error_code(std::errc::filename_too_long)};
-            }
-            address.copy(sun_path, address.length());
-        }
-    };
+namespace type {
+template <int Family, int Type>
+struct Base {
+    static constexpr const int SOCK_FAMILY = Family;
+    static constexpr const int SOCK_TYPE = Type;
 };
 
-struct TCP {
-    static constexpr const int SOCK_FAMILY = AF_INET;
-    static constexpr const int SOCK_TYPE = SOCK_STREAM;
+struct Unix : Base<AF_UNIX, SOCK_STREAM>, ::sockaddr_un {
+    constexpr Unix() : ::sockaddr_un{SOCK_FAMILY, ""} {}
 
-    struct sockaddr : ::sockaddr_in {
-        constexpr sockaddr() : ::sockaddr_in{AF_INET, 0, {INADDR_ANY}, {}} {}
-
-        constexpr explicit sockaddr(std::string_view host, uint16_t port) : sockaddr() {
-            sin_port = htons(port);
-            if (inet_pton(SOCK_FAMILY, host.data(), &sin_addr) < 0) {
-                throw std::invalid_argument("Invalid address");
-            }
+    constexpr explicit Unix(std::string_view address) : Unix() {
+        if (address.length() + 1 > sizeof(sun_path)) {
+            throw std::system_error{std::make_error_code(std::errc::filename_too_long)};
         }
-    };
+        address.copy(sun_path, address.length());
+    }
 };
+static_assert(sizeof(Unix) == sizeof(sockaddr_un));
 
-template <typename FamilyT>
+struct TCP : Base<AF_INET, SOCK_STREAM>, ::sockaddr_in {
+    constexpr TCP() : ::sockaddr_in{AF_INET, 0, {INADDR_ANY}, {}} {}
+
+    constexpr explicit TCP(std::string_view host, uint16_t port) : TCP() {
+        sin_port = htons(port);
+        if (inet_pton(SOCK_FAMILY, host.data(), &sin_addr) < 1) {
+            throw std::invalid_argument("Invalid address");
+        }
+    }
+};
+static_assert(sizeof(TCP) == sizeof(sockaddr_in));
+}  // namespace type
+
+enum class Mode { Connect, Listen, Raw };
+
+template <typename SockaddrT, enum Mode Mode = Mode::Raw, int MaxConnections = 1024>
 class PosixSocket {
-   public:
-    using SockaddrT = typename FamilyT::sockaddr;
-
    private:
     int socket_fd{-1};
     SockaddrT socketAddress{};
@@ -65,7 +64,7 @@ class PosixSocket {
     PosixSocket() = default;
 
     void socket(int type, int protocol) {
-        if ((socket_fd = ::socket(FamilyT::SOCK_FAMILY, type, protocol)) < 0) {
+        if ((socket_fd = ::socket(SockaddrT::SOCK_FAMILY, type, protocol)) < 0) {
             throw systemErrorFromErrno("socket() failed");
         }
     }
@@ -73,12 +72,26 @@ class PosixSocket {
    public:
     template <typename... Args>
     explicit PosixSocket(Args &&...args) : socketAddress(args...) {
-        socket(FamilyT::SOCK_TYPE | SOCK_CLOEXEC, 0);
+        socket(SockaddrT::SOCK_TYPE | SOCK_CLOEXEC, 0);
+        if constexpr (Mode == Mode::Connect) {
+            connect();
+        } else if constexpr (Mode == Mode::Listen) {
+            bind();
+            listen(MaxConnections);
+        }
     }
 
     explicit PosixSocket(int fd) : socket_fd(fd) {}
 
-    ~PosixSocket() { close(socket_fd); }
+    ~PosixSocket() {
+        if constexpr (Mode == Mode::Listen) {
+            shutdown(SHUT_RDWR);
+            if constexpr (std::is_same_v<SockaddrT, type::Unix>) {
+                unlink(socketAddress.sun_path);
+            }
+        }
+        close(socket_fd);
+    }
 
     void connect() {
         if (::connect(socket_fd, (sockaddr *)&socketAddress, sizeof(SockaddrT)) < 0) {
@@ -112,8 +125,7 @@ class PosixSocket {
         }
     }
 
-    void listen(size_t max_connections) {  // NOLINT (is not const: socket
-                                           // changes)
+    void listen(size_t max_connections) {  // NOLINT (is not const: socket changes)
         if (::listen(socket_fd, max_connections) < 0) {
             throw systemErrorFromErrno("listen() failed");
         }
@@ -132,6 +144,11 @@ class PosixSocket {
         ::shutdown(socket_fd, how);
     }
 };
-}  // namespace varlink
+
+template <enum Mode Mode, int MaxConnections = 1024>
+using UnixSocket = PosixSocket<type::Unix, Mode, MaxConnections>;
+template <enum Mode Mode, int MaxConnections = 1024>
+using TCPSocket = PosixSocket<type::TCP, Mode, MaxConnections>;
+}  // namespace varlink::socket
 
 #endif
