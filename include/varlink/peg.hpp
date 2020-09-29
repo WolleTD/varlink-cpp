@@ -7,87 +7,51 @@
 namespace pegtl = TAO_PEGTL_NAMESPACE;
 
 namespace grammar {
-    using namespace pegtl;
+using namespace pegtl;
 
-    struct whitespace : one<' ', '\t'> {};
-    struct eol_r : sor<one<'\r', '\n'>, string<'\r', '\n'>> {};
+struct whitespace : one<' ', '\t'> {};
+struct eol_r : sor<one<'\r', '\n'>, string<'\r', '\n'>> {};
 struct comment : seq<one<'#'>, star<not_one<'\r', '\n'>>, eol_r> {};
 struct eol : sor<seq<star<whitespace>, eol_r>, comment> {};
 struct wce : sor<whitespace, comment, eol_r> {};
 
-struct field_name : seq< alpha, star<opt<one<'_'> >, alnum> > {};
-struct name : seq< range<'A', 'Z'>, star<alnum> > {};
-struct interface_name : seq<range<'a', 'z'>,
-                        star< star< one<'-'> >, ranges<'a', 'z', '0', '9'> >,
-plus< one<'.'>, ranges<'a', 'z', '0', '9'>, star<
-        star< one<'-'> >, ranges<'a', 'z', '0', '9'> > > > {};
+struct field_name : seq<alpha, star<opt<one<'_'>>, alnum>> {};
+struct name : seq<range<'A', 'Z'>, star<alnum>> {};
+struct interface_name
+    : seq<range<'a', 'z'>, star<star<one<'-'>>, ranges<'a', 'z', '0', '9'>>,
+          plus<one<'.'>, ranges<'a', 'z', '0', '9'>, star<star<one<'-'>>, ranges<'a', 'z', '0', '9'>>>> {};
 struct array : string<'[', ']'> {};
 struct dict : string<'[', 's', 't', 'r', 'i', 'n', 'g', ']'> {};
 struct maybe : one<'?'> {};
 
 struct venum;
 struct vstruct;
-struct trivial_element_type : sor<
-        string<'b', 'o', 'o', 'l'>,
-                              string<'i', 'n', 't'>,
-                              string<'f', 'l', 'o', 'a', 't'>,
-                              string<'s', 't', 'r', 'i', 'n', 'g'>,
-                              string<'o', 'b', 'j', 'e', 'c', 't'>,
-                              name
-> {};
-struct element_type : sor<
-        trivial_element_type,
-        venum,
-        vstruct
-> {};
-struct type : sor<
-        element_type,
-        seq<maybe, element_type>,
-              seq<array, type>,
-              seq<dict, type>,
-              seq<maybe, array, type>,
-              seq<maybe, dict, type>
-> {};
+struct trivial_element_type : sor<string<'b', 'o', 'o', 'l'>, string<'i', 'n', 't'>, string<'f', 'l', 'o', 'a', 't'>,
+                                  string<'s', 't', 'r', 'i', 'n', 'g'>, string<'o', 'b', 'j', 'e', 'c', 't'>, name> {};
+struct element_type : sor<trivial_element_type, venum, vstruct> {};
+struct type : sor<element_type, seq<maybe, element_type>, seq<array, type>, seq<dict, type>, seq<maybe, array, type>,
+                  seq<maybe, dict, type>> {};
 struct object_start : one<'('> {};
 struct object_end : one<')'> {};
-struct venum : seq<
-        object_start,
-        opt< list< seq< star<wce>, field_name, star<wce> >, one<','> > >,
-star<wce>, object_end
-> {};
+struct venum : seq<object_start, opt<list<seq<star<wce>, field_name, star<wce>>, one<','>>>, star<wce>, object_end> {};
 struct argument : seq<star<wce>, field_name, star<wce>, one<':'>, star<wce>, type> {};
-struct vstruct : seq< object_start,
-        opt<list< seq< argument, star<wce> >, one<','> > >,
-star<wce>, object_end
-> {};
+struct vstruct : seq<object_start, opt<list<seq<argument, star<wce>>, one<','>>>, star<wce>, object_end> {};
 struct kwtype : string<'t', 'y', 'p', 'e'> {};
-struct vtypedef : sor<
-        seq< kwtype, plus<wce>, name, star<wce>, vstruct>,
-seq< kwtype, plus<wce>, name, star<wce>, venum>
-> {};
+struct vtypedef
+    : sor<seq<kwtype, plus<wce>, name, star<wce>, vstruct>, seq<kwtype, plus<wce>, name, star<wce>, venum>> {};
 struct kwerror : string<'e', 'r', 'r', 'o', 'r'> {};
-struct error : seq< kwerror, plus<wce>, name, star<wce>, vstruct> {};
+struct error : seq<kwerror, plus<wce>, name, star<wce>, vstruct> {};
 struct kwmethod : string<'m', 'e', 't', 'h', 'o', 'd'> {};
 struct kwarrow : string<'-', '>'> {};
-struct method : seq<
-        kwmethod, plus<wce>, name, star<wce>,
-                vstruct, star<wce>, kwarrow, star<wce>, vstruct
-> {};
-struct member : sor<
-        seq< star<wce>, method >,
-seq< star<wce>, vtypedef >,
-seq< star<wce>, error >
-> {};
+struct method : seq<kwmethod, plus<wce>, name, star<wce>, vstruct, star<wce>, kwarrow, star<wce>, vstruct> {};
+struct member : sor<seq<star<wce>, method>, seq<star<wce>, vtypedef>, seq<star<wce>, error>> {};
 struct kwinterface : string<'i', 'n', 't', 'e', 'r', 'f', 'a', 'c', 'e'> {};
-struct interface : must<
-        star<wce>, kwinterface, plus<wce>,
-                   interface_name, eol, list<member, eol>, star<wce>
-> {};
+struct interface : must<star<wce>, kwinterface, plus<wce>, interface_name, eol, list<member, eol>, star<wce>> {};
 
-template<typename Rule>
+template <typename Rule>
 struct inserter {};
 
-template<typename CallbackMap>
+template <typename CallbackMap>
 struct ParserState {
     struct {
         std::string moving_docstring{};
@@ -109,23 +73,21 @@ struct ParserState {
         explicit State(size_t pos_ = 0) : pos(pos_) {}
     };
     std::vector<State> stack{};
-    explicit ParserState(const CallbackMap &_callbacks) : global{.callbacks = _callbacks} {}
+    explicit ParserState(const CallbackMap& _callbacks) : global{.callbacks = _callbacks} {}
 };
 
-}
+}  // namespace grammar
 
-#define INSERTER(match) template<> \
-struct grammar::inserter<match> \
-{ \
-    template<typename ParseInput, typename InterfaceT, typename CallbackMap> \
-    static void apply(const ParseInput& input, InterfaceT& interface, ParserState<CallbackMap>& pstate); \
-};                                 \
-template<typename ParseInput, typename InterfaceT, typename CallbackMap>      \
-void grammar::inserter<match>::apply(                               \
-        [[maybe_unused]] const ParseInput& input,                              \
-        [[maybe_unused]] InterfaceT& interface,         \
-        [[maybe_unused]] ParserState<CallbackMap>& pstate)
-
+#define INSERTER(match)                                                                                      \
+    template <>                                                                                              \
+    struct grammar::inserter<match> {                                                                        \
+        template <typename ParseInput, typename InterfaceT, typename CallbackMap>                            \
+        static void apply(const ParseInput& input, InterfaceT& interface, ParserState<CallbackMap>& pstate); \
+    };                                                                                                       \
+    template <typename ParseInput, typename InterfaceT, typename CallbackMap>                                \
+    void grammar::inserter<match>::apply([[maybe_unused]] const ParseInput& input,                           \
+                                         [[maybe_unused]] InterfaceT& interface,                             \
+                                         [[maybe_unused]] ParserState<CallbackMap>& pstate)
 
 INSERTER(grammar::wce) {
     if (*input.begin() == '#') {
@@ -159,19 +121,16 @@ INSERTER(grammar::object_start) {
 
 INSERTER(grammar::field_name) {
     auto& state = pstate.stack.back();
-    if(input.position().byte > state.pos) {
+    if (input.position().byte > state.pos) {
         state.fields.push_back(input.string());
         state.pos = input.position().byte;
     }
 }
 
-INSERTER(grammar::trivial_element_type) {
-    pstate.stack.back().last_element_type = input.string();
-}
+INSERTER(grammar::trivial_element_type) { pstate.stack.back().last_element_type = input.string(); }
 
 INSERTER(grammar::name) {
-    if(pstate.stack.size() == 1)
-        pstate.global.name = input.string();
+    if (pstate.stack.size() == 1) pstate.global.name = input.string();
 }
 
 INSERTER(grammar::venum) {
@@ -197,17 +156,17 @@ INSERTER(grammar::vstruct) {
 
 INSERTER(grammar::type) {
     auto& state = pstate.stack.back();
-    if(state.last_type.empty()) {
+    if (state.last_type.empty()) {
         state.last_type["type"] = state.last_element_type;
-        if(state.dict_type) {
+        if (state.dict_type) {
             state.last_type["dict_type"] = true;
             state.dict_type = false;
         }
-        if(state.array_type) {
+        if (state.array_type) {
             state.last_type["array_type"] = true;
             state.array_type = false;
         }
-        if(state.maybe_type) {
+        if (state.maybe_type) {
             state.last_type["maybe_type"] = true;
             state.maybe_type = false;
         }
@@ -246,7 +205,7 @@ INSERTER(grammar::interface_name) {
 }
 
 INSERTER(grammar::error) {
-    for(const auto& m : interface.errors) {
+    for (const auto& m : interface.errors) {
         if (m.name == pstate.global.name)
             throw std::invalid_argument("Multiple definition of error " + pstate.global.name);
     }
@@ -256,14 +215,14 @@ INSERTER(grammar::error) {
 
 INSERTER(grammar::method) {
     if (std::find_if(interface.methods.cbegin(), interface.methods.cend(),
-                     [name=pstate.global.name](auto &m) { return (m.name == name); }) != interface.methods.cend()) {
+                     [name = pstate.global.name](auto& m) { return (m.name == name); }) != interface.methods.cend()) {
         throw std::invalid_argument("Multiple definition of method " + pstate.global.name);
     }
     auto& state = pstate.stack.back();
     using MethodCallback = decltype(CallbackMap::value_type::callback);
-    MethodCallback callback { nullptr };
+    MethodCallback callback{nullptr};
     const auto cbit = std::find_if(pstate.global.callbacks.begin(), pstate.global.callbacks.end(),
-                                   [name=pstate.global.name](auto& p) { return p.method == name; });
+                                   [name = pstate.global.name](auto& p) { return p.method == name; });
     if (cbit != pstate.global.callbacks.end()) {
         callback = cbit->callback;
         pstate.global.callbacks.erase(cbit);
@@ -273,7 +232,7 @@ INSERTER(grammar::method) {
 }
 
 INSERTER(grammar::vtypedef) {
-    for(const auto& m : interface.types) {
+    for (const auto& m : interface.types) {
         if (m.name == pstate.global.name)
             throw std::invalid_argument("Multiple definition of type " + pstate.global.name);
     }

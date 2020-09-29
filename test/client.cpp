@@ -1,12 +1,13 @@
-#include <varlink/client.hpp>
-#include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
+
+#include <varlink/client.hpp>
 
 using namespace varlink;
 using ::testing::Return;
 
 class MockConnection {
-public:
+   public:
     MOCK_METHOD(void, send, (const json& message));
     MOCK_METHOD(json, receive, ());
 };
@@ -26,7 +27,7 @@ TEST(Client, Parameters) {
     EXPECT_CALL(*conn, send(R"({"method":"test","parameters":{"test":123}})"_json));
     EXPECT_CALL(*conn, receive()).WillOnce(Return(R"({"test":123})"_json));
     BasicClient client(std::move(conn));
-    auto recv = client.call("test", {{"test",123}});
+    auto recv = client.call("test", {{"test", 123}});
     EXPECT_EQ(R"({"test":123})"_json, recv());
     EXPECT_EQ(json{}, recv());
 }
@@ -36,7 +37,7 @@ TEST(Client, InvalidParameters) {
     EXPECT_CALL(*conn, send(R"({"method":"test","parameters":{"test":123}})"_json));
     EXPECT_CALL(*conn, send(R"({"method":"test"})"_json)).Times(2);
     BasicClient client(std::move(conn));
-    EXPECT_NO_THROW(client.call("test", {{"test",123}}));
+    EXPECT_NO_THROW(client.call("test", {{"test", 123}}));
     EXPECT_NO_THROW(client.call("test", {}));
     EXPECT_NO_THROW(client.call("test", json::object()));
     EXPECT_THROW(client.call("test", {"not an object"}), std::invalid_argument);
@@ -55,11 +56,12 @@ TEST(Client, Oneway) {
 TEST(Client, More) {
     auto conn = std::make_unique<MockConnection>();
     EXPECT_CALL(*conn, send(R"({"method":"test","more":true})"_json));
-    EXPECT_CALL(*conn, receive()).Times(4)
-            .WillOnce(Return(R"({"test":3,"continues":true})"_json))
-            .WillOnce(Return(R"({"test":2,"continues":true})"_json))
-            .WillOnce(Return(R"({"test":1,"continues":true})"_json))
-            .WillOnce(Return(R"({"test":0,"continues":false})"_json));
+    EXPECT_CALL(*conn, receive())
+        .Times(4)
+        .WillOnce(Return(R"({"test":3,"continues":true})"_json))
+        .WillOnce(Return(R"({"test":2,"continues":true})"_json))
+        .WillOnce(Return(R"({"test":1,"continues":true})"_json))
+        .WillOnce(Return(R"({"test":0,"continues":false})"_json));
     BasicClient client(std::move(conn));
     auto recv = client.call("test", {}, BasicClient<MockConnection>::CallMode::More);
     EXPECT_EQ(R"({"test":3,"continues":true})"_json, recv());

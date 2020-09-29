@@ -1,7 +1,8 @@
-#include <fstream>
-#include <filesystem>
-#include <varlink/transport.hpp>
 #include <gtest/gtest.h>
+
+#include <filesystem>
+#include <fstream>
+#include <varlink/transport.hpp>
 
 using namespace varlink;
 namespace fs = std::filesystem;
@@ -43,8 +44,9 @@ TEST(ListenSocket, NoPermissions) {
 }
 
 TEST(ListenSocket, FilenameTooLong) {
-    const fs::path path = "some.very.long.filename.that.does.not.fit.into.sockaddr_un.saddr."
-            "requires.two.lines.in.c++.to.be.readable.as.it.has.to.be.longer.than.108.characters";
+    const fs::path path =
+        "some.very.long.filename.that.does.not.fit.into.sockaddr_un.saddr."
+        "requires.two.lines.in.c++.to.be.readable.as.it.has.to.be.longer.than.108.characters";
     EXPECT_THROW(ListenSock{path}, std::system_error);
     EXPECT_FALSE(fs::exists(path));
 }

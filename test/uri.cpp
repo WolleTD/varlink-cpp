@@ -1,5 +1,6 @@
-#include <varlink/varlink.hpp>
 #include <gtest/gtest.h>
+
+#include <varlink/varlink.hpp>
 
 using namespace varlink;
 using std::string;

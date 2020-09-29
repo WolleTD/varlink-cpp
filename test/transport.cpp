@@ -1,9 +1,11 @@
-#include <varlink/client.hpp>
-#include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
+
+#include <varlink/client.hpp>
 
 using namespace varlink;
 using ::testing::Return;
+using ::testing::Throw;
 
 struct FakeSocket {
     size_t write_max{BUFSIZ};
@@ -14,8 +16,8 @@ struct FakeSocket {
     explicit FakeSocket([[maybe_unused]] int fd) {}
     ~FakeSocket() { EXPECT_EQ(data, exp); }
 
-    template <typename IteratorT, typename = std::enable_if_t<
-            std::is_convertible_v<typename IteratorT::value_type,char> > >
+    template <typename IteratorT,
+              typename = std::enable_if_t<std::is_convertible_v<typename IteratorT::value_type, char> > >
     IteratorT write(IteratorT begin, IteratorT end) {
         if (static_cast<size_t>(end - begin) > write_max) {
             data.insert(data.end(), begin, begin + write_max);
@@ -25,26 +27,22 @@ struct FakeSocket {
             return end;
         }
     }
-    std::string::const_iterator write(const std::string &vec) {
-        return write(vec.cbegin(), vec.cend() + 1);
-    }
-    template<typename T>
+    std::string::const_iterator write(const std::string &vec) { return write(vec.cbegin(), vec.cend() + 1); }
+    template <typename T>
     typename T::const_iterator write(const T &vec) {
         return write(vec.cbegin(), vec.cend());
     }
 
-    template <typename IteratorT, typename = std::enable_if_t<
-            std::is_convertible_v<typename IteratorT::value_type,char> > >
+    template <typename IteratorT,
+              typename = std::enable_if_t<std::is_convertible_v<typename IteratorT::value_type, char> > >
     IteratorT write_exp(IteratorT begin, IteratorT end) {
         exp.insert(exp.end(), begin, end);
         return end;
     }
-    std::string::const_iterator write_exp(const std::string &vec) {
-        return write_exp(vec.cbegin(), vec.cend() + 1);
-    }
+    std::string::const_iterator write_exp(const std::string &vec) { return write_exp(vec.cbegin(), vec.cend() + 1); }
 
-    template <typename IteratorT, typename = std::enable_if_t<
-            std::is_convertible_v<typename IteratorT::value_type,char> > >
+    template <typename IteratorT,
+              typename = std::enable_if_t<std::is_convertible_v<typename IteratorT::value_type, char> > >
     IteratorT read(IteratorT begin, IteratorT end) {
         if (data.empty()) {
             throw systemErrorFromErrno("read() failed");
@@ -59,21 +57,19 @@ struct FakeSocket {
         }
     }
 
-    MOCK_METHOD(int, accept, (struct sockaddr_un *addr));
+    MOCK_METHOD(int, accept, (struct sockaddr_un * addr));
     MOCK_METHOD(void, shutdown, (int how));
 };
 
 class ConnectionRead : public ::testing::Test {
-protected:
+   protected:
     std::unique_ptr<FakeSocket> socket;
     JsonConnection<FakeSocket> conn{-1};
 
-    void SetUp() override {
-        socket = std::make_unique<FakeSocket>();
-    }
+    void SetUp() override { socket = std::make_unique<FakeSocket>(); }
 
-    template<typename... Args>
-    void SetUp(Args&&... args) {
+    template <typename... Args>
+    void SetUp(Args &&...args) {
         socket = std::make_unique<FakeSocket>();
         (socket->write(args), ...);
         conn = JsonConnection<FakeSocket>{std::move(socket)};
@@ -118,16 +114,14 @@ TEST_F(ConnectionRead, SuccesThenThrowEOF) {
 }
 
 class ConnectionWrite : public ::testing::Test {
-protected:
+   protected:
     std::unique_ptr<FakeSocket> socket;
     JsonConnection<FakeSocket> conn{-1};
 
-    void SetUp() override {
-        socket = std::make_unique<FakeSocket>();
-    }
+    void SetUp() override { socket = std::make_unique<FakeSocket>(); }
 
-    template<typename... Args>
-    void SetUp(size_t write_max, Args&&... args) {
+    template <typename... Args>
+    void SetUp(size_t write_max, Args &&...args) {
         socket = std::make_unique<FakeSocket>();
         socket->write_max = write_max;
         (socket->write_exp(args), ...);
@@ -152,7 +146,7 @@ TEST_F(ConnectionWrite, Partial) {
 
 TEST(ConnectionListen, Accept) {
     auto socket = std::make_unique<FakeSocket>();
-    EXPECT_CALL(*socket, accept(nullptr)).WillOnce(Return(8)).WillOnce(Return(-1));
+    EXPECT_CALL(*socket, accept(nullptr)).WillOnce(Return(8)).WillOnce(Throw(std::system_error()));
     auto conn = ListeningConnection<FakeSocket>(std::move(socket));
     EXPECT_NO_THROW((void)conn.nextClient());
     EXPECT_THROW((void)conn.nextClient(), std::system_error);

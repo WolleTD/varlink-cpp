@@ -1,5 +1,6 @@
-#include <varlink/varlink.hpp>
 #include <gtest/gtest.h>
+
+#include <varlink/varlink.hpp>
 
 using namespace varlink;
 
@@ -54,13 +55,13 @@ TEST(Message, InterfaceAndMethod) {
         std::string input;
         std::pair<std::string, std::string> output;
     };
-    const std::vector<TestData> testdata {
-            {"", {"", ""}},
-            {"test", {"test", "test"}},
-            {"a.b", {"a", "b"}},
-            {"a.b.c.D", {"a.b.c", "D"}},
-            {"org.varlink.service.GetInfo", {"org.varlink.service", "GetInfo"}},
-            {"a.b.c.", {"a.b.c", ""}},
+    const std::vector<TestData> testdata{
+        {"", {"", ""}},
+        {"test", {"test", "test"}},
+        {"a.b", {"a", "b"}},
+        {"a.b.c.D", {"a.b.c", "D"}},
+        {"org.varlink.service.GetInfo", {"org.varlink.service", "GetInfo"}},
+        {"a.b.c.", {"a.b.c", ""}},
     };
     for (const auto& test : testdata) {
         auto msg = Message(json{{"method", test.input}});
