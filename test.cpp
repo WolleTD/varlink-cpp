@@ -26,7 +26,7 @@ constexpr std::string_view getInterfaceName(const std::string_view description) 
     return description.substr(posInterface, lenInterface);
 }
 
-std::unique_ptr<varlink::ThreadedUnixServer> service;
+std::unique_ptr<varlink::VarlinkServer> service;
 
 void signalHandler(int32_t) {
     service.reset(nullptr);
@@ -48,8 +48,9 @@ int main() {
     signal(SIGINT, signalHandler);
     signal(SIGPIPE, SIG_IGN);
     try {
-        service = std::make_unique<varlink::ThreadedUnixServer>(varlink::Service::Description{"a", "b", "c", "d"},
-                                                            "/tmp/test.socket");
+        std::filesystem::remove("/tmp/test.socket");
+        service = std::make_unique<varlink::VarlinkServer>("unix:/tmp/test.socket",
+                                                           varlink::Service::Description{"a", "b", "c", "d"});
     } catch (std::exception& e) {
         std::cerr << "Couldn't start service: " << e.what() << "\n";
         return 1;

@@ -6,5 +6,5 @@ function(vltest NAME)
     add_test(${NAME} test_${NAME})
 endfunction()
 
-vltest(unittests client.cpp interface.cpp message.cpp service.cpp transport.cpp uri.cpp socket.cpp)
+vltest(unittests client.cpp interface.cpp message.cpp service.cpp transport.cpp uri.cpp socket.cpp server.cpp)
 vltest(sockets unix-socket.cpp)

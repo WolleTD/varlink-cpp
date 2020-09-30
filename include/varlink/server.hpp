@@ -3,9 +3,11 @@
 #define LIBVARLINK_VARLINK_SERVER_HPP
 
 #include <cerrno>
+#include <charconv>
 #include <functional>
 #include <string>
 #include <system_error>
+#include <thread>
 #include <utility>
 #include <variant>
 #include <varlink/transport.hpp>
@@ -19,16 +21,16 @@ class BasicServer {
 
    protected:
     std::unique_ptr<SocketT> listenSocket;
-    Service service;
+    std::unique_ptr<Service> service;
 
    public:
     template <typename... Args>
     explicit BasicServer(const Service::Description &description, Args &&...args)
         : listenSocket(std::make_unique<SocketT>(socket::Mode::Listen, std::forward<Args>(args)...)),
-          service(description) {}
+          service(std::make_unique<Service>(description)) {}
 
     explicit BasicServer(std::unique_ptr<SocketT> listenConn, const Service::Description &description)
-        : listenSocket(std::move(listenConn)), service(description) {}
+        : listenSocket(std::move(listenConn)), service(std::make_unique<Service>(description)) {}
 
     BasicServer(const BasicServer &src) = delete;
     BasicServer &operator=(const BasicServer &) = delete;
@@ -47,7 +49,7 @@ class BasicServer {
 
         try {
             const Message message{conn.receive()};
-            const auto reply = service.messageCall(message, sendmore);
+            const auto reply = service->messageCall(message, sendmore);
             if (reply.is_object()) {
                 conn.send(reply);
             }
@@ -60,7 +62,7 @@ class BasicServer {
 
     template <typename... Args>
     void addInterface(Args &&...args) {
-        service.addInterface(std::forward<Args>(args)...);
+        service->addInterface(std::forward<Args>(args)...);
     }
 };
 
@@ -108,13 +110,13 @@ class ThreadedServer : BasicServer<SocketT> {
 
     ThreadedServer(const ThreadedServer &src) = delete;
     ThreadedServer &operator=(const ThreadedServer &) = delete;
-    ThreadedServer(ThreadedServer &&src) noexcept = default;
-    ThreadedServer &operator=(ThreadedServer &&src) noexcept = default;
+    ThreadedServer(ThreadedServer &&src) noexcept = delete;  // Thread references this
+    ThreadedServer &operator=(ThreadedServer &&src) noexcept = delete;
 
     ~ThreadedServer() {
         // There is no dedicated thread communication yet, so we use the socket to terminate
         // the listening thread TODO: thread pool will fix this
-        Base::listenSocket->shutdown(SHUT_RDWR);
+        if (Base::listenSocket) Base::listenSocket->shutdown(SHUT_RDWR);
         listenThread.join();
     }
 
@@ -125,6 +127,41 @@ class ThreadedServer : BasicServer<SocketT> {
 
 using ThreadedUnixServer = ThreadedServer<socket::UnixSocket>;
 using ThreadedTCPServer = ThreadedServer<socket::TCPSocket>;
+
+class VarlinkServer {
+   public:
+    using ServerT = std::variant<std::unique_ptr<ThreadedTCPServer>, std::unique_ptr<ThreadedUnixServer> >;
+
+   private:
+    ServerT threadedServer;
+
+    static ServerT makeServer(const VarlinkURI &uri, const Service::Description &description) {
+        if (uri.type == VarlinkURI::Type::Unix) {
+            return std::make_unique<ThreadedUnixServer>(description, uri.path);
+        } else if (uri.type == VarlinkURI::Type::TCP) {
+            uint16_t port;
+            if (auto r = std::from_chars(uri.port.begin(), uri.port.end(), port); r.ptr != uri.port.end()) {
+                throw std::invalid_argument("Invalid port");
+            }
+            return std::make_unique<ThreadedTCPServer>(description, uri.host, port);
+        } else {
+            throw std::invalid_argument("Unsupported protocol");
+        }
+    }
+
+   public:
+    VarlinkServer(std::string_view uri, const Service::Description &description)
+        : threadedServer(makeServer(VarlinkURI(uri), description)) {}
+
+    template <typename... Args>
+    void addInterface(Args &&...args) {
+        std::visit([&](auto &&srv) { srv->addInterface(std::forward<Args>(args)...); }, threadedServer);
+    }
+
+    void join() {
+        std::visit([](auto &&srv) { srv->join(); }, threadedServer);
+    }
+};
 }  // namespace varlink
 
 #endif
