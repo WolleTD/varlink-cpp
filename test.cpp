@@ -26,11 +26,11 @@ constexpr std::string_view getInterfaceName(const std::string_view description) 
     return description.substr(posInterface, lenInterface);
 }
 
-std::unique_ptr<varlink::ThreadedServer> service;
+std::unique_ptr<varlink::ThreadedUnixServer> service;
 
-void signalHandler(int32_t signal) {
+void signalHandler(int32_t) {
     service.reset(nullptr);
-    exit(128 + signal);
+    exit(0);
 }
 
 #ifdef TEST_SCANNER
@@ -48,8 +48,8 @@ int main() {
     signal(SIGINT, signalHandler);
     signal(SIGPIPE, SIG_IGN);
     try {
-        service = std::make_unique<varlink::ThreadedServer>("/tmp/test.socket",
-                                                            varlink::Service::Description{"a", "b", "c", "d"});
+        service = std::make_unique<varlink::ThreadedUnixServer>(varlink::Service::Description{"a", "b", "c", "d"},
+                                                            "/tmp/test.socket");
     } catch (std::exception& e) {
         std::cerr << "Couldn't start service: " << e.what() << "\n";
         return 1;
@@ -81,9 +81,7 @@ int main() {
                      throw varlink::varlink_error("org.varlink.service.InvalidParameter", {{"parameter", "more"}});
                  }
              }}});
-    std::cout << "waiting...\n";
-    std::this_thread::sleep_for(200s);
-    std::cout << "done\n";
+    service->join();
     return 0;
 }
 #else

@@ -28,6 +28,11 @@ class JsonConnection {
     explicit JsonConnection(std::unique_ptr<SocketT> existingSocket)
         : socket(std::move(existingSocket)), readbuf(BUFSIZ), read_end(readbuf.begin()) {}
 
+    JsonConnection(const JsonConnection&) = delete;
+    JsonConnection& operator=(const JsonConnection&) = delete;
+    JsonConnection(JsonConnection&&) noexcept = default;
+    JsonConnection& operator=(JsonConnection&&) noexcept = default;
+
     void send(const json &message) {
         const auto m = message.dump();
         const auto end = m.end() + 1;  // Include \0
