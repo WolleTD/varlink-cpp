@@ -54,11 +54,12 @@ static_assert(sizeof(TCP) == sizeof(sockaddr_in));
 
 enum class Mode { Connect, Listen, Raw };
 
-template <typename SockaddrT, enum Mode Mode = Mode::Raw, int MaxConnections = 1024>
+template <typename SockaddrT, int MaxConnections = 1024>
 class PosixSocket {
    private:
     int socket_fd{-1};
     SockaddrT socketAddress{};
+    Mode socket_mode{Mode::Raw};
 
    protected:
     PosixSocket() = default;
@@ -71,11 +72,11 @@ class PosixSocket {
 
    public:
     template <typename... Args>
-    explicit PosixSocket(Args &&...args) : socketAddress(args...) {
+    explicit PosixSocket(Mode mode, Args &&...args) : socketAddress(args...), socket_mode(mode) {
         socket(SockaddrT::SOCK_TYPE | SOCK_CLOEXEC, 0);
-        if constexpr (Mode == Mode::Connect) {
+        if (mode == Mode::Connect) {
             connect();
-        } else if constexpr (Mode == Mode::Listen) {
+        } else if (mode == Mode::Listen) {
             bind();
             listen(MaxConnections);
         }
@@ -83,14 +84,25 @@ class PosixSocket {
 
     explicit PosixSocket(int fd) : socket_fd(fd) {}
 
+    PosixSocket(const PosixSocket &src) = delete;
+    PosixSocket &operator=(const PosixSocket &rhs) = delete;
+    PosixSocket(PosixSocket &&src) noexcept {
+        socket_fd = std::exchange(src.socket_fd, -1);
+        std::swap(socketAddress, src.socketAddress);
+    }
+    PosixSocket &operator=(PosixSocket &&rhs) noexcept {
+        PosixSocket s(std::move(rhs));
+        socket_fd = std::exchange(s.socket_fd, -1);
+        std::swap(socketAddress, s.socketAddress);
+    }
+
     ~PosixSocket() {
-        if constexpr (Mode == Mode::Listen) {
-            shutdown(SHUT_RDWR);
-            if constexpr (std::is_same_v<SockaddrT, type::Unix>) {
+        close(socket_fd);
+        if constexpr (std::is_same_v<SockaddrT, type::Unix>) {
+            if (socket_mode == Mode::Listen) {
                 unlink(socketAddress.sun_path);
             }
         }
-        close(socket_fd);
     }
 
     void connect() {
@@ -145,10 +157,8 @@ class PosixSocket {
     }
 };
 
-template <enum Mode Mode, int MaxConnections = 1024>
-using UnixSocket = PosixSocket<type::Unix, Mode, MaxConnections>;
-template <enum Mode Mode, int MaxConnections = 1024>
-using TCPSocket = PosixSocket<type::TCP, Mode, MaxConnections>;
+using UnixSocket = PosixSocket<type::Unix>;
+using TCPSocket = PosixSocket<type::TCP>;
 }  // namespace varlink::socket
 
 #endif

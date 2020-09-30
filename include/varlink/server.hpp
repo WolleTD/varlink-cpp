@@ -11,15 +11,13 @@
 #include <varlink/varlink.hpp>
 
 namespace varlink {
-template <template<enum socket::Mode Mode> typename SocketT>
-class BasicServer {
+template <typename SocketT>
+class BasicThreadedServer {
    public:
-    using ClientSockT = SocketT<socket::Mode::Connect>;
-    using ListenSockT = SocketT<socket::Mode::Listen>;
-    using ClientConnT = JsonConnection<ClientSockT>;
+    using ClientConnT = JsonConnection<SocketT>;
 
    private:
-    std::unique_ptr<ListenSockT> listenSocket;
+    std::unique_ptr<SocketT> listenSocket;
     std::thread listenThread;
     Service service;
 
@@ -67,22 +65,21 @@ class BasicServer {
     }
 
    public:
-    BasicServer(const std::string &address, const std::string &vendor, const std::string &product,
-                const std::string &version, const std::string &url)
-        : listenSocket(std::make_unique<ListenSockT>(address)),
+    BasicThreadedServer(const std::string &address, const Service::Description &description)
+        : listenSocket(std::make_unique<SocketT>(socket::Mode::Listen, address)),
           listenThread([this]() { acceptLoop(); }),
-          service(vendor, product, version, url) {}
+          service(description) {}
 
-    explicit BasicServer(std::unique_ptr<ListenSockT> listenConn)
-        : listenSocket(std::move(listenConn)), service("", "", "", "") {}
+    explicit BasicThreadedServer(std::unique_ptr<SocketT> listenConn, const Service::Description &description)
+        : listenSocket(std::move(listenConn)), service(description) {}
 
-    BasicServer(const BasicServer &src) = delete;
-    BasicServer &operator=(const BasicServer &) = delete;
-    BasicServer(BasicServer &&src) = delete;
-    BasicServer &operator=(BasicServer &&) = delete;
+    BasicThreadedServer(const BasicThreadedServer &src) = delete;
+    BasicThreadedServer &operator=(const BasicThreadedServer &) = delete;
+    BasicThreadedServer(BasicThreadedServer &&src) = delete;
+    BasicThreadedServer &operator=(BasicThreadedServer &&) = delete;
 
-    ~BasicServer() {
-        listenSocket.reset(nullptr);
+    ~BasicThreadedServer() {
+        listenSocket->shutdown(SHUT_RDWR);
         listenThread.join();
     }
 
@@ -92,7 +89,7 @@ class BasicServer {
     }
 };
 
-using ThreadedServer = BasicServer<socket::UnixSocket>;
+using ThreadedServer = BasicThreadedServer<socket::UnixSocket>;
 }  // namespace varlink
 
 #endif

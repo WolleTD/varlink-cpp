@@ -21,7 +21,8 @@ class BasicClient {
         Upgrade,
     };
 
-    explicit BasicClient(const std::string &address) : conn(std::make_unique<ConnectionT>(address)) {}
+    explicit BasicClient(const std::string &address)
+        : conn(socket::Mode::Connect, std::make_unique<ConnectionT>(address)) {}
 
     explicit BasicClient(std::unique_ptr<ConnectionT> connection) : conn(std::move(connection)) {}
 
@@ -57,7 +58,7 @@ class BasicClient {
     }
 };
 
-using Client = BasicClient<JsonConnection<socket::UnixSocket<socket::Mode::Connect> > >;
+using Client = BasicClient<JsonConnection<socket::UnixSocket> >;
 }  // namespace varlink
 
 #endif

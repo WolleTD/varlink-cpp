@@ -11,8 +11,9 @@ TEST(SocketAddress, Udp) {
 }
 
 TEST(SocketAddress, UdpTooLong) {
-    const std::string_view path = "some.very.long.filename.that.does.not.fit.into.sockaddr_un."
-    "saddr.requires.two.lines.in.c++.to.be.readable.as.it.has.to.be.longer.than.108.characters";
+    const std::string_view path =
+        "some.very.long.filename.that.does.not.fit.into.sockaddr_un."
+        "saddr.requires.two.lines.in.c++.to.be.readable.as.it.has.to.be.longer.than.108.characters";
     EXPECT_THROW(type::Unix{path}, std::system_error);
 }
 
@@ -29,4 +30,3 @@ TEST(SocketAddress, TcpInvalid) {
     EXPECT_THROW(type::TCP("www.google.de", 123), std::invalid_argument);
     EXPECT_THROW(type::TCP("localhost", 123), std::invalid_argument);
 }
-

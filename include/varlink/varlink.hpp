@@ -9,6 +9,7 @@
 #include <nlohmann/json.hpp>
 #include <sstream>
 #include <string_view>
+#include <utility>
 #include <varlink/org.varlink.service.varlink.hpp>
 #include <varlink/peg.hpp>
 #include <vector>
@@ -207,11 +208,16 @@ class Message {
 };
 
 class Service {
+   public:
+    struct Description {
+        std::string vendor{};
+        std::string product{};
+        std::string version{};
+        std::string url{};
+    };
+
    private:
-    std::string serviceVendor;
-    std::string serviceProduct;
-    std::string serviceVersion;
-    std::string serviceUrl;
+    Description description;
     std::vector<Interface> interfaces;
 
     auto findInterface(const std::string& ifname) {
@@ -220,37 +226,35 @@ class Service {
     }
 
    public:
-    Service(std::string vendor, std::string product, std::string version, std::string url)
-        : serviceVendor{std::move(vendor)},
-          serviceProduct{std::move(product)},
-          serviceVersion{std::move(version)},
-          serviceUrl{std::move(url)} {
-        addInterface(
-            org_varlink_service_varlink,
-            CallbackMap{{"GetInfo",
-                         [this] VarlinkCallback {
-                             json info = {{"vendor", serviceVendor},
-                                          {"product", serviceProduct},
-                                          {"version", serviceVersion},
-                                          {"url", serviceUrl}};
-                             info["interfaces"] = json::array();
-                             for (const auto& interface : interfaces) {
-                                 info["interfaces"].push_back(interface.name());
-                             }
-                             return info;
-                         }},
-                        {"GetInterfaceDescription", [this] VarlinkCallback {
-                             const auto& ifname = parameters["interface"].get<std::string>();
+    explicit Service(Description desc) : description(std::move(desc)) {
+        auto getInfo = [this] VarlinkCallback {
+            json info = {{"vendor", description.vendor},
+                         {"product", description.product},
+                         {"version", description.version},
+                         {"url", description.url}};
+            info["interfaces"] = json::array();
+            for (const auto& interface : interfaces) {
+                info["interfaces"].push_back(interface.name());
+            }
+            return info;
+        };
+        auto getInterfaceDescription = [this] VarlinkCallback {
+            const auto& ifname = parameters["interface"].get<std::string>();
 
-                             if (const auto interface = findInterface(ifname); interface != interfaces.cend()) {
-                                 std::stringstream ss;
-                                 ss << *interface;
-                                 return {{"description", ss.str()}};
-                             } else {
-                                 throw varlink_error("org.varlink.service.InterfaceNotFound", {{"interface", ifname}});
-                             }
-                         }}});
+            if (const auto interface = findInterface(ifname); interface != interfaces.cend()) {
+                std::stringstream ss;
+                ss << *interface;
+                return {{"description", ss.str()}};
+            } else {
+                throw varlink_error("org.varlink.service.InterfaceNotFound", {{"interface", ifname}});
+            }
+        };
+        addInterface(org_varlink_service_varlink,
+                     {{"GetInfo", getInfo}, {"GetInterfaceDescription", getInterfaceDescription}});
     }
+
+    Service(std::string vendor, std::string product, std::string version, std::string url)
+        : Service(Description{std::move(vendor), std::move(product), std::move(version), std::move(url)}) {}
 
     Service(const Service& src) = delete;
     Service& operator=(const Service&) = delete;
@@ -301,6 +305,10 @@ class Service {
     template <typename... Args>
     void addInterface(Args&&... args) {
         interfaces.emplace_back(std::forward<Args>(args)...);
+    }
+
+    void addInterface(std::string_view definition, const CallbackMap& callbacks) {
+        interfaces.emplace_back(definition, callbacks);
     }
 };
 
