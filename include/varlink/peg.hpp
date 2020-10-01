@@ -54,10 +54,10 @@ struct inserter {};
 template <typename CallbackMap>
 struct ParserState {
     struct {
+        CallbackMap callbacks{};
         std::string moving_docstring{};
         std::string docstring{};
         std::string name{};
-        CallbackMap callbacks{};
         nlohmann::json method_params{};
     } global;
 
@@ -73,7 +73,7 @@ struct ParserState {
         explicit State(size_t pos_ = 0) : pos(pos_) {}
     };
     std::vector<State> stack{};
-    explicit ParserState(const CallbackMap& _callbacks) : global{.callbacks = _callbacks} {}
+    explicit ParserState(const CallbackMap& _callbacks) : global{_callbacks} {}
 };
 
 }  // namespace grammar

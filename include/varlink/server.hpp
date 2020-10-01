@@ -29,8 +29,8 @@ class BasicServer {
         : listenSocket(std::make_unique<SocketT>(socket::Mode::Listen, std::forward<Args>(args)...)),
           service(std::make_unique<ServiceT>(description)) {}
 
-    explicit BasicServer(std::unique_ptr<SocketT> listenConn, std::unique_ptr<ServiceT> service)
-        : listenSocket(std::move(listenConn)), service(std::move(service)) {}
+    explicit BasicServer(std::unique_ptr<SocketT> listenConn, std::unique_ptr<ServiceT> existingService)
+        : listenSocket(std::move(listenConn)), service(std::move(existingService)) {}
 
     BasicServer(const BasicServer &src) = delete;
     BasicServer &operator=(const BasicServer &) = delete;

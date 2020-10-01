@@ -74,11 +74,16 @@ class PosixSocket {
     template <typename... Args>
     explicit PosixSocket(Mode mode, Args &&...args) : socketAddress(args...), socket_mode(mode) {
         socket(SockaddrT::SOCK_TYPE | SOCK_CLOEXEC, 0);
-        if (mode == Mode::Connect) {
-            connect();
-        } else if (mode == Mode::Listen) {
-            bind();
-            listen(MaxConnections);
+        try {
+            if (mode == Mode::Connect) {
+                connect();
+            } else if (mode == Mode::Listen) {
+                bind();
+                listen(MaxConnections);
+            }
+        } catch (std::system_error& e) {
+            close(socket_fd);
+            throw;
         }
     }
 
@@ -106,7 +111,7 @@ class PosixSocket {
     }
 
     void connect() {
-        if (::connect(socket_fd, (sockaddr *)&socketAddress, sizeof(SockaddrT)) < 0) {
+        if (::connect(socket_fd, reinterpret_cast<sockaddr *>(&socketAddress), sizeof(SockaddrT)) < 0) {
             throw systemErrorFromErrno("connect() failed");
         }
     }
@@ -114,7 +119,7 @@ class PosixSocket {
     template <typename IteratorT,
               typename = std::enable_if_t<std::is_convertible_v<typename IteratorT::value_type, char> > >
     IteratorT write(IteratorT begin, IteratorT end) {
-        const auto ret = ::write(socket_fd, &(*begin), end - begin);
+        const auto ret = ::write(socket_fd, &(*begin), static_cast<size_t>(end - begin));
         if (ret < 0) {
             throw systemErrorFromErrno("write() failed");
         }
@@ -124,7 +129,7 @@ class PosixSocket {
     template <typename IteratorT,
               typename = std::enable_if_t<std::is_convertible_v<typename IteratorT::value_type, char> > >
     IteratorT read(IteratorT begin, IteratorT end) {
-        const auto ret = ::read(socket_fd, &(*begin), end - begin);
+        const auto ret = ::read(socket_fd, &(*begin), static_cast<size_t>(end - begin));
         if (ret <= 0) {
             throw systemErrorFromErrno("read() failed");
         }
@@ -132,12 +137,12 @@ class PosixSocket {
     }
 
     void bind() {
-        if (::bind(socket_fd, (sockaddr *)&socketAddress, sizeof(SockaddrT)) < 0) {
+        if (::bind(socket_fd, reinterpret_cast<sockaddr *>(&socketAddress), sizeof(SockaddrT)) < 0) {
             throw systemErrorFromErrno("bind() failed");
         }
     }
 
-    void listen(size_t max_connections) {  // NOLINT (is not const: socket changes)
+    void listen(int max_connections) {  // NOLINT (is not const: socket changes)
         if (::listen(socket_fd, max_connections) < 0) {
             throw systemErrorFromErrno("listen() failed");
         }
@@ -145,7 +150,7 @@ class PosixSocket {
 
     int accept(SockaddrT *addr) {
         socklen_t addrlen = sizeof(SockaddrT);
-        auto fd = ::accept(socket_fd, (sockaddr *)addr, &addrlen);
+        auto fd = ::accept(socket_fd, reinterpret_cast<sockaddr *>(addr), &addrlen);
         if (fd < 0) {
             throw systemErrorFromErrno("accept() failed");
         }

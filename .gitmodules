@@ -1,6 +1,6 @@
 [submodule "pegtl"]
-	path = pegtl
+	path = 3rdparty/pegtl
 	url = https://github.com/taocpp/pegtl.git
 [submodule "googletest"]
-	path = test/googletest
+	path = 3rdparty/googletest
 	url = https://github.com/google/googletest.git

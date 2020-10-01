@@ -76,13 +76,13 @@ struct Method {
 
 class Interface {
    private:
-    std::string ifname;
-    std::string documentation;
-    std::string_view description;
+    std::string ifname{};
+    std::string documentation{};
+    std::string_view description{};
 
-    std::vector<Type> types;
-    std::vector<Method> methods;
-    std::vector<Error> errors;
+    std::vector<Type> types{};
+    std::vector<Method> methods{};
+    std::vector<Error> errors{};
 
     template <typename Rule>
     friend struct grammar::inserter;
@@ -220,7 +220,7 @@ class Service {
 
    private:
     Description description;
-    std::vector<Interface> interfaces;
+    std::vector<Interface> interfaces{};
 
     auto findInterface(const std::string& ifname) {
         return std::find_if(interfaces.begin(), interfaces.end(),
@@ -379,7 +379,7 @@ inline std::string element_to_string(const json& elem, int indent = 4, size_t de
             return false;
         };
         const bool multiline{is_multiline()};
-        const std::string spaces = multiline ? std::string(indent * (depth + 1), ' ') : "";
+        const std::string spaces = multiline ? std::string(static_cast<size_t>(indent) * (depth + 1), ' ') : "";
         const std::string sep = multiline ? ",\n" : ", ";
         std::string s = multiline ? "(\n" : "(";
         bool first = true;
@@ -405,7 +405,7 @@ inline std::string element_to_string(const json& elem, int indent = 4, size_t de
                 s += element_to_string(type["type"], indent, depth + 1);
             }
         }
-        s += multiline ? "\n" + std::string(indent * depth, ' ') + ")" : ")";
+        s += multiline ? "\n" + std::string(static_cast<size_t>(indent) * depth, ' ') + ")" : ")";
         return s;
     }
 }

@@ -20,8 +20,8 @@ struct FakeSocket {
               typename = std::enable_if_t<std::is_convertible_v<typename IteratorT::value_type, char> > >
     IteratorT write(IteratorT begin, IteratorT end) {
         if (static_cast<size_t>(end - begin) > write_max) {
-            data.insert(data.end(), begin, begin + write_max);
-            return begin + write_max;
+            data.insert(data.end(), begin, begin + static_cast<long>(write_max));
+            return begin + static_cast<long>(write_max);
         } else {
             data.insert(data.end(), begin, end);
             return end;
@@ -63,7 +63,7 @@ struct FakeSocket {
 
 class ConnectionRead : public ::testing::Test {
    protected:
-    std::unique_ptr<FakeSocket> socket;
+    std::unique_ptr<FakeSocket> socket{};
     JsonConnection<FakeSocket> conn{-1};
 
     void SetUp() override { socket = std::make_unique<FakeSocket>(); }
@@ -115,7 +115,7 @@ TEST_F(ConnectionRead, SuccesThenThrowEOF) {
 
 class ConnectionWrite : public ::testing::Test {
    protected:
-    std::unique_ptr<FakeSocket> socket;
+    std::unique_ptr<FakeSocket> socket{};
     JsonConnection<FakeSocket> conn{-1};
 
     void SetUp() override { socket = std::make_unique<FakeSocket>(); }

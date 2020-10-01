@@ -61,10 +61,10 @@ class ServerHandleTest : public ::testing::Test {
    protected:
     using TestServerT = BasicServer<FakeServerSocket, MockService>;
     using ClientConnT = typename TestServerT::ClientConnT;
-    TestServerT server{std::make_unique<FakeServerSocket>(), std::make_unique<MockService>()};
-    std::unique_ptr<FakeServerSocket> client_sock;
-    std::unique_ptr<MockService> service;
-    ClientConnT client;
+    TestServerT server{std::make_unique<NiceMock<FakeServerSocket> >(), std::make_unique<MockService>()};
+    std::unique_ptr<FakeServerSocket> client_sock{};
+    std::unique_ptr<MockService> service{};
+    ClientConnT client{};
 
     template <typename... Args>
     void SetUp(Args&&... args) {
