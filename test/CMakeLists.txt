@@ -1,10 +1,20 @@
 add_subdirectory(googletest EXCLUDE_FROM_ALL)
 
-function(vltest NAME)
-    add_executable(test_${NAME} ${ARGN})
-    target_link_libraries(test_${NAME} PRIVATE gtest gmock gtest_main varlink++)
-    add_test(${NAME} test_${NAME})
-endfunction()
+link_libraries(varlink++)
 
-vltest(unittests client.cpp interface.cpp message.cpp service.cpp transport.cpp uri.cpp socket.cpp server.cpp)
-vltest(sockets unix-socket.cpp)
+add_executable(test_unittests
+        unit_client.cpp
+        unit_interface.cpp
+        unit_message.cpp
+        unit_service.cpp
+        unit_transport.cpp
+        unit_uri.cpp
+        unit_socket.cpp
+        unit_server.cpp
+        )
+target_link_libraries(test_unittests PRIVATE gtest gmock gtest_main)
+add_test(unittests test_unittests)
+
+add_executable(test_sockets unix-socket.cpp)
+target_link_libraries(test_sockets PRIVATE gtest gmock gtest_main)
+add_test(sockets test_sockets)

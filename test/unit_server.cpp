@@ -6,6 +6,7 @@
 using namespace varlink;
 using std::string;
 using ::testing::_;
+using ::testing::NiceMock;
 using ::testing::Return;
 using ::testing::Throw;
 
@@ -51,7 +52,7 @@ struct FakeServerSocket {
 struct MockService {
     struct Description;
     MOCK_METHOD(json, messageCall, (const Message& message, const SendMore& moreCallback));
-    MOCK_METHOD(void, setInterface, (Interface&&));
+    MOCK_METHOD(void, setInterface, (Interface &&));
 };
 
 using TestSet = std::pair<std::string, std::string>;
@@ -78,7 +79,7 @@ class ServerHandleTest : public ::testing::Test {
         service = std::make_unique<MockService>();
         (parseSet(args), ...);
         client = ClientConnT(std::move(client_sock));
-        server = TestServerT(std::make_unique<FakeServerSocket>(), std::move(service));
+        server = TestServerT(std::make_unique<NiceMock<FakeServerSocket> >(), std::move(service));
     }
 };
 
@@ -129,7 +130,7 @@ TEST_F(ServerHandleTest, TestMore) {
     });
     EXPECT_CALL(*service, messageCall(m, _));
     client = ClientConnT(std::move(client_sock));
-    server = TestServerT(std::make_unique<FakeServerSocket>(), std::move(service));
+    server = TestServerT(std::make_unique<NiceMock<FakeServerSocket> >(), std::move(service));
     EXPECT_NO_THROW(server.processConnection(client));
 }
 
