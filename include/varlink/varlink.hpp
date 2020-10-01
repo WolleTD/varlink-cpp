@@ -221,7 +221,7 @@ class Service {
     std::vector<Interface> interfaces;
 
     auto findInterface(const std::string& ifname) {
-        return std::find_if(interfaces.cbegin(), interfaces.cend(),
+        return std::find_if(interfaces.begin(), interfaces.end(),
                             [&ifname](auto& i) { return (ifname == i.name()); });
     }
 
@@ -249,7 +249,7 @@ class Service {
                 throw varlink_error("org.varlink.service.InterfaceNotFound", {{"interface", ifname}});
             }
         };
-        addInterface(org_varlink_service_varlink,
+        setInterface(org_varlink_service_varlink,
                      {{"GetInfo", getInfo}, {"GetInterfaceDescription", getInterfaceDescription}});
     }
 
@@ -302,13 +302,18 @@ class Service {
         }
     }
 
-    template <typename... Args>
-    void addInterface(Args&&... args) {
-        interfaces.emplace_back(std::forward<Args>(args)...);
+    void setInterface(Interface&& interface, bool allowReplace = false) {
+        if (auto pos = findInterface(interface.name()); pos == interfaces.end()) {
+            interfaces.push_back(std::move(interface));
+        } else if (allowReplace) {
+            *pos = std::move(interface);
+        } else {
+            throw std::invalid_argument("Interface already exists and allowReplace not set!");
+        }
     }
 
-    void addInterface(std::string_view definition, const CallbackMap& callbacks) {
-        interfaces.emplace_back(definition, callbacks);
+    void setInterface(std::string_view definition, const CallbackMap& callbacks, bool allowReplace = false) {
+        setInterface(Interface(definition, callbacks), allowReplace);
     }
 };
 

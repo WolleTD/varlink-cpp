@@ -62,7 +62,7 @@ class BasicServer {
 
     template <typename... Args>
     void addInterface(Args &&...args) {
-        service->addInterface(std::forward<Args>(args)...);
+        service->setInterface(std::forward<Args>(args)...);
     }
 };
 
@@ -155,7 +155,7 @@ class VarlinkServer {
 
     template <typename... Args>
     void addInterface(Args &&...args) {
-        std::visit([&](auto &&srv) { srv->addInterface(std::forward<Args>(args)...); }, threadedServer);
+        std::visit([&](auto &&srv) { srv->setInterface(std::forward<Args>(args)...); }, threadedServer);
     }
 
     void join() {

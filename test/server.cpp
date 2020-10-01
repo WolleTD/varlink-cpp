@@ -92,7 +92,6 @@ class ServerHandleTest : public ::testing::Test {
 
     template <typename... Args>
     void Expect(Args &&...args) {
-        std::cout << "Hello!" << std::endl;
         (client_sock->write_exp(args), ...);
         client = ClientConnT{std::move(client_sock)};
     }
