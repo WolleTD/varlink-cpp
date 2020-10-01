@@ -14,30 +14,30 @@
 #include <varlink/varlink.hpp>
 
 namespace varlink {
-template <typename SocketT>
+template <typename SocketT, typename ServiceT = Service>
 class BasicServer {
    public:
     using ClientConnT = JsonConnection<SocketT>;
 
    protected:
     std::unique_ptr<SocketT> listenSocket;
-    std::unique_ptr<Service> service;
+    std::unique_ptr<ServiceT> service;
 
    public:
     template <typename... Args>
-    explicit BasicServer(const Service::Description &description, Args &&...args)
+    explicit BasicServer(const typename ServiceT::Description &description, Args &&...args)
         : listenSocket(std::make_unique<SocketT>(socket::Mode::Listen, std::forward<Args>(args)...)),
-          service(std::make_unique<Service>(description)) {}
+          service(std::make_unique<ServiceT>(description)) {}
 
-    explicit BasicServer(std::unique_ptr<SocketT> listenConn, const Service::Description &description)
-        : listenSocket(std::move(listenConn)), service(std::make_unique<Service>(description)) {}
+    explicit BasicServer(std::unique_ptr<SocketT> listenConn, std::unique_ptr<ServiceT> service)
+        : listenSocket(std::move(listenConn)), service(std::move(service)) {}
 
     BasicServer(const BasicServer &src) = delete;
     BasicServer &operator=(const BasicServer &) = delete;
     BasicServer(BasicServer &&src) noexcept = default;
     BasicServer &operator=(BasicServer &&) noexcept = default;
 
-    ~BasicServer() { listenSocket->shutdown(SHUT_RDWR); }
+    ~BasicServer() { if (listenSocket) listenSocket->shutdown(SHUT_RDWR); }
 
     ClientConnT accept() { return ClientConnT(listenSocket->accept(nullptr)); }
 
@@ -61,13 +61,13 @@ class BasicServer {
     }
 
     template <typename... Args>
-    void addInterface(Args &&...args) {
+    void setInterface(Args &&...args) {
         service->setInterface(std::forward<Args>(args)...);
     }
 };
 
-template <typename SocketT>
-class ThreadedServer : BasicServer<SocketT> {
+template <typename SocketT, typename ServiceT = Service>
+class ThreadedServer : BasicServer<SocketT, ServiceT> {
    public:
     using Base = BasicServer<SocketT>;
     using typename Base::ClientConnT;
@@ -105,8 +105,8 @@ class ThreadedServer : BasicServer<SocketT> {
     explicit ThreadedServer(const Service::Description &description, Args &&...args)
         : BasicServer<SocketT>(description, std::forward<Args>(args)...), listenThread([this]() { acceptLoop(); }) {}
 
-    explicit ThreadedServer(std::unique_ptr<SocketT> listenConn, const Service::Description &description)
-        : BasicServer<SocketT>(std::move(listenConn), description) {}
+    explicit ThreadedServer(std::unique_ptr<SocketT> listenConn, std::unique_ptr<ServiceT> service)
+        : BasicServer<SocketT>(std::move(listenConn), std::move(service)) {}
 
     ThreadedServer(const ThreadedServer &src) = delete;
     ThreadedServer &operator=(const ThreadedServer &) = delete;
@@ -122,7 +122,7 @@ class ThreadedServer : BasicServer<SocketT> {
 
     void join() { listenThread.join(); }
 
-    using Base::addInterface;
+    using Base::setInterface;
 };
 
 using ThreadedUnixServer = ThreadedServer<socket::UnixSocket>;
@@ -154,7 +154,7 @@ class VarlinkServer {
         : threadedServer(makeServer(VarlinkURI(uri), description)) {}
 
     template <typename... Args>
-    void addInterface(Args &&...args) {
+    void setInterface(Args &&...args) {
         std::visit([&](auto &&srv) { srv->setInterface(std::forward<Args>(args)...); }, threadedServer);
     }
 

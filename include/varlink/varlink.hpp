@@ -205,6 +205,8 @@ class Message {
         // interface name anyway
         return {fqmethod.substr(0, dot), fqmethod.substr(dot + 1)};
     }
+
+    friend bool operator==(const Message& lhs, const Message& rhs) noexcept;
 };
 
 class Service {
@@ -406,6 +408,10 @@ inline std::string element_to_string(const json& elem, int indent = 4, size_t de
         s += multiline ? "\n" + std::string(indent * depth, ' ') + ")" : ")";
         return s;
     }
+}
+
+inline bool operator==(const Message& lhs, const Message& rhs) noexcept {
+    return (lhs.json_ == rhs.json_);
 }
 
 inline std::ostream& operator<<(std::ostream& os, const varlink::Type& type) {

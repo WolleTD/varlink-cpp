@@ -55,7 +55,7 @@ int main() {
         std::cerr << "Couldn't start service: " << e.what() << "\n";
         return 1;
     }
-    service->addInterface(
+    service->setInterface(
         varlink::org_example_more_varlink,
         varlink::CallbackMap{
             {"Ping",
