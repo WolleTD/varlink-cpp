@@ -96,24 +96,24 @@ TEST_F(ServerHandleTest, Simple) {
           TestSet{R"({"method":"org.test.P","parameters":{"A":10}})", R"({"parameters":{}})"},
           TestSet{R"({"method":"org.test.R"})", R"({"parameters":{"B":42}})"},
           TestSet{R"({"method":"org.test.PR","parameters":{"A":10}})", R"({"parameters":{"B":21}})"});
-    EXPECT_NO_THROW(server.processConnection(client));
-    EXPECT_NO_THROW(server.processConnection(client));
-    EXPECT_NO_THROW(server.processConnection(client));
-    EXPECT_NO_THROW(server.processConnection(client));
-    EXPECT_NO_THROW(server.processConnection(client));  // 0 Bytes -> terminate successfully
+    EXPECT_NO_THROW(server.processNextMessage(client));
+    EXPECT_NO_THROW(server.processNextMessage(client));
+    EXPECT_NO_THROW(server.processNextMessage(client));
+    EXPECT_NO_THROW(server.processNextMessage(client));
+    EXPECT_THROW(server.processNextMessage(client), std::system_error);  // 0 Bytes -> terminate successfully
 }
 
-TEST_F(ServerHandleTest, Terminate) { EXPECT_NO_THROW(server.processConnection(client)); }
+TEST_F(ServerHandleTest, Terminate) { EXPECT_THROW(server.processNextMessage(client), std::system_error); }
 
 TEST_F(ServerHandleTest, SystemError) {
     errno = EPIPE;
-    EXPECT_THROW(server.processConnection(client), std::system_error);
+    EXPECT_THROW(server.processNextMessage(client), std::system_error);
     errno = 0;
 }
 
 TEST_F(ServerHandleTest, DropNullptr) {
     SetUp(TestSet(R"({"method":"org.test.T"})", "null"));
-    EXPECT_NO_THROW(server.processConnection(client));
+    EXPECT_NO_THROW(server.processNextMessage(client));
 }
 
 TEST_F(ServerHandleTest, TestMore) {
@@ -131,7 +131,7 @@ TEST_F(ServerHandleTest, TestMore) {
     EXPECT_CALL(*service, messageCall(m, _));
     client = ClientConnT(std::move(client_sock));
     server = TestServerT(std::make_unique<NiceMock<FakeServerSocket> >(), std::move(service));
-    EXPECT_NO_THROW(server.processConnection(client));
+    EXPECT_NO_THROW(server.processNextMessage(client));
 }
 
 TEST_F(ServerHandleTest, SetInterface) {

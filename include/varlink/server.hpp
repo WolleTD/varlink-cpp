@@ -23,6 +23,25 @@ class BasicServer {
     std::unique_ptr<SocketT> listenSocket;
     std::unique_ptr<ServiceT> service;
 
+    auto connectionAcceptor() {
+        return [&sock = *listenSocket]() { return ClientConnT(sock.accept(nullptr)); };
+    }
+
+    auto messageProcessor() {
+        return [&service = *service](ClientConnT &conn) {
+            const auto sendmore = [&conn](const json &msg) {
+                assert(msg.is_object());
+                conn.send({{"parameters", msg}, {"continues", true}});
+            };
+
+            const Message message{conn.receive()};
+            const auto reply = service.messageCall(message, sendmore);
+            if (reply.is_object()) {
+                conn.send(reply);
+            }
+        };
+    }
+
    public:
     template <typename... Args>
     explicit BasicServer(const typename ServiceT::Description &description, Args &&...args)
@@ -37,28 +56,13 @@ class BasicServer {
     BasicServer(BasicServer &&src) noexcept = default;
     BasicServer &operator=(BasicServer &&) noexcept = default;
 
-    ~BasicServer() { if (listenSocket) listenSocket->shutdown(SHUT_RDWR); }
-
-    ClientConnT accept() { return ClientConnT(listenSocket->accept(nullptr)); }
-
-    void processConnection(ClientConnT &conn) {
-        const auto sendmore = [&conn](const json &msg) {
-            assert(msg.is_object());
-            conn.send({{"parameters", msg}, {"continues", true}});
-        };
-
-        try {
-            const Message message{conn.receive()};
-            const auto reply = service->messageCall(message, sendmore);
-            if (reply.is_object()) {
-                conn.send(reply);
-            }
-        } catch (std::system_error &e) {
-            if (e.code() != std::error_code(0, std::system_category())) {
-                throw;
-            }
-        }
+    ~BasicServer() {
+        if (listenSocket) listenSocket->shutdown(SHUT_RDWR);
     }
+
+    ClientConnT accept() { return connectionAcceptor()(); }
+
+    void processNextMessage(ClientConnT &conn) { messageProcessor()(conn); }
 
     template <typename... Args>
     void setInterface(Args &&...args) {
@@ -75,49 +79,54 @@ class ThreadedServer : BasicServer<SocketT, ServiceT> {
    private:
     std::thread listenThread;
 
-    void acceptLoop() {
-        while (true) {
+    auto makeListenThread() {
+        auto clientThread = [processConnection = Base::messageProcessor()](auto conn) {
             try {
-                // TODO: don't detach, thread pool
-                std::thread{[this](auto conn) { clientLoop(std::move(conn)); }, Base::accept()}.detach();
+                while (true) processConnection(conn);
             } catch (std::system_error &e) {
-                if (e.code() == std::errc::invalid_argument) {
-                    // accept() fails with EINVAL when the socket isn't listening, i.e. shutdown
-                    break;
-                } else {
-                    std::cerr << "Error accepting client (" << e.code() << "): " << e.what() << std::endl;
+                if (e.code() != std::error_code(0, std::system_category())) {
+                    std::cerr << "Terminate connection: " << e.what() << std::endl;
+                }
+            } catch (std::invalid_argument &e) {
+                std::cerr << "Couldn't read message: " << e.what() << std::endl;
+            }
+        };
+
+        return [accept = Base::connectionAcceptor(), clientThread]() {
+            while (true) {
+                try {
+                    // TODO: don't detach, thread pool
+                    std::thread{clientThread, accept()}.detach();
+                } catch (std::system_error &e) {
+                    if (e.code() == std::errc::invalid_argument) {
+                        // accept() fails with EINVAL when the socket isn't listening, i.e. shutdown
+                        break;
+                    } else {
+                        std::cerr << "Error accepting client (" << e.code() << "): " << e.what() << std::endl;
+                    }
                 }
             }
-        }
-    }
-
-    // Template dependency: ClientConnection
-    void clientLoop(ClientConnT conn) {
-        try {
-            while (true) Base::processConnection(conn);
-        } catch (std::exception &e) {
-            std::cerr << "Terminate connection: " << e.what() << std::endl;
-        }
+        };
     }
 
    public:
     template <typename... Args>
     explicit ThreadedServer(const Service::Description &description, Args &&...args)
-        : BasicServer<SocketT>(description, std::forward<Args>(args)...), listenThread([this]() { acceptLoop(); }) {}
+        : BasicServer<SocketT>(description, std::forward<Args>(args)...), listenThread(makeListenThread()) {}
 
     explicit ThreadedServer(std::unique_ptr<SocketT> listenConn, std::unique_ptr<ServiceT> service)
         : BasicServer<SocketT>(std::move(listenConn), std::move(service)) {}
 
     ThreadedServer(const ThreadedServer &src) = delete;
     ThreadedServer &operator=(const ThreadedServer &) = delete;
-    ThreadedServer(ThreadedServer &&src) noexcept = delete;  // Thread references this
-    ThreadedServer &operator=(ThreadedServer &&src) noexcept = delete;
+    ThreadedServer(ThreadedServer &&src) noexcept = default;
+    ThreadedServer &operator=(ThreadedServer &&src) noexcept = default;
 
     ~ThreadedServer() {
         // There is no dedicated thread communication yet, so we use the socket to terminate
         // the listening thread TODO: thread pool will fix this
         if (Base::listenSocket) Base::listenSocket->shutdown(SHUT_RDWR);
-        listenThread.join();
+        if (listenThread.joinable()) listenThread.join();
     }
 
     void join() { listenThread.join(); }
@@ -130,20 +139,20 @@ using ThreadedTCPServer = ThreadedServer<socket::TCPSocket>;
 
 class VarlinkServer {
    public:
-    using ServerT = std::variant<std::unique_ptr<ThreadedTCPServer>, std::unique_ptr<ThreadedUnixServer> >;
+    using ServerT = std::variant<ThreadedTCPServer, ThreadedUnixServer>;
 
    private:
     ServerT threadedServer;
 
     static ServerT makeServer(const VarlinkURI &uri, const Service::Description &description) {
         if (uri.type == VarlinkURI::Type::Unix) {
-            return std::make_unique<ThreadedUnixServer>(description, uri.path);
+            return ThreadedUnixServer(description, uri.path);
         } else if (uri.type == VarlinkURI::Type::TCP) {
             uint16_t port;
             if (auto r = std::from_chars(uri.port.begin(), uri.port.end(), port); r.ptr != uri.port.end()) {
                 throw std::invalid_argument("Invalid port");
             }
-            return std::make_unique<ThreadedTCPServer>(description, uri.host, port);
+            return ThreadedTCPServer(description, uri.host, port);
         } else {
             throw std::invalid_argument("Unsupported protocol");
         }
@@ -155,11 +164,11 @@ class VarlinkServer {
 
     template <typename... Args>
     void setInterface(Args &&...args) {
-        std::visit([&](auto &&srv) { srv->setInterface(std::forward<Args>(args)...); }, threadedServer);
+        std::visit([&](auto &&srv) { srv.setInterface(std::forward<Args>(args)...); }, threadedServer);
     }
 
     void join() {
-        std::visit([](auto &&srv) { srv->join(); }, threadedServer);
+        std::visit([](auto &&srv) { srv.join(); }, threadedServer);
     }
 };
 }  // namespace varlink
