@@ -185,7 +185,7 @@ class Message {
     Message() = default;
     explicit Message(const json& msg) : json_(msg) {
         if (!json_.is_object() || !json_.contains("method") || !json_["method"].is_string()) {
-            throw std::invalid_argument(msg.dump());
+            throw std::invalid_argument("Not a varlink message: " + msg.dump());
         }
         if (!json_.contains("parameters")) {
             json_.emplace("parameters", json::object());

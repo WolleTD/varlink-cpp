@@ -22,7 +22,7 @@ class BasicClient {
     };
 
     explicit BasicClient(const std::string &address)
-        : conn(socket::Mode::Connect, std::make_unique<ConnectionT>(address)) {}
+        : conn(std::make_unique<ConnectionT>(socket::Mode::Connect, address)) {}
 
     explicit BasicClient(std::unique_ptr<ConnectionT> connection) : conn(std::move(connection)) {}
 

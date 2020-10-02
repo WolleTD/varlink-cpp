@@ -88,18 +88,18 @@ TEST_F(ConnectionRead, Success) {
 
 TEST_F(ConnectionRead, ThrowPartial) {
     SetUp(R"({"object":)");
-    EXPECT_THROW((void)conn.receive(), std::runtime_error);
+    EXPECT_THROW((void)conn.receive(), std::invalid_argument);
 }
 
 TEST_F(ConnectionRead, ThrowTrailing) {
     SetUp(R"({"object":true}trailing)");
-    EXPECT_THROW((void)conn.receive(), std::runtime_error);
+    EXPECT_THROW((void)conn.receive(), std::invalid_argument);
 }
 
 TEST_F(ConnectionRead, ThrowIncomplete) {
     // TODO: This behaviour is invalid if we ever expect partial transmissions
     SetUp(std::vector<char>{'{', '"', 'c', 'd', 'e'});
-    EXPECT_THROW((void)conn.receive(), std::runtime_error);
+    EXPECT_THROW((void)conn.receive(), std::invalid_argument);
 }
 
 TEST_F(ConnectionRead, ThrowEOF) {

@@ -48,14 +48,14 @@ class JsonConnection {
         }
         const auto next_message_end = std::find(readbuf.begin(), read_end, '\0');
         if (next_message_end == read_end) {
-            throw std::runtime_error("Incomplete message received: " + std::string(readbuf.begin(), read_end));
+            throw std::invalid_argument("Incomplete message received: " + std::string(readbuf.begin(), read_end));
         }
         const auto message = std::string(readbuf.begin(), next_message_end);
         read_end = std::copy(next_message_end + 1, read_end, readbuf.begin());
         try {
             return json::parse(message);
         } catch (json::parse_error &e) {
-            throw std::runtime_error("Json parse error: " + message);
+            throw std::invalid_argument("Json parse error: " + message);
         }
     }
 };

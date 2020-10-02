@@ -9,7 +9,7 @@ append_coverage_compiler_flags()
 
 function(varlink_test NAME)
     add_executable(test_${NAME} ${ARGN})
-    target_link_libraries(test_${NAME} PRIVATE gtest gmock gtest_main varlink++)
+    target_link_libraries(test_${NAME} PRIVATE gtest gmock varlink++)
     add_test(${NAME} test_${NAME})
 endfunction()
 
@@ -23,8 +23,12 @@ varlink_test(unittests
         unit_socket.cpp
         unit_server.cpp
         )
+target_link_libraries(test_unittests PRIVATE gtest_main)
 
 varlink_test(sockets unix-socket.cpp)
+target_link_libraries(test_sockets PRIVATE gtest_main)
+
+varlink_test(self_unix self_unix.cpp)
 
 setup_target_for_coverage_gcovr_html(
     NAME coverage
