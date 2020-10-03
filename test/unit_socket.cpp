@@ -30,3 +30,15 @@ TEST(SocketAddress, TcpInvalid) {
     EXPECT_THROW(type::TCP("www.google.de", 123), std::invalid_argument);
     EXPECT_THROW(type::TCP("localhost", 123), std::invalid_argument);
 }
+
+TEST(PosixSocket, Move) {
+    auto sock1 = UnixSocket(8);
+    auto sock2 = std::move(sock1);
+    EXPECT_EQ(sock1.remove_fd(), -1);  // NOLINT: test move
+    EXPECT_EQ(sock2.remove_fd(), 8);
+    EXPECT_EQ(sock2.remove_fd(), -1);
+    sock1 = UnixSocket(7);
+    auto sock3(std::move(sock1));
+    EXPECT_EQ(sock1.remove_fd(), -1);  // NOLINT: test move
+    EXPECT_EQ(sock3.remove_fd(), 7);
+}

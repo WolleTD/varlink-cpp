@@ -86,7 +86,7 @@ class ServerHandleTest : public ::testing::Test {
 TEST(ServerTest, CreateAcceptDestroy) {
     auto socket = std::make_unique<FakeServerSocket>();
     EXPECT_CALL(*socket, accept(nullptr)).WillOnce(Return(8));
-    EXPECT_CALL(*socket, shutdown(SHUT_RDWR));
+    //EXPECT_CALL(*socket, shutdown(SHUT_RDWR));
     auto server = BasicServer<FakeServerSocket>{std::move(socket), {}};
     EXPECT_NO_THROW(server.accept());
 }

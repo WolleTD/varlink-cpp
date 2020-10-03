@@ -28,9 +28,9 @@ struct Base {
 };
 
 struct Unix : Base<AF_UNIX, SOCK_STREAM>, ::sockaddr_un {
-    constexpr Unix() : ::sockaddr_un{SOCK_FAMILY, ""} {}
+    Unix() : ::sockaddr_un{SOCK_FAMILY, ""} {}
 
-    constexpr explicit Unix(std::string_view address) : Unix() {
+    explicit Unix(std::string_view address) : Unix() {
         if (address.length() + 1 > sizeof(sun_path)) {
             throw std::system_error{std::make_error_code(std::errc::filename_too_long)};
         }
@@ -40,12 +40,13 @@ struct Unix : Base<AF_UNIX, SOCK_STREAM>, ::sockaddr_un {
 static_assert(sizeof(Unix) == sizeof(sockaddr_un));
 
 struct TCP : Base<AF_INET, SOCK_STREAM>, ::sockaddr_in {
-    constexpr TCP() : ::sockaddr_in{AF_INET, 0, {INADDR_ANY}, {}} {}
+    TCP() : ::sockaddr_in{AF_INET, 0, {INADDR_ANY}, {}} {}
 
-    constexpr explicit TCP(std::string_view host, uint16_t port) : TCP() {
+    explicit TCP(std::string_view host, uint16_t port) : TCP() {
+        auto host_str = std::string(host);
         sin_port = htons(port);
-        if (inet_pton(SOCK_FAMILY, host.data(), &sin_addr) < 1) {
-            throw std::invalid_argument("Invalid address");
+        if (auto r = inet_pton(SOCK_FAMILY, host_str.c_str(), &sin_addr); r < 1) {
+            throw std::invalid_argument("Invalid address " + std::string(host) + std::to_string(r));
         }
     }
 };
@@ -81,7 +82,7 @@ class PosixSocket {
                 bind();
                 listen(MaxConnections);
             }
-        } catch (std::system_error& e) {
+        } catch (std::system_error &e) {
             close(socket_fd);
             throw;
         }
@@ -91,24 +92,27 @@ class PosixSocket {
 
     PosixSocket(const PosixSocket &src) = delete;
     PosixSocket &operator=(const PosixSocket &rhs) = delete;
-    PosixSocket(PosixSocket &&src) noexcept {
-        socket_fd = std::exchange(src.socket_fd, -1);
-        std::swap(socketAddress, src.socketAddress);
-    }
+    PosixSocket(PosixSocket &&src) noexcept
+        : socket_fd(std::exchange(src.socket_fd, -1)), socketAddress(std::move(src.socketAddress)) {}
+
     PosixSocket &operator=(PosixSocket &&rhs) noexcept {
         PosixSocket s(std::move(rhs));
-        socket_fd = std::exchange(s.socket_fd, -1);
+        std::swap(socket_fd, s.socket_fd);
         std::swap(socketAddress, s.socketAddress);
+        return *this;
     }
 
     ~PosixSocket() {
+        shutdown(SHUT_RDWR);
         close(socket_fd);
-        if constexpr (std::is_same_v<SockaddrT, type::Unix>) {
-            if (socket_mode == Mode::Listen) {
+        if (socket_mode == Mode::Listen) {
+            if constexpr (std::is_same_v<SockaddrT, type::Unix>) {
                 unlink(socketAddress.sun_path);
             }
         }
     }
+
+    int remove_fd() noexcept { return std::exchange(socket_fd, -1); }
 
     void connect() {
         if (::connect(socket_fd, reinterpret_cast<sockaddr *>(&socketAddress), sizeof(SockaddrT)) < 0) {

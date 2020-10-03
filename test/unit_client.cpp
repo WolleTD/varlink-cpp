@@ -49,7 +49,7 @@ TEST(Client, Oneway) {
     auto conn = std::make_unique<MockConnection>();
     EXPECT_CALL(*conn, send(R"({"method":"test","oneway":true})"_json));
     BasicClient client(std::move(conn));
-    auto recv = client.call("test", {}, BasicClient<MockConnection>::CallMode::Oneway);
+    auto recv = client.call("test", {}, CallMode::Oneway);
     EXPECT_EQ(json{}, recv());
 }
 
@@ -63,7 +63,7 @@ TEST(Client, More) {
         .WillOnce(Return(R"({"test":1,"continues":true})"_json))
         .WillOnce(Return(R"({"test":0,"continues":false})"_json));
     BasicClient client(std::move(conn));
-    auto recv = client.call("test", {}, BasicClient<MockConnection>::CallMode::More);
+    auto recv = client.call("test", {}, CallMode::More);
     EXPECT_EQ(R"({"test":3,"continues":true})"_json, recv());
     EXPECT_EQ(R"({"test":2,"continues":true})"_json, recv());
     EXPECT_EQ(R"({"test":1,"continues":true})"_json, recv());
@@ -76,7 +76,7 @@ TEST(Client, Upgrade) {
     EXPECT_CALL(*conn, send(R"({"method":"test","upgrade":true})"_json));
     EXPECT_CALL(*conn, receive()).WillOnce(Return(R"({"test":1})"_json));
     BasicClient client(std::move(conn));
-    auto recv = client.call("test", {}, BasicClient<MockConnection>::CallMode::Upgrade);
+    auto recv = client.call("test", {}, CallMode::Upgrade);
     EXPECT_EQ(R"({"test":1})"_json, recv());
     EXPECT_EQ(json{}, recv());
 }

@@ -56,10 +56,6 @@ class BasicServer {
     BasicServer(BasicServer &&src) noexcept = default;
     BasicServer &operator=(BasicServer &&) noexcept = default;
 
-    ~BasicServer() {
-        if (listenSocket) listenSocket->shutdown(SHUT_RDWR);
-    }
-
     ClientConnT accept() { return connectionAcceptor()(); }
 
     void processNextMessage(ClientConnT &conn) { messageProcessor()(conn); }
@@ -123,8 +119,7 @@ class ThreadedServer : BasicServer<SocketT, ServiceT> {
     ThreadedServer &operator=(ThreadedServer &&src) noexcept = default;
 
     ~ThreadedServer() {
-        // There is no dedicated thread communication yet, so we use the socket to terminate
-        // the listening thread TODO: thread pool will fix this
+        // Calling shutdown will release the thread from it's accept() call
         if (Base::listenSocket) Base::listenSocket->shutdown(SHUT_RDWR);
         if (listenThread.joinable()) listenThread.join();
     }
@@ -148,7 +143,7 @@ class VarlinkServer {
         if (uri.type == VarlinkURI::Type::Unix) {
             return ThreadedUnixServer(description, uri.path);
         } else if (uri.type == VarlinkURI::Type::TCP) {
-            uint16_t port;
+            uint16_t port{0};
             if (auto r = std::from_chars(uri.port.begin(), uri.port.end(), port); r.ptr != uri.port.end()) {
                 throw std::invalid_argument("Invalid port");
             }
