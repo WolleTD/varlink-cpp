@@ -21,7 +21,6 @@ varlink_test(unittests
         unit_transport.cpp
         unit_uri.cpp
         unit_socket.cpp
-        unit_server.cpp
         )
 target_link_libraries(test_unittests PRIVATE gtest_main)
 
@@ -31,5 +30,5 @@ varlink_test(self_errors self_errors.cpp)
 
 setup_target_for_coverage_gcovr_html(
     NAME coverage
-    EXECUTABLE test_unittests test_self_unix test_self_tcp test_self_errors
-    EXCLUDE "${PROJECT_SOURCE_DIR}/3rdparty")
+    EXECUTABLE test_self_unix COMMAND test_self_tcp COMMAND test_self_errors COMMAND test_unittests
+    EXCLUDE "${PROJECT_SOURCE_DIR}/3rdparty" "${PROJECT_SOURCE_DIR}/test")

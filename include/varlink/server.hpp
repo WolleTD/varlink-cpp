@@ -15,68 +15,32 @@
 
 namespace varlink {
 template <typename SocketT, typename ServiceT = Service>
-class BasicServer {
+class ThreadedServer {
    public:
     using ClientConnT = JsonConnection<SocketT>;
 
-   protected:
+   private:
     std::unique_ptr<SocketT> listenSocket;
     std::unique_ptr<ServiceT> service;
-
-    auto connectionAcceptor() {
-        return [&sock = *listenSocket]() { return ClientConnT(sock.accept(nullptr)); };
-    }
+    std::thread listenThread;
 
     auto messageProcessor() {
         return [&service = *service](ClientConnT &conn) {
-            const auto sendmore = [&conn](const json &msg) {
-                assert(msg.is_object());
-                conn.send({{"parameters", msg}, {"continues", true}});
-            };
+          const auto sendmore = [&conn](const json &msg) {
+            assert(msg.is_object());
+            conn.send({{"parameters", msg}, {"continues", true}});
+          };
 
-            const Message message{conn.receive()};
-            const auto reply = service.messageCall(message, sendmore);
-            if (reply.is_object()) {
-                conn.send(reply);
-            }
+          const Message message{conn.receive()};
+          const auto reply = service.messageCall(message, sendmore);
+          if (reply.is_object()) {
+              conn.send(reply);
+          }
         };
     }
 
-   public:
-    template <typename... Args>
-    explicit BasicServer(const typename ServiceT::Description &description, Args &&...args)
-        : listenSocket(std::make_unique<SocketT>(socket::Mode::Listen, std::forward<Args>(args)...)),
-          service(std::make_unique<ServiceT>(description)) {}
-
-    explicit BasicServer(std::unique_ptr<SocketT> listenConn, std::unique_ptr<ServiceT> existingService)
-        : listenSocket(std::move(listenConn)), service(std::move(existingService)) {}
-
-    BasicServer(const BasicServer &src) = delete;
-    BasicServer &operator=(const BasicServer &) = delete;
-    BasicServer(BasicServer &&src) noexcept = default;
-    BasicServer &operator=(BasicServer &&) noexcept = default;
-
-    ClientConnT accept() { return connectionAcceptor()(); }
-
-    void processNextMessage(ClientConnT &conn) { messageProcessor()(conn); }
-
-    template <typename... Args>
-    void setInterface(Args &&...args) {
-        service->setInterface(std::forward<Args>(args)...);
-    }
-};
-
-template <typename SocketT, typename ServiceT = Service>
-class ThreadedServer : BasicServer<SocketT, ServiceT> {
-   public:
-    using Base = BasicServer<SocketT>;
-    using typename Base::ClientConnT;
-
-   private:
-    std::thread listenThread;
-
     auto makeListenThread() {
-        auto clientThread = [processConnection = Base::messageProcessor()](auto conn) {
+        auto clientThread = [processConnection = messageProcessor()](auto conn) {
             try {
                 while (true) processConnection(conn);
             } catch (std::system_error &e) {
@@ -88,11 +52,11 @@ class ThreadedServer : BasicServer<SocketT, ServiceT> {
             }
         };
 
-        return [accept = Base::connectionAcceptor(), clientThread]() {
+        return [&sock = *listenSocket, clientThread]() {
             while (true) {
                 try {
                     // TODO: don't detach, thread pool
-                    std::thread{clientThread, accept()}.detach();
+                    std::thread{clientThread, ClientConnT(sock.accept(nullptr))}.detach();
                 } catch (std::system_error &e) {
                     if (e.code() == std::errc::invalid_argument) {
                         // accept() fails with EINVAL when the socket isn't listening, i.e. shutdown
@@ -108,10 +72,11 @@ class ThreadedServer : BasicServer<SocketT, ServiceT> {
    public:
     template <typename... Args>
     explicit ThreadedServer(const Service::Description &description, Args &&...args)
-        : BasicServer<SocketT>(description, std::forward<Args>(args)...), listenThread(makeListenThread()) {}
+        : listenSocket(std::make_unique<SocketT>(socket::Mode::Listen, std::forward<Args>(args)...)),
+          service(std::make_unique<ServiceT>(description)), listenThread(makeListenThread()) {}
 
-    explicit ThreadedServer(std::unique_ptr<SocketT> listenConn, std::unique_ptr<ServiceT> service)
-        : BasicServer<SocketT>(std::move(listenConn), std::move(service)) {}
+    explicit ThreadedServer(std::unique_ptr<SocketT> listenConn, std::unique_ptr<ServiceT> existingService)
+        : listenSocket(std::move(listenConn)), service(std::move(existingService)) {}
 
     ThreadedServer(const ThreadedServer &src) = delete;
     ThreadedServer &operator=(const ThreadedServer &) = delete;
@@ -120,13 +85,16 @@ class ThreadedServer : BasicServer<SocketT, ServiceT> {
 
     ~ThreadedServer() {
         // Calling shutdown will release the thread from it's accept() call
-        if (Base::listenSocket) Base::listenSocket->shutdown(SHUT_RDWR);
+        if (listenSocket) listenSocket->shutdown(SHUT_RDWR);
         if (listenThread.joinable()) listenThread.join();
     }
 
     void join() { listenThread.join(); }
 
-    using Base::setInterface;
+    template <typename... Args>
+    void setInterface(Args &&...args) {
+        service->setInterface(std::forward<Args>(args)...);
+    }
 };
 
 using ThreadedUnixServer = ThreadedServer<socket::UnixSocket>;
