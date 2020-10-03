@@ -94,7 +94,7 @@ TEST_F(ServiceTest, SetInterfaceCallMore) {
                                                            return {{"pong", parameters["ping"]}};
                                                        }}}));
     std::string more_reply;
-    auto testmore = [&more_reply](const json& params) { more_reply = params["pong"].get<string>(); };
+    auto testmore = [&more_reply](const json& more) { more_reply = more["parameters"]["pong"].get<string>(); };
     auto pong = testcall("org.test.Test", {{"ping", "123"}}, true, false, testmore);
     EXPECT_EQ(more_reply, "123");
     EXPECT_EQ(pong["parameters"]["pong"].get<string>(), "123");

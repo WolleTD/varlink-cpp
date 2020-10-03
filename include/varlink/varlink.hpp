@@ -223,8 +223,7 @@ class Service {
     std::vector<Interface> interfaces{};
 
     auto findInterface(const std::string& ifname) {
-        return std::find_if(interfaces.begin(), interfaces.end(),
-                            [&ifname](auto& i) { return (ifname == i.name()); });
+        return std::find_if(interfaces.begin(), interfaces.end(), [&ifname](auto& i) { return (ifname == i.name()); });
     }
 
    public:
@@ -264,7 +263,12 @@ class Service {
     Service& operator=(Service&&) = delete;
 
     // Template dependency: Interface
-    json messageCall(const Message& message, const SendMore& moreCallback) noexcept {
+    json messageCall(const Message& message, const SendMore& moreSender) noexcept {
+        const SendMore sendmore = [&moreSender](const json& msg) {
+            assert(msg.is_object());
+            moreSender({{"parameters", msg}, {"continues", true}});
+        };
+
         const auto error = [](const std::string& what, const json& params) -> json {
             assert(params.is_object());
             return {{"error", what}, {"parameters", params}};
@@ -278,8 +282,7 @@ class Service {
         try {
             const auto& method = interface->method(methodname);
             interface->validate(message.parameters(), method.parameters);
-            const auto sendmore = message.more() ? moreCallback : nullptr;
-            auto reply_params = method.callback(message.parameters(), sendmore);
+            auto reply_params = method.callback(message.parameters(), (message.more() ? sendmore : nullptr));
             assert(reply_params.is_object());
             try {
                 interface->validate(reply_params, method.returnValue);
@@ -410,9 +413,7 @@ inline std::string element_to_string(const json& elem, int indent = 4, size_t de
     }
 }
 
-inline bool operator==(const Message& lhs, const Message& rhs) noexcept {
-    return (lhs.json_ == rhs.json_);
-}
+inline bool operator==(const Message& lhs, const Message& rhs) noexcept { return (lhs.json_ == rhs.json_); }
 
 inline std::ostream& operator<<(std::ostream& os, const varlink::Type& type) {
     return os << type.description << "type " << type.name << " " << element_to_string(type.data) << "\n";

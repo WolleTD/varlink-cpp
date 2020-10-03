@@ -24,25 +24,16 @@ class ThreadedServer {
     std::unique_ptr<ServiceT> service;
     std::thread listenThread;
 
-    auto messageProcessor() {
-        return [&service = *service](ClientConnT &conn) {
-          const auto sendmore = [&conn](const json &msg) {
-            assert(msg.is_object());
-            conn.send({{"parameters", msg}, {"continues", true}});
-          };
-
-          const Message message{conn.receive()};
-          const auto reply = service.messageCall(message, sendmore);
-          if (reply.is_object()) {
-              conn.send(reply);
-          }
-        };
-    }
-
-    auto makeListenThread() {
-        auto clientThread = [processConnection = messageProcessor()](auto conn) {
+    auto makeClientThread() {
+        return [&service = *service](auto conn) {
             try {
-                while (true) processConnection(conn);
+                while (true) {
+                    const Message message{conn.receive()};
+                    const auto reply = service.messageCall(message, [&conn](auto &&more) { conn.send(more); });
+                    if (reply.is_object()) {
+                        conn.send(reply);
+                    }
+                }
             } catch (std::system_error &e) {
                 if (e.code() != std::error_code(0, std::system_category())) {
                     std::cerr << "Terminate connection: " << e.what() << std::endl;
@@ -51,8 +42,10 @@ class ThreadedServer {
                 std::cerr << "Couldn't read message: " << e.what() << std::endl;
             }
         };
+    }
 
-        return [&sock = *listenSocket, clientThread]() {
+    auto makeListenThread() {
+        return [&sock = *listenSocket, clientThread = makeClientThread()]() {
             while (true) {
                 try {
                     // TODO: don't detach, thread pool
@@ -73,7 +66,8 @@ class ThreadedServer {
     template <typename... Args>
     explicit ThreadedServer(const Service::Description &description, Args &&...args)
         : listenSocket(std::make_unique<SocketT>(socket::Mode::Listen, std::forward<Args>(args)...)),
-          service(std::make_unique<ServiceT>(description)), listenThread(makeListenThread()) {}
+          service(std::make_unique<ServiceT>(description)),
+          listenThread(makeListenThread()) {}
 
     explicit ThreadedServer(std::unique_ptr<SocketT> listenConn, std::unique_ptr<ServiceT> existingService)
         : listenSocket(std::move(listenConn)), service(std::move(existingService)) {}
