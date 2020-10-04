@@ -27,6 +27,9 @@ varlink_test(self_unix self_unix.cpp)
 varlink_test(self_tcp self_tcp.cpp)
 varlink_test(self_errors self_errors.cpp)
 
+add_executable(cert_client cert_client.cpp)
+target_link_libraries(cert_client PRIVATE varlink++)
+
 setup_target_for_coverage_gcovr_html(
     NAME coverage
     EXECUTABLE test_self_unix COMMAND test_self_tcp COMMAND test_self_errors COMMAND test_unittests

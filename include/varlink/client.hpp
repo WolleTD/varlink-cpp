@@ -32,8 +32,11 @@ class varlink_client {
         return [this, continues = not message.oneway(), more = message.more()]() mutable -> json {
             if (continues) {
                 json reply = std::visit([](auto &&c) { return c.receive(); }, conn);
+                if (reply.contains("error")) {
+                    throw varlink_error(reply["error"].get<std::string>(), reply["parameters"]);
+                }
                 continues = (more and reply.contains("continues") and reply["continues"].get<bool>());
-                return reply;
+                return reply["parameters"];
             } else {
                 return {};
             }

@@ -32,6 +32,17 @@ TEST(VarlinkServer, CreateDestroy) {
     EXPECT_FALSE(fs::exists(address));
 }
 
+TEST(VarlinkServer, Move) {
+    const fs::path address = "testCreateDirectory.sock";
+    fs::remove(address);
+    {
+        auto server = varlink_server("unix:" + address.string(), {});
+        auto server2 = std::move(server);
+        EXPECT_TRUE(fs::is_socket(address));
+    }
+    EXPECT_FALSE(fs::exists(address));
+}
+
 TEST(VarlinkServer, AlreadyExists) {
     const fs::path address = "testAlreadyExists.sock";
     std::ofstream{address}.close();

@@ -28,13 +28,13 @@ namespace varlink {
 
 using nlohmann::json;
 using callback_function = std::function<json(const json&, const std::function<void(json)>&)>;
+using sendmore_function = std::function<void(json)>;
+
 struct method_callback {
     std::string_view method;
     callback_function callback;
 };
 using callback_map = std::vector<method_callback>;
-
-using sendmore_function = std::function<void(json)>;
 
 class varlink_error : public std::logic_error {
     json _args;
@@ -90,6 +90,18 @@ class varlink_interface {
     template <typename Rule>
     friend struct grammar::inserter;
 
+    template <typename T>
+    [[nodiscard]] inline const T& find_member(const std::vector<T>& list, const std::string& name) const {
+        auto i = std::find_if(list.begin(), list.end(), [&](const T& e) { return e.name == name; });
+        if (i == list.end()) throw std::out_of_range(name);
+        return *i;
+    }
+
+    template <typename T>
+    [[nodiscard]] inline bool has_member(const std::vector<T>& list, const std::string& name) const {
+        return std::any_of(list.begin(), list.end(), [&name](const T& e) { return e.name == name; });
+    }
+
    public:
     explicit varlink_interface(std::string_view fromDescription, const callback_map& callbacks = {})
         : description(fromDescription) {
@@ -106,31 +118,14 @@ class varlink_interface {
     }
 
     [[nodiscard]] const std::string& name() const noexcept { return ifname; }
-
     [[nodiscard]] const std::string& doc() const noexcept { return documentation; }
 
-    template <typename T>
-    [[nodiscard]] inline const T& find_member(const std::vector<T>& list, const std::string& name) const {
-        auto i = std::find_if(list.begin(), list.end(), [&](const T& e) { return e.name == name; });
-        if (i == list.end()) throw std::out_of_range(name);
-        return *i;
-    }
-
     [[nodiscard]] const interface::method& method(const std::string& name) const { return find_member(methods, name); }
-
     [[nodiscard]] const interface::type& type(const std::string& name) const { return find_member(types, name); }
-
     [[nodiscard]] const interface::error& error(const std::string& name) const { return find_member(errors, name); }
 
-    template <typename T>
-    [[nodiscard]] inline bool has_member(const std::vector<T>& list, const std::string& name) const {
-        return std::any_of(list.begin(), list.end(), [&name](const T& e) { return e.name == name; });
-    }
-
     [[nodiscard]] bool has_method(const std::string& name) const noexcept { return has_member(methods, name); }
-
     [[nodiscard]] bool has_type(const std::string& name) const noexcept { return has_member(types, name); }
-
     [[nodiscard]] bool has_error(const std::string& name) const noexcept { return has_member(errors, name); }
 
     void validate(const json& data, const json& typespec) const {
@@ -222,10 +217,12 @@ class varlink_message {
     [[nodiscard]] bool more() const { return (_mode == callmode::more); }
     [[nodiscard]] bool oneway() const { return (_mode == callmode::oneway); }
     [[nodiscard]] bool upgrade() const { return (_mode == callmode::upgrade); }
+
     [[nodiscard]] json parameters() const {
         return _json.contains("parameters") ? _json["parameters"] : json::object();
     }
     [[nodiscard]] const json& json_data() const { return _json; }
+
     [[nodiscard]] std::pair<std::string, std::string> interface_and_method() const {
         const auto& fqmethod = _json["method"].get<std::string>();
         const auto dot = fqmethod.rfind('.');

@@ -35,58 +35,62 @@ class Environment : public ::testing::Environment {
     }
 };
 
+#define EXPECT_VARLINK_ERROR(statement, error, parameter, value) \
+    try {                                                        \
+        statement;                                               \
+        EXPECT_THROW(statement, varlink_error);                  \
+    } catch (varlink_error & e) {                                \
+        EXPECT_STREQ(e.what(), error);                           \
+        EXPECT_EQ(e.args()[parameter].get<string>(), value);     \
+    }
+
 TEST(UnixSocket, GetInfo) {
     auto client = varlink_client("unix:test-integration.socket");
     auto resp = client.call("org.varlink.service.GetInfo", {})();
-    EXPECT_EQ(resp["parameters"]["vendor"].get<string>(), "varlink");
-    EXPECT_EQ(resp["parameters"]["product"].get<string>(), "test");
-    EXPECT_EQ(resp["parameters"]["version"].get<string>(), "1");
-    EXPECT_EQ(resp["parameters"]["url"].get<string>(), "test.org");
+    EXPECT_EQ(resp["vendor"].get<string>(), "varlink");
+    EXPECT_EQ(resp["product"].get<string>(), "test");
+    EXPECT_EQ(resp["version"].get<string>(), "1");
+    EXPECT_EQ(resp["url"].get<string>(), "test.org");
     // resp = client.call("org.varlink.service.GetInfo", {{"value", "should fail"}})();
     // EXPECT_EQ(resp["error"].get<string>(), "org.varlink.service.InvalidArgument");
-    // EXPECT_EQ(resp["parameters"]["parameter"].get<string>(), "value");
+    // EXPECT_EQ(resp["parameter"].get<string>(), "value");
 }
 
 TEST(UnixSocket, GetInterfaceDescription) {
     auto client = varlink_client("unix:test-integration.socket");
     auto resp = client.call("org.varlink.service.GetInterfaceDescription", {{"interface", "org.test"}})();
-    EXPECT_EQ(resp["parameters"]["description"].get<string>(),
+    EXPECT_EQ(resp["description"].get<string>(),
               "interface org.test\n\n"
               "method P(p: string) -> (q: string)\n\n"
               "method M(n: int, t: ?bool) -> (m: int)\n");
-    resp = client.call("org.varlink.service.GetInterfaceDescription", {{"interface", "org.notfound"}})();
-    EXPECT_EQ(resp["error"].get<string>(), "org.varlink.service.InterfaceNotFound");
-    EXPECT_EQ(resp["parameters"]["interface"].get<string>(), "org.notfound");
-    resp = client.call("org.varlink.service.GetInterfaceDescription", {})();
-    EXPECT_EQ(resp["error"].get<string>(), "org.varlink.service.InvalidParameter");
-    EXPECT_EQ(resp["parameters"]["parameter"].get<string>(), "interface");
+    EXPECT_VARLINK_ERROR(client.call("org.varlink.service.GetInterfaceDescription", {{"interface", "org.notfound"}})(),
+                         "org.varlink.service.InterfaceNotFound", "interface", "org.notfound");
+    EXPECT_VARLINK_ERROR(client.call("org.varlink.service.GetInterfaceDescription", {})(),
+                         "org.varlink.service.InvalidParameter", "parameter", "interface");
 }
 
 TEST(UnixSocket, orgtestPing) {
     auto client = varlink_client("unix:test-integration.socket");
     auto resp = client.call("org.test.P", {{"p", "test"}})();
-    EXPECT_EQ(resp["parameters"]["q"].get<string>(), "test");
-    resp = client.call("org.test.P", {{"q", "invalid"}})();
-    EXPECT_EQ(resp["error"].get<string>(), "org.varlink.service.InvalidParameter");
-    EXPECT_EQ(resp["parameters"]["parameter"].get<string>(), "p");
-    resp = client.call("org.test.P", {{"p", 20}})();
-    EXPECT_EQ(resp["error"].get<string>(), "org.varlink.service.InvalidParameter");
-    EXPECT_EQ(resp["parameters"]["parameter"].get<string>(), "p");
+    EXPECT_EQ(resp["q"].get<string>(), "test");
+    EXPECT_VARLINK_ERROR(client.call("org.test.P", {{"q", "invalid"}})(),
+        "org.varlink.service.InvalidParameter", "parameter", "p");
+    EXPECT_VARLINK_ERROR(client.call("org.test.P", {{"p", 20}})(),
+        "org.varlink.service.InvalidParameter", "parameter", "p");
 }
 
 TEST(UnixSocket, orgtestMore) {
     auto client = varlink_client("unix:test-integration.socket");
     auto more = client.call("org.test.M", {{"n", 5}}, callmode::more);
-    EXPECT_EQ(more()["parameters"]["m"].get<int>(), 0);
-    EXPECT_EQ(more()["parameters"]["m"].get<int>(), 1);
-    EXPECT_EQ(more()["parameters"]["m"].get<int>(), 2);
-    EXPECT_EQ(more()["parameters"]["m"].get<int>(), 3);
-    EXPECT_EQ(more()["parameters"]["m"].get<int>(), 4);
-    EXPECT_EQ(more()["parameters"]["m"].get<int>(), 5);
+    EXPECT_EQ(more()["m"].get<int>(), 0);
+    EXPECT_EQ(more()["m"].get<int>(), 1);
+    EXPECT_EQ(more()["m"].get<int>(), 2);
+    EXPECT_EQ(more()["m"].get<int>(), 3);
+    EXPECT_EQ(more()["m"].get<int>(), 4);
+    EXPECT_EQ(more()["m"].get<int>(), 5);
     EXPECT_EQ(more(), nullptr);
-    auto resp = client.call("org.test.M", {{"n", 5}}, callmode::basic)();
-    EXPECT_EQ(resp["error"].get<string>(), "org.varlink.service.MethodNotImplemented");
-    EXPECT_EQ(resp["parameters"]["method"].get<string>(), "org.test.M");
+    EXPECT_VARLINK_ERROR(client.call("org.test.M", {{"n", 5}}, callmode::basic)(),
+        "org.varlink.service.MethodNotImplemented", "method", "org.test.M");
 }
 
 TEST(UnixSocket, orgtestMoreThread) {
@@ -96,12 +100,12 @@ TEST(UnixSocket, orgtestMoreThread) {
     auto client2 = varlink_client("unix:test-integration.socket");
     auto begin = steady_clock::now();
     auto more = client.call("org.test.M", {{"n", 1}, {"t", true}}, callmode::more);
-    EXPECT_EQ(more()["parameters"]["m"].get<int>(), 0);
+    EXPECT_EQ(more()["m"].get<int>(), 0);
     auto begin2 = steady_clock::now();
     auto resp = client2.call("org.test.P", {{"p", "test"}})();
     auto done2 = steady_clock::now();
-    EXPECT_EQ(resp["parameters"]["q"].get<string>(), "test");
-    EXPECT_EQ(more()["parameters"]["m"].get<int>(), 1);
+    EXPECT_EQ(resp["q"].get<string>(), "test");
+    EXPECT_EQ(more()["m"].get<int>(), 1);
     EXPECT_EQ(more(), nullptr);
     auto time_to_send = begin2 - begin;
     auto latency = done2 - begin2;
@@ -111,9 +115,9 @@ TEST(UnixSocket, orgtestMoreThread) {
 TEST(UnixSocket, orgtestMoreAndQuit) {
     auto client = varlink_client("unix:test-integration.socket");
     auto more = client.call("org.test.M", {{"n", 5}}, callmode::more);
-    EXPECT_EQ(more()["parameters"]["m"].get<int>(), 0);
-    EXPECT_EQ(more()["parameters"]["m"].get<int>(), 1);
-    EXPECT_EQ(more()["parameters"]["m"].get<int>(), 2);
+    EXPECT_EQ(more()["m"].get<int>(), 0);
+    EXPECT_EQ(more()["m"].get<int>(), 1);
+    EXPECT_EQ(more()["m"].get<int>(), 2);
 }
 
 TEST(UnixSocket, orgtestDontread) {
@@ -130,27 +134,23 @@ TEST(UnixSocket, orgtestOneway) {
 TEST(UnixSocket, Upgrade) {
     auto client = varlink_client("unix:test-integration.socket");
     auto resp = client.call("org.test.P", {{"p", "test"}}, callmode::upgrade)();
-    EXPECT_EQ(resp["parameters"]["q"].get<string>(), "test");
+    EXPECT_EQ(resp["q"].get<string>(), "test");
 }
 
 TEST(UnixSocket, InterfaceNotFound) {
     auto client = varlink_client("unix:test-integration.socket");
-    auto resp = client.call("org.notfound.NonExistent", {})();
-    EXPECT_EQ(resp["error"].get<string>(), "org.varlink.service.InterfaceNotFound");
-    EXPECT_EQ(resp["parameters"]["interface"].get<string>(), "org.notfound");
-    resp = client.call("org.notfound", {})();
-    EXPECT_EQ(resp["error"].get<string>(), "org.varlink.service.InterfaceNotFound");
-    EXPECT_EQ(resp["parameters"]["interface"].get<string>(), "org");
-    resp = client.call("org", {})();
-    EXPECT_EQ(resp["error"].get<string>(), "org.varlink.service.InterfaceNotFound");
-    EXPECT_EQ(resp["parameters"]["interface"].get<string>(), "org");
+    EXPECT_VARLINK_ERROR(client.call("org.notfound.NonExistent", {})(),
+        "org.varlink.service.InterfaceNotFound", "interface", "org.notfound");
+    EXPECT_VARLINK_ERROR(client.call("org.notfound", {})(),
+        "org.varlink.service.InterfaceNotFound", "interface", "org");
+    EXPECT_VARLINK_ERROR(client.call("org", {})(),
+        "org.varlink.service.InterfaceNotFound", "interface", "org");
 }
 
 TEST(UnixSocket, MethodNotFound) {
     auto client = varlink_client("unix:test-integration.socket");
-    auto resp = client.call("org.test.NonExistent", {})();
-    EXPECT_EQ(resp["error"].get<string>(), "org.varlink.service.MethodNotFound");
-    EXPECT_EQ(resp["parameters"]["method"].get<string>(), "org.test.NonExistent");
+    EXPECT_VARLINK_ERROR(client.call("org.test.NonExistent", {})(),
+        "org.varlink.service.MethodNotFound", "method", "org.test.NonExistent");
 }
 
 TEST(UnixSocket, InvalidMessage) {
@@ -181,11 +181,14 @@ TEST(UnixSocket, Nothing) {
 
 TEST(UnixSocket, InternalException) {
     auto client = varlink_client("unix:test-integration.socket");
-    auto resp = client.call("org.err.E", {})();
-    EXPECT_EQ(resp["error"].get<string>(), "org.varlink.service.InternalError");
+    try {
+        client.call("org.err.E", {})();
+    } catch (varlink_error& e) {
+        EXPECT_STREQ(e.what(), "org.varlink.service.InternalError");
+    }
 }
 
-GTEST_API_ int main(int argc, char **argv) {
+GTEST_API_ int main(int argc, char** argv) {
     signal(SIGPIPE, SIG_IGN);
     printf("Running main() from %s\n", __FILE__);
     testing::InitGoogleTest(&argc, argv);

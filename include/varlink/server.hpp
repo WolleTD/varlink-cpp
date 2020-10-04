@@ -20,7 +20,7 @@ class varlink_server {
     using ClientConnT = basic_json_connection<socket::type::unspec>;
 
    private:
-    socket::variant listen_socket;
+    std::unique_ptr<socket::variant> listen_socket;
     std::unique_ptr<varlink_service> service;
     std::thread listen_thread;
 
@@ -45,7 +45,7 @@ class varlink_server {
     }
 
     auto make_listen_thread() {
-        return [&sock = listen_socket, clientThread = make_client_thread()]() {
+        return [&sock = *listen_socket, clientThread = make_client_thread()]() {
             std::vector<std::future<void> > clients{};
             while (true) {
                 try {
@@ -69,11 +69,12 @@ class varlink_server {
 
    public:
     varlink_server(std::string_view uri, const varlink_service::descr &description)
-        : listen_socket(make_from_uri<socket::basic_socket>(varlink_uri(uri), socket::mode::listen)),
+        : listen_socket(std::make_unique<socket::variant>(
+              make_from_uri<socket::basic_socket>(varlink_uri(uri), socket::mode::listen))),
           service(std::make_unique<varlink_service>(description)),
           listen_thread(make_listen_thread()) {}
 
-    explicit varlink_server(socket::variant &&listenConn, std::unique_ptr<varlink_service> existingService)
+    explicit varlink_server(std::unique_ptr<socket::variant> listenConn, std::unique_ptr<varlink_service> existingService)
         : listen_socket(std::move(listenConn)), service(std::move(existingService)) {}
 
     varlink_server(const varlink_server &src) = delete;
@@ -83,7 +84,7 @@ class varlink_server {
 
     ~varlink_server() {
         // Calling shutdown will release the thread from it's accept() call
-        std::visit([&](auto &&sock) { sock.shutdown(SHUT_RDWR); }, listen_socket);
+        if (listen_socket) std::visit([&](auto &&sock) { sock.shutdown(SHUT_RDWR); }, *listen_socket);
         if (listen_thread.joinable()) listen_thread.join();
     }
 
