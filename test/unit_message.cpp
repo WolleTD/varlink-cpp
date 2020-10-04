@@ -5,48 +5,48 @@
 using namespace varlink;
 
 TEST(Message, Create) {
-    EXPECT_NO_THROW(Message(R"({"method":""})"_json));
-    EXPECT_NO_THROW(Message(R"({"method":"test"})"_json));
-    EXPECT_NO_THROW(Message(R"({"method":"a.b.C"})"_json));
-    EXPECT_NO_THROW(Message(R"({"method":"a.b.C","parameters":{}})"_json));
-    EXPECT_NO_THROW(Message(R"({"method":"","parameters":{"a":1}})"_json));
+    EXPECT_NO_THROW(varlink_message(R"({"method":""})"_json));
+    EXPECT_NO_THROW(varlink_message(R"({"method":"test"})"_json));
+    EXPECT_NO_THROW(varlink_message(R"({"method":"a.b.C"})"_json));
+    EXPECT_NO_THROW(varlink_message(R"({"method":"a.b.C","parameters":{}})"_json));
+    EXPECT_NO_THROW(varlink_message(R"({"method":"","parameters":{"a":1}})"_json));
 
-    EXPECT_THROW(Message(R"({"method":42})"_json), std::invalid_argument);
-    EXPECT_THROW(Message(R"({"method":null})"_json), std::invalid_argument);
-    EXPECT_THROW(Message(R"({"method":[]})"_json), std::invalid_argument);
-    EXPECT_THROW(Message(R"({"method":"","parameters":1})"_json), std::invalid_argument);
-    EXPECT_THROW(Message(R"({"method":"","parameters":null})"_json), std::invalid_argument);
-    EXPECT_THROW(Message(R"({"method":"","parameters":[]})"_json), std::invalid_argument);
+    EXPECT_THROW(varlink_message(R"({"method":42})"_json), std::invalid_argument);
+    EXPECT_THROW(varlink_message(R"({"method":null})"_json), std::invalid_argument);
+    EXPECT_THROW(varlink_message(R"({"method":[]})"_json), std::invalid_argument);
+    EXPECT_THROW(varlink_message(R"({"method":"","parameters":1})"_json), std::invalid_argument);
+    EXPECT_THROW(varlink_message(R"({"method":"","parameters":null})"_json), std::invalid_argument);
+    EXPECT_THROW(varlink_message(R"({"method":"","parameters":[]})"_json), std::invalid_argument);
 
-    EXPECT_THROW(Message(R"(null)"_json), std::invalid_argument);
-    EXPECT_THROW(Message(R"(42)"_json), std::invalid_argument);
-    EXPECT_THROW(Message(R"("string")"_json), std::invalid_argument);
-    EXPECT_THROW(Message(R"({})"_json), std::invalid_argument);
-    EXPECT_THROW(Message(R"({"parameters":{}})"_json), std::invalid_argument);
+    EXPECT_THROW(varlink_message(R"(null)"_json), std::invalid_argument);
+    EXPECT_THROW(varlink_message(R"(42)"_json), std::invalid_argument);
+    EXPECT_THROW(varlink_message(R"("string")"_json), std::invalid_argument);
+    EXPECT_THROW(varlink_message(R"({})"_json), std::invalid_argument);
+    EXPECT_THROW(varlink_message(R"({"parameters":{}})"_json), std::invalid_argument);
 }
 
 TEST(Message, Parameters) {
-    auto defaultParams = Message(R"({"method":""})"_json);
+    auto defaultParams = varlink_message(R"({"method":""})"_json);
     EXPECT_EQ(defaultParams.parameters(), json::object());
-    auto withParams = Message(R"({"method":"","parameters":{"a":1}})"_json);
+    auto withParams = varlink_message(R"({"method":"","parameters":{"a":1}})"_json);
     EXPECT_EQ(withParams.parameters(), R"({"a":1})"_json);
 }
 
 TEST(Message, More) {
-    auto defaultParams = Message(R"({"method":""})"_json);
+    auto defaultParams = varlink_message(R"({"method":""})"_json);
     EXPECT_EQ(defaultParams.more(), false);
-    auto withMoreTrue = Message(R"({"method":"","more":true})"_json);
+    auto withMoreTrue = varlink_message(R"({"method":"","more":true})"_json);
     EXPECT_EQ(withMoreTrue.more(), true);
-    auto withMoreFalse = Message(R"({"method":"","more":false})"_json);
+    auto withMoreFalse = varlink_message(R"({"method":"","more":false})"_json);
     EXPECT_EQ(withMoreFalse.more(), false);
 }
 
 TEST(Message, Oneway) {
-    auto defaultParams = Message(R"({"method":""})"_json);
+    auto defaultParams = varlink_message(R"({"method":""})"_json);
     EXPECT_EQ(defaultParams.oneway(), false);
-    auto withOnewayTrue = Message(R"({"method":"","oneway":true})"_json);
+    auto withOnewayTrue = varlink_message(R"({"method":"","oneway":true})"_json);
     EXPECT_EQ(withOnewayTrue.oneway(), true);
-    auto withOnewayFalse = Message(R"({"method":"","oneway":false})"_json);
+    auto withOnewayFalse = varlink_message(R"({"method":"","oneway":false})"_json);
     EXPECT_EQ(withOnewayFalse.oneway(), false);
 }
 
@@ -64,7 +64,7 @@ TEST(Message, InterfaceAndMethod) {
         {"a.b.c.", {"a.b.c", ""}},
     };
     for (const auto& test : testdata) {
-        auto msg = Message(json{{"method", test.input}});
-        EXPECT_EQ(msg.interfaceAndMethod(), test.output);
+        auto msg = varlink_message(json{{"method", test.input}});
+        EXPECT_EQ(msg.interface_and_method(), test.output);
     }
 }

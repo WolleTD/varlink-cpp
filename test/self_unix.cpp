@@ -9,8 +9,8 @@ using std::string;
 
 class Environment : public ::testing::Environment {
     const std::string_view varlink_uri{"unix:test-integration.socket"};
-    const Service::Description description{"varlink", "test", "1", "test.org"};
-    std::unique_ptr<VarlinkServer> server;
+    const varlink_service::descr description{"varlink", "test", "1", "test.org"};
+    std::unique_ptr<varlink_server> server;
 
    public:
     void SetUp() override {
@@ -18,9 +18,9 @@ class Environment : public ::testing::Environment {
             "interface org.test\nmethod P(p:string) -> (q:string)\n"
             "method M(n:int,t:?bool)->(m:int)\n";
         std::filesystem::remove("test-integration.socket");
-        server = std::make_unique<VarlinkServer>(varlink_uri, description);
-        auto ping_callback = [] VarlinkCallback { return {{"q", parameters["p"].get<string>()}}; };
-        auto more_callback = [] VarlinkCallback {
+        server = std::make_unique<varlink_server>(varlink_uri, description);
+        auto ping_callback = [] varlink_callback { return {{"q", parameters["p"].get<string>()}}; };
+        auto more_callback = [] varlink_callback {
             const auto count = parameters["n"].get<int>();
             const bool wait = parameters.contains("t") && parameters["t"].get<bool>();
             for (auto i = 0; i < count; i++) {
@@ -29,14 +29,14 @@ class Environment : public ::testing::Environment {
             }
             return {{"m", count}};
         };
-        server->setInterface(testif, CallbackMap{{"P", ping_callback}, {"M", more_callback}});
+        server->setInterface(testif, callback_map{{"P", ping_callback}, {"M", more_callback}});
         server->setInterface("interface org.err\nmethod E() -> ()\n",
-                             CallbackMap{{"E", [] VarlinkCallback { throw std::exception{}; }}});
+                             callback_map{{"E", [] varlink_callback { throw std::exception{}; }}});
     }
 };
 
 TEST(UnixSocket, GetInfo) {
-    auto client = VarlinkClient("unix:test-integration.socket");
+    auto client = varlink_client("unix:test-integration.socket");
     auto resp = client.call("org.varlink.service.GetInfo", {})();
     EXPECT_EQ(resp["parameters"]["vendor"].get<string>(), "varlink");
     EXPECT_EQ(resp["parameters"]["product"].get<string>(), "test");
@@ -48,7 +48,7 @@ TEST(UnixSocket, GetInfo) {
 }
 
 TEST(UnixSocket, GetInterfaceDescription) {
-    auto client = VarlinkClient("unix:test-integration.socket");
+    auto client = varlink_client("unix:test-integration.socket");
     auto resp = client.call("org.varlink.service.GetInterfaceDescription", {{"interface", "org.test"}})();
     EXPECT_EQ(resp["parameters"]["description"].get<string>(),
               "interface org.test\n\n"
@@ -63,7 +63,7 @@ TEST(UnixSocket, GetInterfaceDescription) {
 }
 
 TEST(UnixSocket, orgtestPing) {
-    auto client = VarlinkClient("unix:test-integration.socket");
+    auto client = varlink_client("unix:test-integration.socket");
     auto resp = client.call("org.test.P", {{"p", "test"}})();
     EXPECT_EQ(resp["parameters"]["q"].get<string>(), "test");
     resp = client.call("org.test.P", {{"q", "invalid"}})();
@@ -75,8 +75,8 @@ TEST(UnixSocket, orgtestPing) {
 }
 
 TEST(UnixSocket, orgtestMore) {
-    auto client = VarlinkClient("unix:test-integration.socket");
-    auto more = client.call("org.test.M", {{"n", 5}}, CallMode::More);
+    auto client = varlink_client("unix:test-integration.socket");
+    auto more = client.call("org.test.M", {{"n", 5}}, call_mode::more);
     EXPECT_EQ(more()["parameters"]["m"].get<int>(), 0);
     EXPECT_EQ(more()["parameters"]["m"].get<int>(), 1);
     EXPECT_EQ(more()["parameters"]["m"].get<int>(), 2);
@@ -84,7 +84,7 @@ TEST(UnixSocket, orgtestMore) {
     EXPECT_EQ(more()["parameters"]["m"].get<int>(), 4);
     EXPECT_EQ(more()["parameters"]["m"].get<int>(), 5);
     EXPECT_EQ(more(), nullptr);
-    auto resp = client.call("org.test.M", {{"n", 5}}, CallMode::Basic)();
+    auto resp = client.call("org.test.M", {{"n", 5}}, call_mode::basic)();
     EXPECT_EQ(resp["error"].get<string>(), "org.varlink.service.MethodNotImplemented");
     EXPECT_EQ(resp["parameters"]["method"].get<string>(), "org.test.M");
 }
@@ -92,10 +92,10 @@ TEST(UnixSocket, orgtestMore) {
 TEST(UnixSocket, orgtestMoreThread) {
     using namespace std::chrono;
     using namespace std::chrono_literals;
-    auto client = VarlinkClient("unix:test-integration.socket");
-    auto client2 = VarlinkClient("unix:test-integration.socket");
+    auto client = varlink_client("unix:test-integration.socket");
+    auto client2 = varlink_client("unix:test-integration.socket");
     auto begin = steady_clock::now();
-    auto more = client.call("org.test.M", {{"n", 1}, {"t", true}}, CallMode::More);
+    auto more = client.call("org.test.M", {{"n", 1}, {"t", true}}, call_mode::more);
     EXPECT_EQ(more()["parameters"]["m"].get<int>(), 0);
     auto begin2 = steady_clock::now();
     auto resp = client2.call("org.test.P", {{"p", "test"}})();
@@ -109,32 +109,32 @@ TEST(UnixSocket, orgtestMoreThread) {
     EXPECT_LT(latency, 1ms);
 }
 TEST(UnixSocket, orgtestMoreAndQuit) {
-    auto client = VarlinkClient("unix:test-integration.socket");
-    auto more = client.call("org.test.M", {{"n", 5}}, CallMode::More);
+    auto client = varlink_client("unix:test-integration.socket");
+    auto more = client.call("org.test.M", {{"n", 5}}, call_mode::more);
     EXPECT_EQ(more()["parameters"]["m"].get<int>(), 0);
     EXPECT_EQ(more()["parameters"]["m"].get<int>(), 1);
     EXPECT_EQ(more()["parameters"]["m"].get<int>(), 2);
 }
 
 TEST(UnixSocket, orgtestDontread) {
-    auto client = VarlinkClient("unix:test-integration.socket");
+    auto client = varlink_client("unix:test-integration.socket");
     client.call("org.test.P", {{"p", "test"}});
 }
 
 TEST(UnixSocket, orgtestOneway) {
-    auto client = VarlinkClient("unix:test-integration.socket");
-    auto null = client.call("org.test.P", {{"p", "test"}}, CallMode::Oneway);
+    auto client = varlink_client("unix:test-integration.socket");
+    auto null = client.call("org.test.P", {{"p", "test"}}, call_mode::oneway);
     EXPECT_EQ(null(), nullptr);
 }
 
 TEST(UnixSocket, Upgrade) {
-    auto client = VarlinkClient("unix:test-integration.socket");
-    auto resp = client.call("org.test.P", {{"p", "test"}}, CallMode::Upgrade)();
+    auto client = varlink_client("unix:test-integration.socket");
+    auto resp = client.call("org.test.P", {{"p", "test"}}, call_mode::upgrade)();
     EXPECT_EQ(resp["parameters"]["q"].get<string>(), "test");
 }
 
 TEST(UnixSocket, InterfaceNotFound) {
-    auto client = VarlinkClient("unix:test-integration.socket");
+    auto client = varlink_client("unix:test-integration.socket");
     auto resp = client.call("org.notfound.NonExistent", {})();
     EXPECT_EQ(resp["error"].get<string>(), "org.varlink.service.InterfaceNotFound");
     EXPECT_EQ(resp["parameters"]["interface"].get<string>(), "org.notfound");
@@ -147,40 +147,40 @@ TEST(UnixSocket, InterfaceNotFound) {
 }
 
 TEST(UnixSocket, MethodNotFound) {
-    auto client = VarlinkClient("unix:test-integration.socket");
+    auto client = varlink_client("unix:test-integration.socket");
     auto resp = client.call("org.test.NonExistent", {})();
     EXPECT_EQ(resp["error"].get<string>(), "org.varlink.service.MethodNotFound");
     EXPECT_EQ(resp["parameters"]["method"].get<string>(), "org.test.NonExistent");
 }
 
 TEST(UnixSocket, InvalidMessage) {
-    auto client = json_connection_unix(socket::Mode::Connect, "test-integration.socket");
+    auto client = json_connection_unix("test-integration.socket");
     client.send(R"({"notmethod":"org.test.NonExistent"})"_json);
     EXPECT_THROW((void)client.receive(), std::system_error);
 }
 
 TEST(UnixSocket, InvalidParameterType) {
-    auto client = json_connection_unix(socket::Mode::Connect, "test-integration.socket");
+    auto client = json_connection_unix("test-integration.socket");
     client.send(R"({"method":"org.test.P","parameters":["array"]})"_json);
     EXPECT_THROW((void)client.receive(), std::system_error);
 }
 
 TEST(UnixSocket, NotJsonMessage) {
-    auto client = socket::UnixSocket(socket::Mode::Connect, "test-integration.socket");
+    auto client = socket::unix(socket::mode::connect, "test-integration.socket");
     std::string data = "{totally_not\"a json-message]";
     client.write(data.begin(), data.end() + 1);
     EXPECT_THROW((void)client.read(data.begin(), data.end()), std::system_error);
 }
 
 TEST(UnixSocket, Nothing) {
-    auto client1 = VarlinkClient("unix:test-integration.socket");
-    auto client2 = VarlinkClient("unix:test-integration.socket");
-    auto client3 = VarlinkClient("unix:test-integration.socket");
-    auto client4 = VarlinkClient("unix:test-integration.socket");
+    auto client1 = varlink_client("unix:test-integration.socket");
+    auto client2 = varlink_client("unix:test-integration.socket");
+    auto client3 = varlink_client("unix:test-integration.socket");
+    auto client4 = varlink_client("unix:test-integration.socket");
 }
 
 TEST(UnixSocket, InternalException) {
-    auto client = VarlinkClient("unix:test-integration.socket");
+    auto client = varlink_client("unix:test-integration.socket");
     auto resp = client.call("org.err.E", {})();
     EXPECT_EQ(resp["error"].get<string>(), "org.varlink.service.InternalError");
 }

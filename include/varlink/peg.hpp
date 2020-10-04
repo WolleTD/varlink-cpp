@@ -52,7 +52,7 @@ template <typename Rule>
 struct inserter {};
 
 template <typename CallbackMap>
-struct ParserState {
+struct parser_state {
     struct {
         CallbackMap callbacks{};
         std::string moving_docstring{};
@@ -73,7 +73,7 @@ struct ParserState {
         explicit State(size_t pos_ = 0) : pos(pos_) {}
     };
     std::vector<State> stack{};
-    explicit ParserState(const CallbackMap& _callbacks) : global{_callbacks} {}
+    explicit parser_state(const CallbackMap& _callbacks) : global{_callbacks} {}
 };
 
 }  // namespace grammar
@@ -82,12 +82,12 @@ struct ParserState {
     template <>                                                                                              \
     struct grammar::inserter<match> {                                                                        \
         template <typename ParseInput, typename InterfaceT, typename CallbackMap>                            \
-        static void apply(const ParseInput& input, InterfaceT& interface, ParserState<CallbackMap>& pstate); \
+        static void apply(const ParseInput& input, InterfaceT& interface, parser_state<CallbackMap>& pstate); \
     };                                                                                                       \
     template <typename ParseInput, typename InterfaceT, typename CallbackMap>                                \
     void grammar::inserter<match>::apply([[maybe_unused]] const ParseInput& input,                           \
                                          [[maybe_unused]] InterfaceT& interface,                             \
-                                         [[maybe_unused]] ParserState<CallbackMap>& pstate)
+                                         [[maybe_unused]] parser_state<CallbackMap>& pstate)
 
 INSERTER(grammar::wce) {
     if (*input.begin() == '#') {
@@ -114,7 +114,7 @@ INSERTER(grammar::dict) {
 
 INSERTER(grammar::object_start) {
     if (input.position().byte > pstate.stack.back().pos) {
-        using StateT = typename grammar::ParserState<CallbackMap>::State;
+        using StateT = typename grammar::parser_state<CallbackMap>::State;
         pstate.stack.emplace_back(StateT(input.position().byte));
     }
 }
@@ -200,7 +200,7 @@ INSERTER(grammar::kwarrow) {
 
 INSERTER(grammar::interface_name) {
     interface.ifname = input.string();
-    using StateT = typename grammar::ParserState<CallbackMap>::State;
+    using StateT = typename grammar::parser_state<CallbackMap>::State;
     pstate.stack.emplace_back(StateT(input.position().byte));
 }
 

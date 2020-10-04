@@ -13,9 +13,10 @@
 #include <varlink/org.varlink.service.varlink.hpp>
 #include <varlink/peg.hpp>
 #include <vector>
+#undef unix
 
-#define VarlinkCallback                                                                                    \
-    ([[maybe_unused]] const varlink::json& parameters, [[maybe_unused]] const varlink::SendMore& sendmore) \
+#define varlink_callback                                                                                            \
+    ([[maybe_unused]] const varlink::json& parameters, [[maybe_unused]] const varlink::sendmore_function& sendmore) \
         ->varlink::json
 
 namespace grammar {
@@ -26,14 +27,14 @@ struct inserter;
 namespace varlink {
 
 using nlohmann::json;
-using MethodCallback = std::function<json(const json&, const std::function<void(json)>&)>;
-struct CallbackEntry {
+using callback_function = std::function<json(const json&, const std::function<void(json)>&)>;
+struct method_callback {
     std::string_view method;
-    MethodCallback callback;
+    callback_function callback;
 };
-using CallbackMap = std::vector<CallbackEntry>;
+using callback_map = std::vector<method_callback>;
 
-using SendMore = std::function<void(json)>;
+using sendmore_function = std::function<void(json)>;
 
 class varlink_error : public std::logic_error {
     json _args;
@@ -43,56 +44,58 @@ class varlink_error : public std::logic_error {
     [[nodiscard]] const json& args() const { return _args; }
 };
 
-struct Type {
+namespace interface {
+struct type {
     const std::string name;
     const std::string description;
     const json data;
 
-    Type(std::string Name, std::string Description, json Data)
+    type(std::string Name, std::string Description, json Data)
         : name(std::move(Name)), description(std::move(Description)), data(std::move(Data)) {}
-    friend std::ostream& operator<<(std::ostream& os, const Type& type);
+    friend std::ostream& operator<<(std::ostream& os, const type& type);
 };
 
-struct Error : Type {
-    Error(const std::string& Name, const std::string& Description, const json& Data) : Type(Name, Description, Data) {}
-    friend std::ostream& operator<<(std::ostream& os, const Error& error);
+struct error : type {
+    error(const std::string& Name, const std::string& Description, const json& Data) : type(Name, Description, Data) {}
+    friend std::ostream& operator<<(std::ostream& os, const error& error);
 };
 
-struct Method {
+struct method {
     const std::string name;
     const std::string description;
     const json parameters;
-    const json returnValue;
-    const MethodCallback callback;
+    const json return_value;
+    const callback_function callback;
 
-    Method(std::string Name, std::string Description, json parameterType, json returnType, MethodCallback Callback)
+    method(std::string Name, std::string Description, json parameterType, json returnType, callback_function Callback)
         : name(std::move(Name)),
           description(std::move(Description)),
           parameters(std::move(parameterType)),
-          returnValue(std::move(returnType)),
+          return_value(std::move(returnType)),
           callback(std::move(Callback)) {}
-    friend std::ostream& operator<<(std::ostream& os, const Method& method);
+    friend std::ostream& operator<<(std::ostream& os, const method& method);
 };
+}  // namespace interface
 
-class Interface {
+class varlink_interface {
    private:
     std::string ifname{};
     std::string documentation{};
     std::string_view description{};
 
-    std::vector<Type> types{};
-    std::vector<Method> methods{};
-    std::vector<Error> errors{};
+    std::vector<interface::type> types{};
+    std::vector<interface::method> methods{};
+    std::vector<interface::error> errors{};
 
     template <typename Rule>
     friend struct grammar::inserter;
 
    public:
-    explicit Interface(std::string_view fromDescription, const CallbackMap& callbacks = {})
+    explicit varlink_interface(std::string_view fromDescription, const callback_map& callbacks = {})
         : description(fromDescription) {
         pegtl::string_input parser_in{description, __FUNCTION__};
         try {
-            grammar::ParserState state(callbacks);
+            grammar::parser_state state(callbacks);
             pegtl::parse<grammar::interface, grammar::inserter>(parser_in, *this, state);
             if (!state.global.callbacks.empty()) {
                 throw std::invalid_argument("Unknown method " + std::string(state.global.callbacks[0].method));
@@ -113,11 +116,11 @@ class Interface {
         return *i;
     }
 
-    [[nodiscard]] const Method& method(const std::string& name) const { return find_member(methods, name); }
+    [[nodiscard]] const interface::method& method(const std::string& name) const { return find_member(methods, name); }
 
-    [[nodiscard]] const Type& type(const std::string& name) const { return find_member(types, name); }
+    [[nodiscard]] const interface::type& type(const std::string& name) const { return find_member(types, name); }
 
-    [[nodiscard]] const Error& error(const std::string& name) const { return find_member(errors, name); }
+    [[nodiscard]] const interface::error& error(const std::string& name) const { return find_member(errors, name); }
 
     template <typename T>
     [[nodiscard]] inline bool has_member(const std::vector<T>& list, const std::string& name) const {
@@ -173,17 +176,17 @@ class Interface {
         }
     }
 
-    friend std::ostream& operator<<(std::ostream& os, const Interface& interface);
+    friend std::ostream& operator<<(std::ostream& os, const varlink_interface& interface);
 };
 
-class Message {
+class varlink_message {
     json json_;
     bool hasmore{false};
     bool hasoneway{false};
 
    public:
-    Message() = default;
-    explicit Message(const json& msg) : json_(msg) {
+    varlink_message() = default;
+    explicit varlink_message(const json& msg) : json_(msg) {
         if (!json_.is_object() || !json_.contains("method") || !json_["method"].is_string()) {
             throw std::invalid_argument("Not a varlink message: " + msg.dump());
         }
@@ -198,7 +201,7 @@ class Message {
     [[nodiscard]] bool more() const { return hasmore; }
     [[nodiscard]] bool oneway() const { return hasoneway; }
     [[nodiscard]] const json& parameters() const { return json_["parameters"]; }
-    [[nodiscard]] std::pair<std::string, std::string> interfaceAndMethod() const {
+    [[nodiscard]] std::pair<std::string, std::string> interface_and_method() const {
         const auto& fqmethod = json_["method"].get<std::string>();
         const auto dot = fqmethod.rfind('.');
         // When there is no dot at all, both fields contain the same value, but it's an invalid
@@ -206,12 +209,12 @@ class Message {
         return {fqmethod.substr(0, dot), fqmethod.substr(dot + 1)};
     }
 
-    friend bool operator==(const Message& lhs, const Message& rhs) noexcept;
+    friend bool operator==(const varlink_message& lhs, const varlink_message& rhs) noexcept;
 };
 
-class Service {
+class varlink_service {
    public:
-    struct Description {
+    struct descr {
         std::string vendor{};
         std::string product{};
         std::string version{};
@@ -219,30 +222,28 @@ class Service {
     };
 
    private:
-    Description description;
-    std::vector<Interface> interfaces{};
+    descr desc;
+    std::vector<varlink_interface> interfaces{};
 
-    auto findInterface(const std::string& ifname) {
+    auto find_interface(const std::string& ifname) {
         return std::find_if(interfaces.begin(), interfaces.end(), [&ifname](auto& i) { return (ifname == i.name()); });
     }
 
    public:
-    explicit Service(Description desc) : description(std::move(desc)) {
-        auto getInfo = [this] VarlinkCallback {
-            json info = {{"vendor", description.vendor},
-                         {"product", description.product},
-                         {"version", description.version},
-                         {"url", description.url}};
+    explicit varlink_service(descr description) : desc(std::move(description)) {
+        auto getInfo = [this] varlink_callback {
+            json info = {
+                {"vendor", desc.vendor}, {"product", desc.product}, {"version", desc.version}, {"url", desc.url}};
             info["interfaces"] = json::array();
             for (const auto& interface : interfaces) {
                 info["interfaces"].push_back(interface.name());
             }
             return info;
         };
-        auto getInterfaceDescription = [this] VarlinkCallback {
+        auto getInterfaceDescription = [this] varlink_callback {
             const auto& ifname = parameters["interface"].get<std::string>();
 
-            if (const auto interface = findInterface(ifname); interface != interfaces.cend()) {
+            if (const auto interface = find_interface(ifname); interface != interfaces.cend()) {
                 std::stringstream ss;
                 ss << *interface;
                 return {{"description", ss.str()}};
@@ -250,21 +251,21 @@ class Service {
                 throw varlink_error("org.varlink.service.InterfaceNotFound", {{"interface", ifname}});
             }
         };
-        setInterface(org_varlink_service_varlink,
-                     {{"GetInfo", getInfo}, {"GetInterfaceDescription", getInterfaceDescription}});
+        set_interface(org_varlink_service_varlink,
+                      {{"GetInfo", getInfo}, {"GetInterfaceDescription", getInterfaceDescription}});
     }
 
-    Service(std::string vendor, std::string product, std::string version, std::string url)
-        : Service(Description{std::move(vendor), std::move(product), std::move(version), std::move(url)}) {}
+    varlink_service(std::string vendor, std::string product, std::string version, std::string url)
+        : varlink_service(descr{std::move(vendor), std::move(product), std::move(version), std::move(url)}) {}
 
-    Service(const Service& src) = delete;
-    Service& operator=(const Service&) = delete;
-    Service(Service&& src) = delete;
-    Service& operator=(Service&&) = delete;
+    varlink_service(const varlink_service& src) = delete;
+    varlink_service& operator=(const varlink_service&) = delete;
+    varlink_service(varlink_service&& src) = delete;
+    varlink_service& operator=(varlink_service&&) = delete;
 
     // Template dependency: Interface
-    json messageCall(const Message& message, const SendMore& moreSender) noexcept {
-        const SendMore sendmore = [&moreSender](const json& msg) {
+    json message_call(const varlink_message& message, const sendmore_function& moreSender) noexcept {
+        const sendmore_function sendmore = [&moreSender](const json& msg) {
             assert(msg.is_object());
             moreSender({{"parameters", msg}, {"continues", true}});
         };
@@ -273,8 +274,8 @@ class Service {
             assert(params.is_object());
             return {{"error", what}, {"parameters", params}};
         };
-        const auto [ifname, methodname] = message.interfaceAndMethod();
-        const auto interface = findInterface(ifname);
+        const auto [ifname, methodname] = message.interface_and_method();
+        const auto interface = find_interface(ifname);
         if (interface == interfaces.cend()) {
             return error("org.varlink.service.InterfaceNotFound", {{"interface", ifname}});
         }
@@ -285,7 +286,7 @@ class Service {
             auto reply_params = method.callback(message.parameters(), (message.more() ? sendmore : nullptr));
             assert(reply_params.is_object());
             try {
-                interface->validate(reply_params, method.returnValue);
+                interface->validate(reply_params, method.return_value);
             } catch (varlink_error& e) {
                 std::cout << "Response validation error: " << e.args().dump() << std::endl;
             }
@@ -307,8 +308,8 @@ class Service {
         }
     }
 
-    void setInterface(Interface&& interface, bool allowReplace = false) {
-        if (auto pos = findInterface(interface.name()); pos == interfaces.end()) {
+    void set_interface(varlink_interface&& interface, bool allowReplace = false) {
+        if (auto pos = find_interface(interface.name()); pos == interfaces.end()) {
             interfaces.push_back(std::move(interface));
         } else if (allowReplace) {
             *pos = std::move(interface);
@@ -317,14 +318,14 @@ class Service {
         }
     }
 
-    void setInterface(std::string_view definition, const CallbackMap& callbacks, bool allowReplace = false) {
-        setInterface(Interface(definition, callbacks), allowReplace);
+    void set_interface(std::string_view definition, const callback_map& callbacks, bool allowReplace = false) {
+        set_interface(varlink_interface(definition, callbacks), allowReplace);
     }
 };
 
-struct VarlinkURI {
-    enum class Type { Unix, TCP };
-    Type type{};
+struct varlink_uri {
+    enum class type { unix, tcp };
+    type type{};
     std::string_view host{};
     std::string_view port{};
     std::string_view path{};
@@ -332,7 +333,7 @@ struct VarlinkURI {
     std::string_view interface{};
     std::string_view method{};
 
-    constexpr explicit VarlinkURI(std::string_view uri, bool has_interface = false) {
+    constexpr explicit varlink_uri(std::string_view uri, bool has_interface = false) {
         uri = uri.substr(0, uri.find(';'));
         if (has_interface or (uri.find("tcp:") == 0)) {
             const auto end_of_host = uri.rfind('/');
@@ -347,10 +348,10 @@ struct VarlinkURI {
             path = uri;
         }
         if (uri.find("unix:") == 0) {
-            type = Type::Unix;
+            type = type::unix;
             path = path.substr(5);
         } else if (uri.find("tcp:") == 0) {
-            type = Type::TCP;
+            type = type::tcp;
             path = path.substr(4);
             const auto colon = path.find(':');
             if (colon == std::string_view::npos) {
@@ -364,6 +365,11 @@ struct VarlinkURI {
     }
 };
 
+inline bool operator==(const varlink_message& lhs, const varlink_message& rhs) noexcept {
+    return (lhs.json_ == rhs.json_);
+}
+
+namespace interface {
 inline std::string element_to_string(const json& elem, int indent = 4, size_t depth = 0) {
     if (elem.is_string()) {
         return elem.get<std::string>();
@@ -413,22 +419,21 @@ inline std::string element_to_string(const json& elem, int indent = 4, size_t de
     }
 }
 
-inline bool operator==(const Message& lhs, const Message& rhs) noexcept { return (lhs.json_ == rhs.json_); }
-
-inline std::ostream& operator<<(std::ostream& os, const varlink::Type& type) {
+inline std::ostream& operator<<(std::ostream& os, const varlink::interface::type& type) {
     return os << type.description << "type " << type.name << " " << element_to_string(type.data) << "\n";
 }
 
-inline std::ostream& operator<<(std::ostream& os, const varlink::Error& error) {
+inline std::ostream& operator<<(std::ostream& os, const varlink::interface::error& error) {
     return os << error.description << "error " << error.name << " " << element_to_string(error.data, -1) << "\n";
 }
 
-inline std::ostream& operator<<(std::ostream& os, const varlink::Method& method) {
+inline std::ostream& operator<<(std::ostream& os, const varlink::interface::method& method) {
     return os << method.description << "method " << method.name << element_to_string(method.parameters, -1) << " -> "
-              << element_to_string(method.returnValue) << "\n";
+              << element_to_string(method.return_value) << "\n";
 }
+}  // namespace interface
 
-inline std::ostream& operator<<(std::ostream& os, const varlink::Interface& interface) {
+inline std::ostream& operator<<(std::ostream& os, const varlink::varlink_interface& interface) {
     os << interface.documentation << "interface " << interface.ifname << "\n";
     for (const auto& type : interface.types) {
         os << "\n" << type;

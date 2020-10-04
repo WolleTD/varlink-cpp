@@ -45,7 +45,7 @@ struct FakeSocket {
               typename = std::enable_if_t<std::is_convertible_v<typename IteratorT::value_type, char> > >
     IteratorT read(IteratorT begin, IteratorT end) {
         if (data.empty()) {
-            throw socket::systemErrorFromErrno("read() failed");
+            throw socket::system_error_from_errno("read() failed");
         } else if (static_cast<size_t>(end - begin) > data.size()) {
             auto outEnd = std::copy(data.begin(), data.end(), begin);
             data.clear();
@@ -63,7 +63,7 @@ struct FakeSocket {
 
 class ConnectionRead : public ::testing::Test {
    protected:
-    using test_connection = basic_json_connection<socket::type::Unspecified, FakeSocket>;
+    using test_connection = basic_json_connection<socket::type::unspec, FakeSocket>;
     std::unique_ptr<FakeSocket> socket{};
     test_connection conn{-1};
 
@@ -116,7 +116,7 @@ TEST_F(ConnectionRead, SuccesThenThrowEOF) {
 
 class ConnectionWrite : public ::testing::Test {
    protected:
-    using test_connection = basic_json_connection<socket::type::Unspecified, FakeSocket>;
+    using test_connection = basic_json_connection<socket::type::unspec, FakeSocket>;
     std::unique_ptr<FakeSocket> socket{};
     test_connection conn{-1};
 

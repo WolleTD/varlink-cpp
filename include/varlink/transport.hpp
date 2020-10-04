@@ -8,7 +8,7 @@
 #include <varlink/varlink.hpp>
 
 namespace varlink {
-template <typename SockaddrT, typename SocketT = socket::PosixSocket<SockaddrT> >
+template <typename SockaddrT, typename SocketT = socket::basic_socket<SockaddrT> >
 class basic_json_connection {
    private:
     std::unique_ptr<SocketT> socket;
@@ -19,7 +19,9 @@ class basic_json_connection {
    public:
     template <typename... Args>
     explicit basic_json_connection(Args &&...args)
-        : socket(std::make_unique<SocketT>(args...)), readbuf(BUFSIZ), read_end(readbuf.begin()) {}
+        : socket(std::make_unique<SocketT>(socket::mode::connect, args...)),
+          readbuf(BUFSIZ),
+          read_end(readbuf.begin()) {}
 
     // Setup message stream on existing connection
     explicit basic_json_connection(int posix_fd)
@@ -60,40 +62,20 @@ class basic_json_connection {
     }
 };
 
-using json_connection_unix = basic_json_connection<socket::type::Unix>;
-using json_connection_tcp = basic_json_connection<socket::type::TCP>;
-
-using SockaddrT = std::variant<socket::type::Unix, socket::type::TCP>;
-SockaddrT makeSockaddr(const VarlinkURI &uri) {
-    if (uri.type == VarlinkURI::Type::Unix) {
-        return socket::type::Unix{uri.path};
-    } else if (uri.type == VarlinkURI::Type::TCP) {
-        uint16_t port{0};
-        if (auto r = std::from_chars(uri.port.begin(), uri.port.end(), port); r.ptr != uri.port.end()) {
-            throw std::invalid_argument("Invalid port");
-        }
-        return socket::type::TCP(uri.host, port);
-    } else {
-        throw std::invalid_argument("Unsupported protocol");
-    }
-}
+using json_connection_unix = basic_json_connection<socket::type::unix>;
+using json_connection_tcp = basic_json_connection<socket::type::tcp>;
+using json_connection_variant = std::variant<json_connection_unix, json_connection_tcp>;
 
 template <template <typename> typename Target,
-          typename ResultT = std::variant<Target<socket::type::Unix>, Target<socket::type::TCP> > >
-ResultT makeFromURI(socket::Mode mode, const VarlinkURI &uri) {
-    auto sockaddr_v = makeSockaddr(uri);
+          typename ResultT = std::variant<Target<socket::type::unix>, Target<socket::type::tcp> >, typename... Args>
+ResultT make_from_uri(const varlink_uri &uri, Args &&...args) {
     return std::visit(
         [&](auto &&sockaddr) -> ResultT {
             using T = std::decay_t<decltype(sockaddr)>;
-            return Target<T>(mode, sockaddr);
+            return Target<T>(args..., sockaddr);
         },
-        sockaddr_v);
+        socket::type::from_uri(uri));
 }
-
-auto make_socket(socket::Mode mode, const VarlinkURI &uri) { return makeFromURI<socket::PosixSocket>(mode, uri); }
-
-auto make_connection(const VarlinkURI &uri) { return makeFromURI<basic_json_connection>(socket::Mode::Connect, uri); }
-
 }  // namespace varlink
 
 #endif

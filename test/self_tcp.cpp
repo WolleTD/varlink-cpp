@@ -9,17 +9,17 @@ using std::string;
 
 class Environment : public ::testing::Environment {
     const std::string_view varlink_uri{"tcp:127.0.0.1:51337"};
-    const Service::Description description{"varlink", "test", "1", "test.org"};
-    std::unique_ptr<VarlinkServer> server;
+    const varlink_service::descr description{"varlink", "test", "1", "test.org"};
+    std::unique_ptr<varlink_server> server;
 
    public:
     void SetUp() override {
         const auto testif =
             "interface org.test\nmethod P(p:string) -> (q:string)\n"
             "method M(n:int,t:?bool)->(m:int)\n";
-        server = std::make_unique<VarlinkServer>(varlink_uri, description);
-        auto ping_callback = [] VarlinkCallback { return {{"q", parameters["p"].get<string>()}}; };
-        auto more_callback = [] VarlinkCallback {
+        server = std::make_unique<varlink_server>(varlink_uri, description);
+        auto ping_callback = [] varlink_callback { return {{"q", parameters["p"].get<string>()}}; };
+        auto more_callback = [] varlink_callback {
             const auto count = parameters["n"].get<int>();
             const bool wait = parameters.contains("t") && parameters["t"].get<bool>();
             for (auto i = 0; i < count; i++) {
@@ -28,14 +28,14 @@ class Environment : public ::testing::Environment {
             }
             return {{"m", count}};
         };
-        server->setInterface(testif, CallbackMap{{"P", ping_callback}, {"M", more_callback}});
+        server->setInterface(testif, callback_map{{"P", ping_callback}, {"M", more_callback}});
         server->setInterface("interface org.err\nmethod E() -> ()\n",
-                             CallbackMap{{"E", [] VarlinkCallback { throw std::exception{}; }}});
+                             callback_map{{"E", [] varlink_callback { throw std::exception{}; }}});
     }
 };
 
 TEST(TCPSocket, GetInfo) {
-    auto client = VarlinkClient("tcp:127.0.0.1:51337");
+    auto client = varlink_client("tcp:127.0.0.1:51337");
     auto resp = client.call("org.varlink.service.GetInfo", {})();
     EXPECT_EQ(resp["parameters"]["vendor"].get<string>(), "varlink");
     EXPECT_EQ(resp["parameters"]["product"].get<string>(), "test");
@@ -47,7 +47,7 @@ TEST(TCPSocket, GetInfo) {
 }
 
 TEST(TCPSocket, GetInterfaceDescription) {
-    auto client = VarlinkClient("tcp:127.0.0.1:51337");
+    auto client = varlink_client("tcp:127.0.0.1:51337");
     auto resp = client.call("org.varlink.service.GetInterfaceDescription", {{"interface", "org.test"}})();
     EXPECT_EQ(resp["parameters"]["description"].get<string>(),
               "interface org.test\n\n"
@@ -62,7 +62,7 @@ TEST(TCPSocket, GetInterfaceDescription) {
 }
 
 TEST(TCPSocket, orgtestPing) {
-    auto client = VarlinkClient("tcp:127.0.0.1:51337");
+    auto client = varlink_client("tcp:127.0.0.1:51337");
     auto resp = client.call("org.test.P", {{"p", "test"}})();
     EXPECT_EQ(resp["parameters"]["q"].get<string>(), "test");
     resp = client.call("org.test.P", {{"q", "invalid"}})();
@@ -74,8 +74,8 @@ TEST(TCPSocket, orgtestPing) {
 }
 
 TEST(TCPSocket, orgtestMore) {
-    auto client = VarlinkClient("tcp:127.0.0.1:51337");
-    auto more = client.call("org.test.M", {{"n", 5}}, CallMode::More);
+    auto client = varlink_client("tcp:127.0.0.1:51337");
+    auto more = client.call("org.test.M", {{"n", 5}}, call_mode::more);
     EXPECT_EQ(more()["parameters"]["m"].get<int>(), 0);
     EXPECT_EQ(more()["parameters"]["m"].get<int>(), 1);
     EXPECT_EQ(more()["parameters"]["m"].get<int>(), 2);
@@ -83,7 +83,7 @@ TEST(TCPSocket, orgtestMore) {
     EXPECT_EQ(more()["parameters"]["m"].get<int>(), 4);
     EXPECT_EQ(more()["parameters"]["m"].get<int>(), 5);
     EXPECT_EQ(more(), nullptr);
-    auto resp = client.call("org.test.M", {{"n", 5}}, CallMode::Basic)();
+    auto resp = client.call("org.test.M", {{"n", 5}}, call_mode::basic)();
     EXPECT_EQ(resp["error"].get<string>(), "org.varlink.service.MethodNotImplemented");
     EXPECT_EQ(resp["parameters"]["method"].get<string>(), "org.test.M");
 }
@@ -91,10 +91,10 @@ TEST(TCPSocket, orgtestMore) {
 TEST(TCPSocket, orgtestMoreThread) {
     using namespace std::chrono;
     using namespace std::chrono_literals;
-    auto client = VarlinkClient("tcp:127.0.0.1:51337");
-    auto client2 = VarlinkClient("tcp:127.0.0.1:51337");
+    auto client = varlink_client("tcp:127.0.0.1:51337");
+    auto client2 = varlink_client("tcp:127.0.0.1:51337");
     auto begin = steady_clock::now();
-    auto more = client.call("org.test.M", {{"n", 1}, {"t", true}}, CallMode::More);
+    auto more = client.call("org.test.M", {{"n", 1}, {"t", true}}, call_mode::more);
     EXPECT_EQ(more()["parameters"]["m"].get<int>(), 0);
     auto begin2 = steady_clock::now();
     auto resp = client2.call("org.test.P", {{"p", "test"}})();
@@ -108,26 +108,26 @@ TEST(TCPSocket, orgtestMoreThread) {
     EXPECT_LT(latency, 1ms);
 }
 TEST(TCPSocket, orgtestMoreAndQuit) {
-    auto client = VarlinkClient("tcp:127.0.0.1:51337");
-    auto more = client.call("org.test.M", {{"n", 5}}, CallMode::More);
+    auto client = varlink_client("tcp:127.0.0.1:51337");
+    auto more = client.call("org.test.M", {{"n", 5}}, call_mode::more);
     EXPECT_EQ(more()["parameters"]["m"].get<int>(), 0);
     EXPECT_EQ(more()["parameters"]["m"].get<int>(), 1);
     EXPECT_EQ(more()["parameters"]["m"].get<int>(), 2);
 }
 
 TEST(TCPSocket, orgtestDontread) {
-    auto client = VarlinkClient("tcp:127.0.0.1:51337");
+    auto client = varlink_client("tcp:127.0.0.1:51337");
     client.call("org.test.P", {{"p", "test"}});
 }
 
 TEST(TCPSocket, orgtestOneway) {
-    auto client = VarlinkClient("tcp:127.0.0.1:51337");
-    auto null = client.call("org.test.P", {{"p", "test"}}, CallMode::Oneway);
+    auto client = varlink_client("tcp:127.0.0.1:51337");
+    auto null = client.call("org.test.P", {{"p", "test"}}, call_mode::oneway);
     EXPECT_EQ(null(), nullptr);
 }
 
 TEST(TCPSocket, InterfaceNotFound) {
-    auto client = VarlinkClient("tcp:127.0.0.1:51337");
+    auto client = varlink_client("tcp:127.0.0.1:51337");
     auto resp = client.call("org.notfound.NonExistent", {})();
     EXPECT_EQ(resp["error"].get<string>(), "org.varlink.service.InterfaceNotFound");
     EXPECT_EQ(resp["parameters"]["interface"].get<string>(), "org.notfound");
@@ -140,40 +140,40 @@ TEST(TCPSocket, InterfaceNotFound) {
 }
 
 TEST(TCPSocket, MethodNotFound) {
-    auto client = VarlinkClient("tcp:127.0.0.1:51337");
+    auto client = varlink_client("tcp:127.0.0.1:51337");
     auto resp = client.call("org.test.NonExistent", {})();
     EXPECT_EQ(resp["error"].get<string>(), "org.varlink.service.MethodNotFound");
     EXPECT_EQ(resp["parameters"]["method"].get<string>(), "org.test.NonExistent");
 }
 
 TEST(TCPSocket, InvalidMessage) {
-    auto client = json_connection_tcp(socket::Mode::Connect, "127.0.0.1", static_cast<uint16_t>(51337));
+    auto client = json_connection_tcp("127.0.0.1", static_cast<uint16_t>(51337));
     client.send(R"({"notmethod":"org.test.NonExistent"})"_json);
     EXPECT_THROW((void)client.receive(), std::system_error);
 }
 
 TEST(TCPSocket, InvalidParameterType) {
-    auto client = json_connection_tcp(socket::Mode::Connect, "127.0.0.1", static_cast<uint16_t>(51337));
+    auto client = json_connection_tcp("127.0.0.1", static_cast<uint16_t>(51337));
     client.send(R"({"method":"org.test.P","parameters":["array"]})"_json);
     EXPECT_THROW((void)client.receive(), std::system_error);
 }
 
 TEST(TCPSocket, NotJsonMessage) {
-    auto client = socket::TCPSocket(socket::Mode::Connect, "127.0.0.1", static_cast<uint16_t>(51337));
+    auto client = socket::tcp(socket::mode::connect, "127.0.0.1", static_cast<uint16_t>(51337));
     std::string data = "{totally_not\"a json-message]";
     client.write(data.begin(), data.end() + 1);
     EXPECT_THROW((void)client.read(data.begin(), data.end()), std::system_error);
 }
 
 TEST(TCPSocket, Nothing) {
-    auto client1 = VarlinkClient("tcp:127.0.0.1:51337");
-    auto client2 = VarlinkClient("tcp:127.0.0.1:51337");
-    auto client3 = VarlinkClient("tcp:127.0.0.1:51337");
-    auto client4 = VarlinkClient("tcp:127.0.0.1:51337");
+    auto client1 = varlink_client("tcp:127.0.0.1:51337");
+    auto client2 = varlink_client("tcp:127.0.0.1:51337");
+    auto client3 = varlink_client("tcp:127.0.0.1:51337");
+    auto client4 = varlink_client("tcp:127.0.0.1:51337");
 }
 
 TEST(TCPSocket, InternalException) {
-    auto client = VarlinkClient("tcp:127.0.0.1:51337");
+    auto client = varlink_client("tcp:127.0.0.1:51337");
     auto resp = client.call("org.err.E", {})();
     EXPECT_EQ(resp["error"].get<string>(), "org.varlink.service.InternalError");
 }

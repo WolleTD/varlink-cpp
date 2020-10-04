@@ -16,7 +16,7 @@
 struct TestData {
     std::string method;
     varlink::json parameters;
-    varlink::CallMode mode{varlink::CallMode::Basic};
+    varlink::call_mode mode{varlink::call_mode::basic};
 };
 
 constexpr std::string_view getInterfaceName(const std::string_view description) {
@@ -26,7 +26,7 @@ constexpr std::string_view getInterfaceName(const std::string_view description) 
     return description.substr(posInterface, lenInterface);
 }
 
-std::unique_ptr<varlink::VarlinkServer> service;
+std::unique_ptr<varlink::varlink_server> service;
 
 void signalHandler(int32_t) {
     service.reset(nullptr);
@@ -43,26 +43,27 @@ int main() {
 }
 #elif defined(TEST_SERVICE)
 int main() {
+    using namespace varlink;
     using namespace std::chrono_literals;
     signal(SIGTERM, signalHandler);
     signal(SIGINT, signalHandler);
     signal(SIGPIPE, SIG_IGN);
     try {
         std::filesystem::remove("/tmp/test.socket");
-        service = std::make_unique<varlink::VarlinkServer>("unix:/tmp/test.socket",
-                                                           varlink::Service::Description{"a", "b", "c", "d"});
+        service =
+            std::make_unique<varlink_server>("unix:/tmp/test.socket", varlink_service::descr{"a", "b", "c", "d"});
     } catch (std::exception& e) {
         std::cerr << "Couldn't start service: " << e.what() << "\n";
         return 1;
     }
     service->setInterface(
-        varlink::org_example_more_varlink,
-        varlink::CallbackMap{
+        org_example_more_varlink,
+        callback_map{
             {"Ping",
-             [] VarlinkCallback {
+             [] varlink_callback {
                  return {{"pong", parameters["ping"]}};
              }},
-            {"TestMore", [] VarlinkCallback {
+            {"TestMore", [] varlink_callback {
                  if (sendmore) {
                      nlohmann::json state = {{"start", true}};
                      sendmore({{"state", state}});

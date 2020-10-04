@@ -4,8 +4,9 @@
 #include <varlink/varlink.hpp>
 
 using namespace varlink;
+using namespace varlink::interface;
 
-TEST(Interface, Standard) {
+TEST(varlink_interface, Standard) {
     std::string_view desc = R"IF(# The Varlink Service Interface is provided by every varlink service. It
 # describes the service and the interfaces it implements.
 interface org.varlink.service
@@ -36,7 +37,7 @@ error MethodNotImplemented (method: string)
 # One of the passed parameters is invalid.
 error InvalidParameter (parameter: string)
 )IF";
-    Interface interface{desc};
+    varlink_interface interface{desc};
     EXPECT_EQ("org.varlink.service", interface.name());
     EXPECT_EQ(
         "# The Varlink Service Interface is provided by every varlink service. It\n"
@@ -79,7 +80,7 @@ error InvalidParameter (parameter: string)
               ss.str());
 }
 
-TEST(Interface, Complex) {
+TEST(varlink_interface, Complex) {
     std::string_view desc = R"IF(interface org.example.complex
 type TypeEnum ( a, b, c )
 type TypeFoo (
@@ -94,7 +95,7 @@ anon: ( foo: bool, bar: int, baz: ( a: int, b: int) )
 method Foo(a: (b: bool, c: int), foo: TypeFoo) -> (a: (b: bool, c: int), foo: TypeFoo)
 error ErrorFoo (a: (b: bool, c: int), foo: TypeFoo)
 )IF";
-    Interface interface{desc};
+    varlink_interface interface{desc};
     EXPECT_EQ("org.example.complex", interface.name());
     std::stringstream ss;
     ss << interface;
@@ -126,128 +127,128 @@ error ErrorFoo (a: (b: bool, c: int), foo: TypeFoo)
               ss.str());
 }
 
-TEST(Interface, Docstring) {
+TEST(varlink_interface, Docstring) {
     std::string_view desc = "# Interface\ninterface org.test\n\nmethod F()->()";
-    Interface interface{desc};
+    varlink_interface interface{desc};
     EXPECT_EQ("# Interface\n", interface.doc());
     EXPECT_EQ("org.test", interface.name());
     EXPECT_EQ("", interface.method("F").description);
 }
 
-TEST(Interface, DocstringNoNewline) {
+TEST(varlink_interface, DocstringNoNewline) {
     std::string_view desc = "# Interface\ninterface org.test\nmethod F()->()";
-    Interface interface{desc};
+    varlink_interface interface{desc};
     EXPECT_EQ("# Interface\n", interface.doc());
     EXPECT_EQ("org.test", interface.name());
     EXPECT_EQ("", interface.method("F").description);
 }
 
-TEST(Interface, NoMethod) { EXPECT_ANY_THROW(Interface("interface org.test\n")); }
+TEST(varlink_interface, NoMethod) { EXPECT_ANY_THROW(varlink_interface("interface org.test\n")); }
 
-TEST(Interface, OneMethod) {
-    Interface interface("interface org.test\nmethod Test()->()");
+TEST(varlink_interface, OneMethod) {
+    varlink_interface interface("interface org.test\nmethod Test()->()");
     EXPECT_EQ("org.test", interface.name());
 }
 
-TEST(Interface, OneMethodNoType) { EXPECT_ANY_THROW(Interface("interface.org.test\nmethod Test()->(a:)")); }
+TEST(varlink_interface, OneMethodNoType) { EXPECT_ANY_THROW(varlink_interface("interface.org.test\nmethod Test()->(a:)")); }
 
-TEST(Interface, DomainNames) {
-    EXPECT_NO_THROW(Interface("interface org.varlink.service\nmethod F()->()"));
-    EXPECT_NO_THROW(Interface("interface com.example.0example\nmethod F()->()"));
-    EXPECT_NO_THROW(Interface("interface com.example.example-dash\nmethod F()->()"));
-    EXPECT_ANY_THROW(Interface("interface com.-example.leadinghyphen\nmethod F()->()"));
-    EXPECT_NO_THROW(Interface("interface xn-lgbbat1ad8j.example.algeria\nmethod F()->()"));
-    EXPECT_ANY_THROW(Interface("interface com.example-.danglinghyphen-\nmethod F()->()"));
-    EXPECT_ANY_THROW(Interface("interface Com.example.uppercase-toplevel\nmethod F()->()"));
-    EXPECT_ANY_THROW(Interface("interface Co9.example.number-toplevel\nmethod F()->()"));
-    EXPECT_ANY_THROW(Interface("interface 1om.example.number-toplevel\nmethod F()->()"));
-    EXPECT_ANY_THROW(Interface("interface com.Example\nmethod F()->()"));
-    EXPECT_NO_THROW(Interface("interface a.b\nmethod F()->()"));
-    EXPECT_NO_THROW(Interface("interface a.b.c\nmethod F()->()"));
-    EXPECT_NO_THROW(Interface("interface a1.b1.c1\nmethod F()->()"));
-    EXPECT_NO_THROW(Interface("interface a1.b--1.c--1\nmethod F()->()"));
-    EXPECT_NO_THROW(Interface("interface a--1.b--1.c--1\nmethod F()->()"));
-    EXPECT_NO_THROW(Interface("interface a.21.c\nmethod F()->()"));
-    EXPECT_NO_THROW(Interface("interface a.1\nmethod F()->()"));
-    EXPECT_NO_THROW(Interface("interface a.0.0\nmethod F()->()"));
-    EXPECT_ANY_THROW(Interface("interface ab\nmethod F()->()"));
-    EXPECT_ANY_THROW(Interface("interface .a.b.c\nmethod F()->()"));
-    EXPECT_ANY_THROW(Interface("interface a.b.c.\nmethod F()->()"));
-    EXPECT_ANY_THROW(Interface("interface a..b.c\nmethod F()->()"));
-    EXPECT_ANY_THROW(Interface("interface 1.b.c\nmethod F()->()"));
-    EXPECT_ANY_THROW(Interface("interface 8a.0.0\nmethod F()->()"));
-    EXPECT_ANY_THROW(Interface("interface -a.b.c\nmethod F()->()"));
-    EXPECT_ANY_THROW(Interface("interface a.b.c-\nmethod F()->()"));
-    EXPECT_ANY_THROW(Interface("interface a.b-.c-\nmethod F()->()"));
-    EXPECT_ANY_THROW(Interface("interface a.-b.c-\nmethod F()->()"));
-    EXPECT_ANY_THROW(Interface("interface a.-.c\nmethod F()->()"));
-    EXPECT_ANY_THROW(Interface("interface a.*.c\nmethod F()->()"));
-    EXPECT_ANY_THROW(Interface("interface a.?\nmethod F()->()"));
+TEST(varlink_interface, DomainNames) {
+    EXPECT_NO_THROW(varlink_interface("interface org.varlink.service\nmethod F()->()"));
+    EXPECT_NO_THROW(varlink_interface("interface com.example.0example\nmethod F()->()"));
+    EXPECT_NO_THROW(varlink_interface("interface com.example.example-dash\nmethod F()->()"));
+    EXPECT_ANY_THROW(varlink_interface("interface com.-example.leadinghyphen\nmethod F()->()"));
+    EXPECT_NO_THROW(varlink_interface("interface xn-lgbbat1ad8j.example.algeria\nmethod F()->()"));
+    EXPECT_ANY_THROW(varlink_interface("interface com.example-.danglinghyphen-\nmethod F()->()"));
+    EXPECT_ANY_THROW(varlink_interface("interface Com.example.uppercase-toplevel\nmethod F()->()"));
+    EXPECT_ANY_THROW(varlink_interface("interface Co9.example.number-toplevel\nmethod F()->()"));
+    EXPECT_ANY_THROW(varlink_interface("interface 1om.example.number-toplevel\nmethod F()->()"));
+    EXPECT_ANY_THROW(varlink_interface("interface com.Example\nmethod F()->()"));
+    EXPECT_NO_THROW(varlink_interface("interface a.b\nmethod F()->()"));
+    EXPECT_NO_THROW(varlink_interface("interface a.b.c\nmethod F()->()"));
+    EXPECT_NO_THROW(varlink_interface("interface a1.b1.c1\nmethod F()->()"));
+    EXPECT_NO_THROW(varlink_interface("interface a1.b--1.c--1\nmethod F()->()"));
+    EXPECT_NO_THROW(varlink_interface("interface a--1.b--1.c--1\nmethod F()->()"));
+    EXPECT_NO_THROW(varlink_interface("interface a.21.c\nmethod F()->()"));
+    EXPECT_NO_THROW(varlink_interface("interface a.1\nmethod F()->()"));
+    EXPECT_NO_THROW(varlink_interface("interface a.0.0\nmethod F()->()"));
+    EXPECT_ANY_THROW(varlink_interface("interface ab\nmethod F()->()"));
+    EXPECT_ANY_THROW(varlink_interface("interface .a.b.c\nmethod F()->()"));
+    EXPECT_ANY_THROW(varlink_interface("interface a.b.c.\nmethod F()->()"));
+    EXPECT_ANY_THROW(varlink_interface("interface a..b.c\nmethod F()->()"));
+    EXPECT_ANY_THROW(varlink_interface("interface 1.b.c\nmethod F()->()"));
+    EXPECT_ANY_THROW(varlink_interface("interface 8a.0.0\nmethod F()->()"));
+    EXPECT_ANY_THROW(varlink_interface("interface -a.b.c\nmethod F()->()"));
+    EXPECT_ANY_THROW(varlink_interface("interface a.b.c-\nmethod F()->()"));
+    EXPECT_ANY_THROW(varlink_interface("interface a.b-.c-\nmethod F()->()"));
+    EXPECT_ANY_THROW(varlink_interface("interface a.-b.c-\nmethod F()->()"));
+    EXPECT_ANY_THROW(varlink_interface("interface a.-.c\nmethod F()->()"));
+    EXPECT_ANY_THROW(varlink_interface("interface a.*.c\nmethod F()->()"));
+    EXPECT_ANY_THROW(varlink_interface("interface a.?\nmethod F()->()"));
 }
 
-TEST(Interface, Types) {
-    EXPECT_NO_THROW(Interface("interface org.test\n type I ()"));
-    EXPECT_NO_THROW(Interface("interface org.test\n type I (b: bool)"));
-    EXPECT_NO_THROW(Interface("interface org.test\ntype I (e: (A, B, C))"));
-    EXPECT_NO_THROW(Interface("interface org.test\ntype I (s: string)"));
-    EXPECT_NO_THROW(Interface("interface org.test\ntype I (s: [string]string)"));
-    EXPECT_NO_THROW(Interface("interface org.test\ntype I (s: [string]())"));
-    EXPECT_NO_THROW(Interface("interface org.test\ntype I (o: object)"));
-    EXPECT_NO_THROW(Interface("interface org.test\ntype I (i: int)"));
-    EXPECT_NO_THROW(Interface("interface org.test\ntype I (f: float)"));
-    EXPECT_NO_THROW(Interface("interface org.test\ntype I (b: []bool)"));
-    EXPECT_NO_THROW(Interface("interface org.test\ntype I (i: ?int)"));
-    EXPECT_ANY_THROW(Interface("interface org.test\ntype I (b: bool[])"));
-    EXPECT_ANY_THROW(Interface("interface org.test\ntype I (b: bool[ ])"));
-    EXPECT_ANY_THROW(Interface("interface org.test\ntype I (b: bool[1])"));
-    EXPECT_ANY_THROW(Interface("interface org.test\ntype I (b: bool[ 1 ])"));
-    EXPECT_ANY_THROW(Interface("interface org.test\ntype I (b: bool[ 1 1 ])"));
-    EXPECT_ANY_THROW(Interface("interface org.test\ntype I (b: [ ]bool)"));
-    EXPECT_ANY_THROW(Interface("interface org.test\ntype I (b: [1]bool)"));
-    EXPECT_ANY_THROW(Interface("interface org.test\ntype I (b: [ 1 ]bool)"));
-    EXPECT_ANY_THROW(Interface("interface org.test\ntype I (b: [ 1 1 ]bool)"));
+TEST(varlink_interface, Types) {
+    EXPECT_NO_THROW(varlink_interface("interface org.test\n type I ()"));
+    EXPECT_NO_THROW(varlink_interface("interface org.test\n type I (b: bool)"));
+    EXPECT_NO_THROW(varlink_interface("interface org.test\ntype I (e: (A, B, C))"));
+    EXPECT_NO_THROW(varlink_interface("interface org.test\ntype I (s: string)"));
+    EXPECT_NO_THROW(varlink_interface("interface org.test\ntype I (s: [string]string)"));
+    EXPECT_NO_THROW(varlink_interface("interface org.test\ntype I (s: [string]())"));
+    EXPECT_NO_THROW(varlink_interface("interface org.test\ntype I (o: object)"));
+    EXPECT_NO_THROW(varlink_interface("interface org.test\ntype I (i: int)"));
+    EXPECT_NO_THROW(varlink_interface("interface org.test\ntype I (f: float)"));
+    EXPECT_NO_THROW(varlink_interface("interface org.test\ntype I (b: []bool)"));
+    EXPECT_NO_THROW(varlink_interface("interface org.test\ntype I (i: ?int)"));
+    EXPECT_ANY_THROW(varlink_interface("interface org.test\ntype I (b: bool[])"));
+    EXPECT_ANY_THROW(varlink_interface("interface org.test\ntype I (b: bool[ ])"));
+    EXPECT_ANY_THROW(varlink_interface("interface org.test\ntype I (b: bool[1])"));
+    EXPECT_ANY_THROW(varlink_interface("interface org.test\ntype I (b: bool[ 1 ])"));
+    EXPECT_ANY_THROW(varlink_interface("interface org.test\ntype I (b: bool[ 1 1 ])"));
+    EXPECT_ANY_THROW(varlink_interface("interface org.test\ntype I (b: [ ]bool)"));
+    EXPECT_ANY_THROW(varlink_interface("interface org.test\ntype I (b: [1]bool)"));
+    EXPECT_ANY_THROW(varlink_interface("interface org.test\ntype I (b: [ 1 ]bool)"));
+    EXPECT_ANY_THROW(varlink_interface("interface org.test\ntype I (b: [ 1 1 ]bool)"));
 }
 
-TEST(Interface, Duplicate) {
-    EXPECT_ANY_THROW(Interface("interface org.test\ntype T()\ntype T()"));
-    EXPECT_ANY_THROW(Interface("interface org.test\nmethod F()->()\nmethod F()->()"));
-    EXPECT_ANY_THROW(Interface("interface org.test\nerror E()\nerror E()"));
+TEST(varlink_interface, Duplicate) {
+    EXPECT_ANY_THROW(varlink_interface("interface org.test\ntype T()\ntype T()"));
+    EXPECT_ANY_THROW(varlink_interface("interface org.test\nmethod F()->()\nmethod F()->()"));
+    EXPECT_ANY_THROW(varlink_interface("interface org.test\nerror E()\nerror E()"));
 }
 
-TEST(Interface, AddCallback) {
-    EXPECT_NO_THROW(Interface("interface org.test\nmethod Test()->()", {{"Test", nullptr}}));
+TEST(varlink_interface, AddCallback) {
+    EXPECT_NO_THROW(varlink_interface("interface org.test\nmethod Test()->()", {{"Test", nullptr}}));
 }
 
-TEST(Interface, UnknownMethod) {
-    EXPECT_THROW(Interface("interface org.test\nmethod Test()->()", {{"Wrong", nullptr}}), std::invalid_argument);
+TEST(varlink_interface, UnknownMethod) {
+    EXPECT_THROW(varlink_interface("interface org.test\nmethod Test()->()", {{"Wrong", nullptr}}), std::invalid_argument);
 }
 
-TEST(Interface, MethodAccess) {
-    Interface interface("interface org.test\nmethod Test()->()");
+TEST(varlink_interface, MethodAccess) {
+    varlink_interface interface("interface org.test\nmethod Test()->()");
     EXPECT_TRUE(interface.has_method("Test"));
     EXPECT_FALSE(interface.has_method("Other"));
     EXPECT_NO_THROW((void)interface.method("Test"));
     EXPECT_THROW((void)interface.method("Other"), std::out_of_range);
 }
 
-TEST(Interface, TypeAccess) {
-    Interface interface("interface org.test\ntype T()");
+TEST(varlink_interface, TypeAccess) {
+    varlink_interface interface("interface org.test\ntype T()");
     EXPECT_TRUE(interface.has_type("T"));
     EXPECT_FALSE(interface.has_type("O"));
     EXPECT_NO_THROW((void)interface.type("T"));
     EXPECT_THROW((void)interface.type("O"), std::out_of_range);
 }
 
-TEST(Interface, ErrorAccess) {
-    Interface interface("interface org.test\nerror E()");
+TEST(varlink_interface, ErrorAccess) {
+    varlink_interface interface("interface org.test\nerror E()");
     EXPECT_TRUE(interface.has_error("E"));
     EXPECT_FALSE(interface.has_error("F"));
     EXPECT_NO_THROW((void)interface.error("E"));
     EXPECT_THROW((void)interface.error("F"), std::out_of_range);
 }
 
-TEST(Interface, Validate1) {
-    Interface interface("interface org.test\ntype T(n: ?int)");
+TEST(varlink_interface, Validate1) {
+    varlink_interface interface("interface org.test\ntype T(n: ?int)");
     struct Testdata {
         json data;
         json type;
@@ -283,8 +284,8 @@ TEST(Interface, Validate1) {
     }
 }
 
-TEST(Interface, Validate2) {
-    Interface interface("interface org.test\ntype T(n: int)");
+TEST(varlink_interface, Validate2) {
+    varlink_interface interface("interface org.test\ntype T(n: int)");
     struct Testdata {
         json data;
         json type;

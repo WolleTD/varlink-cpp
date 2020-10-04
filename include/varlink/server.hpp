@@ -15,22 +15,21 @@
 #include <varlink/varlink.hpp>
 
 namespace varlink {
-class VarlinkServer {
+class varlink_server {
    public:
-    using SocketT = std::variant<socket::UnixSocket, socket::TCPSocket>;
-    using ClientConnT = basic_json_connection<socket::type::Unspecified>;
+    using ClientConnT = basic_json_connection<socket::type::unspec>;
 
    private:
-    SocketT listenSocket;
-    std::unique_ptr<Service> service;
-    std::thread listenThread;
+    socket::variant listen_socket;
+    std::unique_ptr<varlink_service> service;
+    std::thread listen_thread;
 
-    auto makeClientThread() {
+    auto make_client_thread() {
         return [&service = *service](auto conn) {
             try {
                 while (true) {
-                    const Message message{conn.receive()};
-                    const auto reply = service.messageCall(message, [&conn](auto &&more) { conn.send(more); });
+                    const varlink_message message{conn.receive()};
+                    const auto reply = service.message_call(message, [&conn](auto &&more) { conn.send(more); });
                     if (reply.is_object()) {
                         conn.send(reply);
                     }
@@ -45,8 +44,8 @@ class VarlinkServer {
         };
     }
 
-    auto makeListenThread() {
-        return [&sock = listenSocket, clientThread = makeClientThread()]() {
+    auto make_listen_thread() {
+        return [&sock = listen_socket, clientThread = make_client_thread()]() {
             std::vector<std::future<void> > clients{};
             while (true) {
                 try {
@@ -69,31 +68,31 @@ class VarlinkServer {
     }
 
    public:
-    VarlinkServer(std::string_view uri, const Service::Description &description)
-        : listenSocket(make_socket(socket::Mode::Listen, VarlinkURI(uri))),
-          service(std::make_unique<Service>(description)),
-          listenThread(makeListenThread()) {}
+    varlink_server(std::string_view uri, const varlink_service::descr &description)
+        : listen_socket(make_from_uri<socket::basic_socket>(varlink_uri(uri), socket::mode::listen)),
+          service(std::make_unique<varlink_service>(description)),
+          listen_thread(make_listen_thread()) {}
 
-    explicit VarlinkServer(SocketT &&listenConn, std::unique_ptr<Service> existingService)
-        : listenSocket(std::move(listenConn)), service(std::move(existingService)) {}
+    explicit varlink_server(socket::variant &&listenConn, std::unique_ptr<varlink_service> existingService)
+        : listen_socket(std::move(listenConn)), service(std::move(existingService)) {}
 
-    VarlinkServer(const VarlinkServer &src) = delete;
-    VarlinkServer &operator=(const VarlinkServer &) = delete;
-    VarlinkServer(VarlinkServer &&src) noexcept = default;
-    VarlinkServer &operator=(VarlinkServer &&src) noexcept = default;
+    varlink_server(const varlink_server &src) = delete;
+    varlink_server &operator=(const varlink_server &) = delete;
+    varlink_server(varlink_server &&src) noexcept = default;
+    varlink_server &operator=(varlink_server &&src) noexcept = default;
 
-    ~VarlinkServer() {
+    ~varlink_server() {
         // Calling shutdown will release the thread from it's accept() call
-        std::visit([&](auto &&sock) { sock.shutdown(SHUT_RDWR); }, listenSocket);
-        if (listenThread.joinable()) listenThread.join();
+        std::visit([&](auto &&sock) { sock.shutdown(SHUT_RDWR); }, listen_socket);
+        if (listen_thread.joinable()) listen_thread.join();
     }
 
     template <typename... Args>
     void setInterface(Args &&...args) {
-        service->setInterface(std::forward<Args>(args)...);
+        service->set_interface(std::forward<Args>(args)...);
     }
 
-    void join() { listenThread.join(); }
+    void join() { listen_thread.join(); }
 };
 }  // namespace varlink
 
