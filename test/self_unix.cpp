@@ -127,6 +127,12 @@ TEST(UnixSocket, orgtestOneway) {
     EXPECT_EQ(null(), nullptr);
 }
 
+TEST(UnixSocket, Upgrade) {
+    auto client = VarlinkClient("unix:test-integration.socket");
+    auto resp = client.call("org.test.P", {{"p", "test"}}, CallMode::Upgrade)();
+    EXPECT_EQ(resp["parameters"]["q"].get<string>(), "test");
+}
+
 TEST(UnixSocket, InterfaceNotFound) {
     auto client = VarlinkClient("unix:test-integration.socket");
     auto resp = client.call("org.notfound.NonExistent", {})();

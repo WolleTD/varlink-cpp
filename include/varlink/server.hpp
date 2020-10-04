@@ -68,27 +68,13 @@ class VarlinkServer {
         };
     }
 
-    static SocketT makeSocket(const VarlinkURI &uri) {
-        if (uri.type == VarlinkURI::Type::Unix) {
-            return socket::UnixSocket{socket::Mode::Listen, uri.path};
-        } else if (uri.type == VarlinkURI::Type::TCP) {
-            uint16_t port{0};
-            if (auto r = std::from_chars(uri.port.begin(), uri.port.end(), port); r.ptr != uri.port.end()) {
-                throw std::invalid_argument("Invalid port");
-            }
-            return socket::TCPSocket(socket::Mode::Listen, uri.host, port);
-        } else {
-            throw std::invalid_argument("Unsupported protocol");
-        }
-    }
-
    public:
     VarlinkServer(std::string_view uri, const Service::Description &description)
-        : listenSocket(makeSocket(VarlinkURI(uri))),
+        : listenSocket(make_socket(socket::Mode::Listen, VarlinkURI(uri))),
           service(std::make_unique<Service>(description)),
           listenThread(makeListenThread()) {}
 
-    explicit VarlinkServer(SocketT&& listenConn, std::unique_ptr<Service> existingService)
+    explicit VarlinkServer(SocketT &&listenConn, std::unique_ptr<Service> existingService)
         : listenSocket(std::move(listenConn)), service(std::move(existingService)) {}
 
     VarlinkServer(const VarlinkServer &src) = delete;
@@ -98,7 +84,7 @@ class VarlinkServer {
 
     ~VarlinkServer() {
         // Calling shutdown will release the thread from it's accept() call
-        std::visit([&](auto&& sock) { sock.shutdown(SHUT_RDWR); }, listenSocket);
+        std::visit([&](auto &&sock) { sock.shutdown(SHUT_RDWR); }, listenSocket);
         if (listenThread.joinable()) listenThread.join();
     }
 

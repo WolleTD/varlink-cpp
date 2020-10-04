@@ -14,7 +14,6 @@ function(varlink_test NAME)
 endfunction()
 
 varlink_test(unittests
-        unit_client.cpp
         unit_interface.cpp
         unit_message.cpp
         unit_service.cpp
