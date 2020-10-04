@@ -19,7 +19,7 @@ enum class CallMode {
 
 class VarlinkClient {
    public:
-    using ConnectionT = std::variant<JsonConnection<socket::UnixSocket>, JsonConnection<socket::TCPSocket> >;
+    using ConnectionT = std::variant<json_connection_unix, json_connection_tcp>;
 
    private:
     ConnectionT conn;

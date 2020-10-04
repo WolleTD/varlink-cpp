@@ -8,8 +8,8 @@
 #include <varlink/varlink.hpp>
 
 namespace varlink {
-template <typename SocketT>
-class JsonConnection {
+template <typename SockaddrT, typename SocketT = socket::PosixSocket<SockaddrT> >
+class basic_json_connection {
    private:
     std::unique_ptr<SocketT> socket;
     using byte_buffer = std::vector<char>;
@@ -18,20 +18,20 @@ class JsonConnection {
 
    public:
     template <typename... Args>
-    explicit JsonConnection(Args &&...args)
+    explicit basic_json_connection(Args &&...args)
         : socket(std::make_unique<SocketT>(args...)), readbuf(BUFSIZ), read_end(readbuf.begin()) {}
 
     // Setup message stream on existing connection
-    explicit JsonConnection(int posix_fd)
+    explicit basic_json_connection(int posix_fd)
         : socket(std::make_unique<SocketT>(posix_fd)), readbuf(BUFSIZ), read_end(readbuf.begin()) {}
 
-    explicit JsonConnection(std::unique_ptr<SocketT> existingSocket)
+    explicit basic_json_connection(std::unique_ptr<SocketT> existingSocket)
         : socket(std::move(existingSocket)), readbuf(BUFSIZ), read_end(readbuf.begin()) {}
 
-    JsonConnection(const JsonConnection &) = delete;
-    JsonConnection &operator=(const JsonConnection &) = delete;
-    JsonConnection(JsonConnection &&) noexcept = default;
-    JsonConnection &operator=(JsonConnection &&) noexcept = default;
+    basic_json_connection(const basic_json_connection &) = delete;
+    basic_json_connection &operator=(const basic_json_connection &) = delete;
+    basic_json_connection(basic_json_connection &&) noexcept = default;
+    basic_json_connection &operator=(basic_json_connection &&) noexcept = default;
 
     void send(const json &message) {
         const auto m = message.dump();
@@ -59,6 +59,9 @@ class JsonConnection {
         }
     }
 };
+
+using json_connection_unix = basic_json_connection<socket::type::Unix>;
+using json_connection_tcp = basic_json_connection<socket::type::TCP>;
 
 using SockaddrT = std::variant<socket::type::Unix, socket::type::TCP>;
 SockaddrT makeSockaddr(const VarlinkURI &uri) {
@@ -89,9 +92,7 @@ ResultT makeFromURI(socket::Mode mode, const VarlinkURI &uri) {
 
 auto make_socket(socket::Mode mode, const VarlinkURI &uri) { return makeFromURI<socket::PosixSocket>(mode, uri); }
 
-template <typename Y>
-using JsonConnectionT = JsonConnection<socket::PosixSocket<Y> >;
-auto make_connection(const VarlinkURI &uri) { return makeFromURI<JsonConnectionT>(socket::Mode::Connect, uri); }
+auto make_connection(const VarlinkURI &uri) { return makeFromURI<basic_json_connection>(socket::Mode::Connect, uri); }
 
 }  // namespace varlink
 

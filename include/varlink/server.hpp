@@ -18,7 +18,7 @@ namespace varlink {
 class VarlinkServer {
    public:
     using SocketT = std::variant<socket::UnixSocket, socket::TCPSocket>;
-    using ClientConnT = JsonConnection<socket::PosixSocket<socket::type::Unspecified> >;
+    using ClientConnT = basic_json_connection<socket::type::Unspecified>;
 
    private:
     SocketT listenSocket;

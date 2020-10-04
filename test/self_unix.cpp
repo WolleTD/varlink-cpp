@@ -154,13 +154,13 @@ TEST(UnixSocket, MethodNotFound) {
 }
 
 TEST(UnixSocket, InvalidMessage) {
-    auto client = JsonConnection<socket::UnixSocket>(socket::Mode::Connect, "test-integration.socket");
+    auto client = json_connection_unix(socket::Mode::Connect, "test-integration.socket");
     client.send(R"({"notmethod":"org.test.NonExistent"})"_json);
     EXPECT_THROW((void)client.receive(), std::system_error);
 }
 
 TEST(UnixSocket, InvalidParameterType) {
-    auto client = JsonConnection<socket::UnixSocket>(socket::Mode::Connect, "test-integration.socket");
+    auto client = json_connection_unix(socket::Mode::Connect, "test-integration.socket");
     client.send(R"({"method":"org.test.P","parameters":["array"]})"_json);
     EXPECT_THROW((void)client.receive(), std::system_error);
 }

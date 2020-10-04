@@ -147,13 +147,13 @@ TEST(TCPSocket, MethodNotFound) {
 }
 
 TEST(TCPSocket, InvalidMessage) {
-    auto client = JsonConnection<socket::TCPSocket>(socket::Mode::Connect, "127.0.0.1", static_cast<uint16_t>(51337));
+    auto client = json_connection_tcp(socket::Mode::Connect, "127.0.0.1", static_cast<uint16_t>(51337));
     client.send(R"({"notmethod":"org.test.NonExistent"})"_json);
     EXPECT_THROW((void)client.receive(), std::system_error);
 }
 
 TEST(TCPSocket, InvalidParameterType) {
-    auto client = JsonConnection<socket::TCPSocket>(socket::Mode::Connect, "127.0.0.1", static_cast<uint16_t>(51337));
+    auto client = json_connection_tcp(socket::Mode::Connect, "127.0.0.1", static_cast<uint16_t>(51337));
     client.send(R"({"method":"org.test.P","parameters":["array"]})"_json);
     EXPECT_THROW((void)client.receive(), std::system_error);
 }

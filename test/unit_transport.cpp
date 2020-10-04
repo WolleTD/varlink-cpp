@@ -63,8 +63,9 @@ struct FakeSocket {
 
 class ConnectionRead : public ::testing::Test {
    protected:
+    using test_connection = basic_json_connection<socket::type::Unspecified, FakeSocket>;
     std::unique_ptr<FakeSocket> socket{};
-    JsonConnection<FakeSocket> conn{-1};
+    test_connection conn{-1};
 
     void SetUp() override { socket = std::make_unique<FakeSocket>(); }
 
@@ -72,7 +73,7 @@ class ConnectionRead : public ::testing::Test {
     void SetUp(Args &&...args) {
         socket = std::make_unique<FakeSocket>();
         (socket->write(args), ...);
-        conn = JsonConnection<FakeSocket>{std::move(socket)};
+        conn = test_connection{std::move(socket)};
     }
 };
 
@@ -103,7 +104,7 @@ TEST_F(ConnectionRead, ThrowIncomplete) {
 }
 
 TEST_F(ConnectionRead, ThrowEOF) {
-    conn = JsonConnection<FakeSocket>{std::move(socket)};
+    conn = test_connection{std::move(socket)};
     EXPECT_THROW((void)conn.receive(), std::system_error);
 }
 
@@ -115,8 +116,9 @@ TEST_F(ConnectionRead, SuccesThenThrowEOF) {
 
 class ConnectionWrite : public ::testing::Test {
    protected:
+    using test_connection = basic_json_connection<socket::type::Unspecified, FakeSocket>;
     std::unique_ptr<FakeSocket> socket{};
-    JsonConnection<FakeSocket> conn{-1};
+    test_connection conn{-1};
 
     void SetUp() override { socket = std::make_unique<FakeSocket>(); }
 
@@ -125,7 +127,7 @@ class ConnectionWrite : public ::testing::Test {
         socket = std::make_unique<FakeSocket>();
         socket->write_max = write_max;
         (socket->write_exp(args), ...);
-        conn = JsonConnection<FakeSocket>{std::move(socket)};
+        conn = test_connection{std::move(socket)};
     }
 };
 
