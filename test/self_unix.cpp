@@ -76,7 +76,7 @@ TEST(UnixSocket, orgtestPing) {
 
 TEST(UnixSocket, orgtestMore) {
     auto client = varlink_client("unix:test-integration.socket");
-    auto more = client.call("org.test.M", {{"n", 5}}, call_mode::more);
+    auto more = client.call("org.test.M", {{"n", 5}}, callmode::more);
     EXPECT_EQ(more()["parameters"]["m"].get<int>(), 0);
     EXPECT_EQ(more()["parameters"]["m"].get<int>(), 1);
     EXPECT_EQ(more()["parameters"]["m"].get<int>(), 2);
@@ -84,7 +84,7 @@ TEST(UnixSocket, orgtestMore) {
     EXPECT_EQ(more()["parameters"]["m"].get<int>(), 4);
     EXPECT_EQ(more()["parameters"]["m"].get<int>(), 5);
     EXPECT_EQ(more(), nullptr);
-    auto resp = client.call("org.test.M", {{"n", 5}}, call_mode::basic)();
+    auto resp = client.call("org.test.M", {{"n", 5}}, callmode::basic)();
     EXPECT_EQ(resp["error"].get<string>(), "org.varlink.service.MethodNotImplemented");
     EXPECT_EQ(resp["parameters"]["method"].get<string>(), "org.test.M");
 }
@@ -95,7 +95,7 @@ TEST(UnixSocket, orgtestMoreThread) {
     auto client = varlink_client("unix:test-integration.socket");
     auto client2 = varlink_client("unix:test-integration.socket");
     auto begin = steady_clock::now();
-    auto more = client.call("org.test.M", {{"n", 1}, {"t", true}}, call_mode::more);
+    auto more = client.call("org.test.M", {{"n", 1}, {"t", true}}, callmode::more);
     EXPECT_EQ(more()["parameters"]["m"].get<int>(), 0);
     auto begin2 = steady_clock::now();
     auto resp = client2.call("org.test.P", {{"p", "test"}})();
@@ -110,7 +110,7 @@ TEST(UnixSocket, orgtestMoreThread) {
 }
 TEST(UnixSocket, orgtestMoreAndQuit) {
     auto client = varlink_client("unix:test-integration.socket");
-    auto more = client.call("org.test.M", {{"n", 5}}, call_mode::more);
+    auto more = client.call("org.test.M", {{"n", 5}}, callmode::more);
     EXPECT_EQ(more()["parameters"]["m"].get<int>(), 0);
     EXPECT_EQ(more()["parameters"]["m"].get<int>(), 1);
     EXPECT_EQ(more()["parameters"]["m"].get<int>(), 2);
@@ -123,13 +123,13 @@ TEST(UnixSocket, orgtestDontread) {
 
 TEST(UnixSocket, orgtestOneway) {
     auto client = varlink_client("unix:test-integration.socket");
-    auto null = client.call("org.test.P", {{"p", "test"}}, call_mode::oneway);
+    auto null = client.call("org.test.P", {{"p", "test"}}, callmode::oneway);
     EXPECT_EQ(null(), nullptr);
 }
 
 TEST(UnixSocket, Upgrade) {
     auto client = varlink_client("unix:test-integration.socket");
-    auto resp = client.call("org.test.P", {{"p", "test"}}, call_mode::upgrade)();
+    auto resp = client.call("org.test.P", {{"p", "test"}}, callmode::upgrade)();
     EXPECT_EQ(resp["parameters"]["q"].get<string>(), "test");
 }
 

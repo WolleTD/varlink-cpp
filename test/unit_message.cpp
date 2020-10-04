@@ -39,6 +39,10 @@ TEST(Message, More) {
     EXPECT_EQ(withMoreTrue.more(), true);
     auto withMoreFalse = varlink_message(R"({"method":"","more":false})"_json);
     EXPECT_EQ(withMoreFalse.more(), false);
+    auto fromCallmode = varlink_message("org.test", {}, varlink_message::callmode::more);
+    EXPECT_EQ(fromCallmode.more(), true);
+    EXPECT_EQ(fromCallmode.oneway(), false);
+    EXPECT_EQ(fromCallmode.upgrade(), false);
 }
 
 TEST(Message, Oneway) {
@@ -48,6 +52,23 @@ TEST(Message, Oneway) {
     EXPECT_EQ(withOnewayTrue.oneway(), true);
     auto withOnewayFalse = varlink_message(R"({"method":"","oneway":false})"_json);
     EXPECT_EQ(withOnewayFalse.oneway(), false);
+    auto fromCallmode = varlink_message("org.test", {}, varlink_message::callmode::oneway);
+    EXPECT_EQ(fromCallmode.oneway(), true);
+    EXPECT_EQ(fromCallmode.more(), false);
+    EXPECT_EQ(fromCallmode.upgrade(), false);
+}
+
+TEST(Message, Upgrade) {
+    auto defaultParams = varlink_message(R"({"method":""})"_json);
+    EXPECT_EQ(defaultParams.upgrade(), false);
+    auto withOnewayTrue = varlink_message(R"({"method":"","upgrade":true})"_json);
+    EXPECT_EQ(withOnewayTrue.upgrade(), true);
+    auto withOnewayFalse = varlink_message(R"({"method":"","upgrade":false})"_json);
+    EXPECT_EQ(withOnewayFalse.upgrade(), false);
+    auto fromCallmode = varlink_message("org.test", {}, varlink_message::callmode::upgrade);
+    EXPECT_EQ(fromCallmode.upgrade(), true);
+    EXPECT_EQ(fromCallmode.oneway(), false);
+    EXPECT_EQ(fromCallmode.more(), false);
 }
 
 TEST(Message, InterfaceAndMethod) {

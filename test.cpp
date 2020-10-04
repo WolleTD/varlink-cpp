@@ -16,7 +16,7 @@
 struct TestData {
     std::string method;
     varlink::json parameters;
-    varlink::call_mode mode{varlink::call_mode::basic};
+    varlink::callmode mode{varlink::callmode::basic};
 };
 
 constexpr std::string_view getInterfaceName(const std::string_view description) {

@@ -10,12 +10,7 @@
 #include <varlink/varlink.hpp>
 
 namespace varlink {
-enum class call_mode {
-    basic,
-    oneway,
-    more,
-    upgrade,
-};
+using callmode = varlink_message::callmode;
 
 class varlink_client {
    private:
@@ -31,35 +26,22 @@ class varlink_client {
     varlink_client(varlink_client &&src) noexcept = default;
     varlink_client &operator=(varlink_client &&src) noexcept = default;
 
-    std::function<json()> call(const std::string &method, const json &parameters, call_mode mode = call_mode::basic) {
-        json message{{"method", method}};
-        if (not parameters.is_null() and not parameters.is_object()) {
-            throw std::invalid_argument("parameters is not an object");
-        }
-        if (not parameters.empty()) {
-            message["parameters"] = parameters;
-        }
+    std::function<json()> call(const varlink_message &message) {
+        std::visit([&](auto &&c) { c.send(message.json_data()); }, conn);
 
-        if (mode == call_mode::oneway) {
-            message["oneway"] = true;
-        } else if (mode == call_mode::more) {
-            message["more"] = true;
-        } else if (mode == call_mode::upgrade) {
-            message["upgrade"] = true;
-        }
-
-        std::visit([&](auto &&c) { c.send(message); }, conn);
-
-        return [this, mode, continues = true]() mutable -> json {
-            if ((mode != call_mode::oneway) and continues) {
+        return [this, continues = not message.oneway(), more = message.more()]() mutable -> json {
+            if (continues) {
                 json reply = std::visit([](auto &&c) { return c.receive(); }, conn);
-                continues =
-                    ((mode == call_mode::more) and reply.contains("continues") and reply["continues"].get<bool>());
+                continues = (more and reply.contains("continues") and reply["continues"].get<bool>());
                 return reply;
             } else {
                 return {};
             }
         };
+    }
+
+    std::function<json()> call(const std::string &method, const json &parameters, callmode mode = callmode::basic) {
+        return call(varlink_message(method, parameters, mode));
     }
 };
 }  // namespace varlink
