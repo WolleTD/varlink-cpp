@@ -5,6 +5,7 @@
 #include <cerrno>
 #include <charconv>
 #include <functional>
+#include <future>
 #include <string>
 #include <system_error>
 #include <thread>
@@ -14,14 +15,14 @@
 #include <varlink/varlink.hpp>
 
 namespace varlink {
-template <typename SocketT, typename ServiceT = Service>
-class ThreadedServer {
+class VarlinkServer {
    public:
-    using ClientConnT = JsonConnection<SocketT>;
+    using SocketT = std::variant<socket::UnixSocket, socket::TCPSocket>;
+    using ClientConnT = JsonConnection<socket::PosixSocket<socket::type::Unspecified> >;
 
    private:
-    std::unique_ptr<SocketT> listenSocket;
-    std::unique_ptr<ServiceT> service;
+    SocketT listenSocket;
+    std::unique_ptr<Service> service;
     std::thread listenThread;
 
     auto makeClientThread() {
@@ -45,11 +46,15 @@ class ThreadedServer {
     }
 
     auto makeListenThread() {
-        return [&sock = *listenSocket, clientThread = makeClientThread()]() {
+        return [&sock = listenSocket, clientThread = makeClientThread()]() {
+            std::vector<std::future<void> > clients{};
             while (true) {
                 try {
-                    // TODO: don't detach, thread pool
-                    std::thread{clientThread, ClientConnT(sock.accept(nullptr))}.detach();
+                    auto client_task = std::packaged_task<void(ClientConnT)>{clientThread};
+                    clients.push_back(client_task.get_future());
+                    std::thread{std::move(client_task),
+                                ClientConnT(std::visit([](auto &&s) { return s.accept(nullptr); }, sock))}
+                        .detach();
                 } catch (std::system_error &e) {
                     if (e.code() == std::errc::invalid_argument) {
                         // accept() fails with EINVAL when the socket isn't listening, i.e. shutdown
@@ -59,57 +64,19 @@ class ThreadedServer {
                     }
                 }
             }
+            for (auto &&p : clients) p.wait();
         };
     }
 
-   public:
-    template <typename... Args>
-    explicit ThreadedServer(const Service::Description &description, Args &&...args)
-        : listenSocket(std::make_unique<SocketT>(socket::Mode::Listen, std::forward<Args>(args)...)),
-          service(std::make_unique<ServiceT>(description)),
-          listenThread(makeListenThread()) {}
-
-    explicit ThreadedServer(std::unique_ptr<SocketT> listenConn, std::unique_ptr<ServiceT> existingService)
-        : listenSocket(std::move(listenConn)), service(std::move(existingService)) {}
-
-    ThreadedServer(const ThreadedServer &src) = delete;
-    ThreadedServer &operator=(const ThreadedServer &) = delete;
-    ThreadedServer(ThreadedServer &&src) noexcept = default;
-    ThreadedServer &operator=(ThreadedServer &&src) noexcept = default;
-
-    ~ThreadedServer() {
-        // Calling shutdown will release the thread from it's accept() call
-        if (listenSocket) listenSocket->shutdown(SHUT_RDWR);
-        if (listenThread.joinable()) listenThread.join();
-    }
-
-    void join() { listenThread.join(); }
-
-    template <typename... Args>
-    void setInterface(Args &&...args) {
-        service->setInterface(std::forward<Args>(args)...);
-    }
-};
-
-using ThreadedUnixServer = ThreadedServer<socket::UnixSocket>;
-using ThreadedTCPServer = ThreadedServer<socket::TCPSocket>;
-
-class VarlinkServer {
-   public:
-    using ServerT = std::variant<ThreadedTCPServer, ThreadedUnixServer>;
-
-   private:
-    ServerT threadedServer;
-
-    static ServerT makeServer(const VarlinkURI &uri, const Service::Description &description) {
+    static SocketT makeSocket(const VarlinkURI &uri) {
         if (uri.type == VarlinkURI::Type::Unix) {
-            return ThreadedUnixServer(description, uri.path);
+            return socket::UnixSocket{socket::Mode::Listen, uri.path};
         } else if (uri.type == VarlinkURI::Type::TCP) {
             uint16_t port{0};
             if (auto r = std::from_chars(uri.port.begin(), uri.port.end(), port); r.ptr != uri.port.end()) {
                 throw std::invalid_argument("Invalid port");
             }
-            return ThreadedTCPServer(description, uri.host, port);
+            return socket::TCPSocket(socket::Mode::Listen, uri.host, port);
         } else {
             throw std::invalid_argument("Unsupported protocol");
         }
@@ -117,16 +84,30 @@ class VarlinkServer {
 
    public:
     VarlinkServer(std::string_view uri, const Service::Description &description)
-        : threadedServer(makeServer(VarlinkURI(uri), description)) {}
+        : listenSocket(makeSocket(VarlinkURI(uri))),
+          service(std::make_unique<Service>(description)),
+          listenThread(makeListenThread()) {}
+
+    explicit VarlinkServer(SocketT&& listenConn, std::unique_ptr<Service> existingService)
+        : listenSocket(std::move(listenConn)), service(std::move(existingService)) {}
+
+    VarlinkServer(const VarlinkServer &src) = delete;
+    VarlinkServer &operator=(const VarlinkServer &) = delete;
+    VarlinkServer(VarlinkServer &&src) noexcept = default;
+    VarlinkServer &operator=(VarlinkServer &&src) noexcept = default;
+
+    ~VarlinkServer() {
+        // Calling shutdown will release the thread from it's accept() call
+        std::visit([&](auto&& sock) { sock.shutdown(SHUT_RDWR); }, listenSocket);
+        if (listenThread.joinable()) listenThread.join();
+    }
 
     template <typename... Args>
     void setInterface(Args &&...args) {
-        std::visit([&](auto &&srv) { srv.setInterface(std::forward<Args>(args)...); }, threadedServer);
+        service->setInterface(std::forward<Args>(args)...);
     }
 
-    void join() {
-        std::visit([](auto &&srv) { srv.join(); }, threadedServer);
-    }
+    void join() { listenThread.join(); }
 };
 }  // namespace varlink
 

@@ -41,4 +41,10 @@ TEST(PosixSocket, Move) {
     auto sock3(std::move(sock1));
     EXPECT_EQ(sock1.remove_fd(), -1);  // NOLINT: test move
     EXPECT_EQ(sock3.remove_fd(), 7);
+    EXPECT_EQ(remove_fd(std::move(sock3)), -1);
+    auto sock4 = UnixSocket(Mode::Raw, "test-move.socket");
+    auto sock5 = std::move(sock4);
+    EXPECT_EQ(sock4.remove_fd(), -1);  // NOLINT: test move
+    EXPECT_STREQ(sock4.get_sockaddr().sun_path, "");  // NOLINT: test move
+    EXPECT_STREQ(sock5.get_sockaddr().sun_path, "test-move.socket");
 }

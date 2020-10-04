@@ -27,6 +27,8 @@ struct Base {
     static constexpr const int SOCK_TYPE = Type;
 };
 
+struct Unspecified : Base<AF_UNSPEC, 0> {};
+
 struct Unix : Base<AF_UNIX, SOCK_STREAM>, ::sockaddr_un {
     Unix() : ::sockaddr_un{SOCK_FAMILY, ""} {}
 
@@ -79,6 +81,9 @@ class PosixSocket {
             if (mode == Mode::Connect) {
                 connect();
             } else if (mode == Mode::Listen) {
+                if constexpr (std::is_same_v<SockaddrT, type::TCP>) {
+                    setsockopt(SOL_SOCKET, SO_REUSEADDR, 1);
+                }
                 bind();
                 listen(MaxConnections);
             }
@@ -93,26 +98,33 @@ class PosixSocket {
     PosixSocket(const PosixSocket &src) = delete;
     PosixSocket &operator=(const PosixSocket &rhs) = delete;
     PosixSocket(PosixSocket &&src) noexcept
-        : socket_fd(std::exchange(src.socket_fd, -1)), socketAddress(std::move(src.socketAddress)) {}
+        : socket_fd(std::exchange(src.socket_fd, -1)),
+          socketAddress(std::exchange(src.socketAddress, {})),
+          socket_mode(src.socket_mode) {}
 
     PosixSocket &operator=(PosixSocket &&rhs) noexcept {
         PosixSocket s(std::move(rhs));
         std::swap(socket_fd, s.socket_fd);
         std::swap(socketAddress, s.socketAddress);
+        std::swap(socket_mode, s.socket_mode);
         return *this;
     }
 
     ~PosixSocket() {
         shutdown(SHUT_RDWR);
         close(socket_fd);
-        if (socket_mode == Mode::Listen) {
-            if constexpr (std::is_same_v<SockaddrT, type::Unix>) {
+        if constexpr (std::is_same_v<SockaddrT, type::Unix>) {
+            if (socket_mode == Mode::Listen) {
                 unlink(socketAddress.sun_path);
             }
         }
     }
 
     int remove_fd() noexcept { return std::exchange(socket_fd, -1); }
+    template <typename SocketT, typename>
+    friend int remove_fd(SocketT socket) noexcept;
+
+    SockaddrT get_sockaddr() const noexcept { return socketAddress; }
 
     void connect() {
         if (::connect(socket_fd, reinterpret_cast<sockaddr *>(&socketAddress), sizeof(SockaddrT)) < 0) {
@@ -164,7 +176,19 @@ class PosixSocket {
     void shutdown(int how) {  // NOLINT (is not const: socket changes)
         ::shutdown(socket_fd, how);
     }
+
+    template <typename T>
+    void setsockopt(int level, int option_name, const T &option_value) {
+        if (::setsockopt(socket_fd, level, option_name, &option_value, sizeof(T)) < 0) {
+            throw systemErrorFromErrno("setsockopt() failed");
+        }
+    }
 };
+
+template <typename SocketT, typename = std::enable_if<std::is_rvalue_reference_v<SocketT> > >
+inline int remove_fd(SocketT socket) noexcept {
+    return std::exchange(socket.socket_fd, -1);
+}
 
 using UnixSocket = PosixSocket<type::Unix>;
 using TCPSocket = PosixSocket<type::TCP>;
