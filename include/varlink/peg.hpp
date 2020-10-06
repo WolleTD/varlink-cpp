@@ -66,7 +66,7 @@ struct parser_state {
         size_t pos{0};
         nlohmann::json last_type{};
         nlohmann::json last_element_type{};
-        nlohmann::json work{};
+        nlohmann::json work{{"_order", nlohmann::json::array()}};
         bool maybe_type{false};
         bool dict_type{false};
         bool array_type{false};
@@ -143,6 +143,7 @@ INSERTER(grammar::argument) {
     auto& state = pstate.stack.back();
     std::string key = state.fields.back();
     state.work[key] = state.last_type;
+    state.work["_order"].push_back(key);
     state.last_type.clear();
     state.fields.pop_back();
 }

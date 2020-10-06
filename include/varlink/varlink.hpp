@@ -131,6 +131,7 @@ class varlink_interface {
     void validate(const json& data, const json& typespec) const {
         // std::cout << data << "\n" << typespec << "\n";
         for (const auto& param : typespec.items()) {
+            if (param.key() == "_order") continue;
             const auto& name = param.key();
             const auto& spec = param.value();
             if (!(spec.contains("maybe_type") && spec["maybe_type"].get<bool>()) &&
@@ -400,8 +401,9 @@ inline std::string element_to_string(const json& elem, int indent = 4, size_t de
             if (indent < 0) return false;
             if (elem.is_null() || elem.empty()) return false;
             if (elem.is_object()) {
-                if (elem.size() > 2) return true;
-                for (const auto& member : elem) {
+                if (elem["_order"].size() > 2) return true;
+                for (const auto& member_name : elem["_order"]) {
+                    auto& member = elem[member_name.get<std::string>()];
                     if (member.contains("array_type") && member["array_type"].get<bool>()) return true;
                     if (member["type"].is_object()) return true;
                 }
@@ -423,13 +425,13 @@ inline std::string element_to_string(const json& elem, int indent = 4, size_t de
                 s += spaces + member.get<std::string>();
             }
         } else {
-            for (const auto& member : elem.items()) {
+            for (const auto& member : elem["_order"]) {
                 if (first)
                     first = false;
                 else
                     s += sep;
-                s += spaces + member.key() + ": ";
-                auto type = member.value();
+                s += spaces + member.get<std::string>() + ": ";
+                auto type = elem[member.get<std::string>()];
                 if (type.contains("maybe_type") && type["maybe_type"].get<bool>()) s += "?";
                 if (type.contains("array_type") && type["array_type"].get<bool>()) s += "[]";
                 if (type.contains("dict_type") && type["dict_type"].get<bool>()) s += "[string]";

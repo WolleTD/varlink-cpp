@@ -54,11 +54,11 @@ interface org.varlink.service
 # Get a list of all the interfaces a service provides and information
 # about the implementation.
 method GetInfo() -> (
-    interfaces: []string,
-    product: string,
-    url: string,
     vendor: string,
-    version: string
+    product: string,
+    version: string,
+    url: string,
+    interfaces: []string
 )
 
 # Get the description of an interface that is implemented by this service.
@@ -104,17 +104,17 @@ error ErrorFoo (a: (b: bool, c: int), foo: TypeFoo)
 type TypeEnum (a, b, c)
 
 type TypeFoo (
-    anon: (
-        bar: int,
-        baz: (a: int, b: int),
-        foo: bool
-    ),
     bool: bool,
-    enum: (foo, bar, baz),
-    float: float,
     int: int,
+    float: float,
     string: string,
-    type: TypeEnum
+    enum: (foo, bar, baz),
+    type: TypeEnum,
+    anon: (
+        foo: bool,
+        bar: int,
+        baz: (a: int, b: int)
+    )
 )
 
 method Foo(a: (b: bool, c: int), foo: TypeFoo) -> (
