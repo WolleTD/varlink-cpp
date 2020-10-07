@@ -31,14 +31,14 @@ TEST_F(ServiceTest, Create) {
 }
 
 TEST_F(ServiceTest, SetInterfaceList) {
-    service.set_interface(varlink_interface(org_test_varlink));
+    service.add_interface(varlink_interface(org_test_varlink));
     auto info = testcall("org.varlink.service.GetInfo")["parameters"];
     EXPECT_EQ(info["interfaces"].size(), 2);
     EXPECT_EQ(info["interfaces"][1].get<string>(), "org.test");
 }
 
 TEST_F(ServiceTest, GetInterfaceDescription) {
-    service.set_interface(varlink_interface(org_test_varlink));
+    service.add_interface(varlink_interface(org_test_varlink));
     auto info = testcall("org.varlink.service.GetInterfaceDescription", {{"interface", "org.test"}})["parameters"];
     EXPECT_EQ(info["description"].get<string>(), "interface org.test\n\nmethod Test(ping: string) -> (pong: string)\n");
 }
@@ -50,49 +50,34 @@ TEST_F(ServiceTest, GetInterfaceDescriptionNotFound) {
 }
 
 TEST_F(ServiceTest, SetInterfaceDouble) {
-    service.set_interface(varlink_interface(org_test_varlink));
-    EXPECT_THROW(service.set_interface(varlink_interface(org_test_varlink)), std::invalid_argument);
+    service.add_interface(varlink_interface(org_test_varlink));
+    EXPECT_THROW(service.add_interface(varlink_interface(org_test_varlink)), std::invalid_argument);
     auto info = testcall("org.varlink.service.GetInfo")["parameters"];
     EXPECT_EQ(info["interfaces"].size(), 2);
     EXPECT_EQ(info["interfaces"][1].get<string>(), "org.test");
 }
 
 TEST_F(ServiceTest, SetInterfaceCall) {
-    service.set_interface(varlink_interface(org_test_varlink, {{"Test", [] varlink_callback {
-                                                            return {{"pong", parameters["ping"].get<string>()}};
-                                                        }}}));
+    service.add_interface(varlink_interface(org_test_varlink, {{"Test", [] varlink_callback {
+                                                                    return {{"pong", parameters["ping"].get<string>()}};
+                                                                }}}));
     auto pong = testcall("org.test.Test", {{"ping", "123"}})["parameters"];
     EXPECT_EQ(pong["pong"].get<string>(), "123");
-}
-
-TEST_F(ServiceTest, SetInterfaceReplace) {
-    service.set_interface(varlink_interface(org_test_varlink, {{"Test", [] varlink_callback {
-                                                            return {{"pong", parameters["ping"].get<string>()}};
-                                                        }}}));
-    auto pong = testcall("org.test.Test", {{"ping", "123"}})["parameters"];
-    EXPECT_EQ(pong["pong"].get<string>(), "123");
-    service.set_interface(varlink_interface(org_test_varlink, {{"Test",
-                                                        [] varlink_callback {
-                                                            return {{"pong", "replaced"}};
-                                                        }}}),
-                          true);
-    pong = testcall("org.test.Test", {{"ping", "123"}})["parameters"];
-    EXPECT_EQ(pong["pong"].get<string>(), "replaced");
 }
 
 TEST_F(ServiceTest, SetInterfaceCallOneway) {
-    service.set_interface(varlink_interface(org_test_varlink, {{"Test", [] varlink_callback {
-                                                            return {{"pong", parameters["ping"].get<string>()}};
-                                                        }}}));
+    service.add_interface(varlink_interface(org_test_varlink, {{"Test", [] varlink_callback {
+                                                                    return {{"pong", parameters["ping"].get<string>()}};
+                                                                }}}));
     auto pong = testcall("org.test.Test", {{"ping", "123"}}, false, true);
     EXPECT_EQ(pong, nullptr);
 }
 
 TEST_F(ServiceTest, SetInterfaceCallMore) {
-    service.set_interface(varlink_interface(org_test_varlink, {{"Test", [] varlink_callback {
-                                                            sendmore({{"pong", parameters["ping"]}});
-                                                            return {{"pong", parameters["ping"]}};
-                                                        }}}));
+    service.add_interface(varlink_interface(org_test_varlink, {{"Test", [] varlink_callback {
+                                                                    sendmore({{"pong", parameters["ping"]}});
+                                                                    return {{"pong", parameters["ping"]}};
+                                                                }}}));
     std::string more_reply;
     auto testmore = [&more_reply](const json& more) { more_reply = more["parameters"]["pong"].get<string>(); };
     auto pong = testcall("org.test.Test", {{"ping", "123"}}, true, false, testmore);
@@ -102,26 +87,26 @@ TEST_F(ServiceTest, SetInterfaceCallMore) {
 }
 
 TEST_F(ServiceTest, SetInterfaceCallMoreNull) {
-    service.set_interface(varlink_interface(org_test_varlink, {{"Test", [] varlink_callback {
-                                                            sendmore({{"pong", parameters["ping"]}});
-                                                            return {{"pong", parameters["ping"]}};
-                                                        }}}));
+    service.add_interface(varlink_interface(org_test_varlink, {{"Test", [] varlink_callback {
+                                                                    sendmore({{"pong", parameters["ping"]}});
+                                                                    return {{"pong", parameters["ping"]}};
+                                                                }}}));
     std::string more_reply;
     auto err = testcall("org.test.Test", {{"ping", "123"}}, true, false, nullptr);
     EXPECT_EQ(err["error"].get<string>(), "org.varlink.service.MethodNotImplemented");
 }
 
 TEST_F(ServiceTest, SetInterfaceCallError) {
-    service.set_interface(
+    service.add_interface(
         varlink_interface(org_test_varlink, {{"Test", [] varlink_callback {
-                                                            throw varlink_error{"org.test.Error", json::object()};
-                                                        }}}));
+                                                  throw varlink_error{"org.test.Error", json::object()};
+                                              }}}));
     auto err = testcall("org.test.Test", {{"ping", "test"}});
     EXPECT_EQ(err["error"].get<string>(), "org.test.Error");
 }
 
 TEST_F(ServiceTest, SetInterfaceCallException) {
-    service.set_interface(
+    service.add_interface(
         varlink_interface(org_test_varlink, {{"Test", [] varlink_callback { throw std::exception(); }}}));
     auto err = testcall("org.test.Test", {{"ping", "test"}});
     EXPECT_EQ(err["error"].get<string>(), "org.varlink.service.InternalError");
@@ -129,7 +114,9 @@ TEST_F(ServiceTest, SetInterfaceCallException) {
 }
 
 TEST_F(ServiceTest, SetInterfaceCallResponseError) {
-    service.set_interface(varlink_interface(org_test_varlink, {{"Test", [] varlink_callback { return {{"pong", true}}; }}}));
+    service.add_interface(varlink_interface(org_test_varlink, {{"Test", [] varlink_callback {
+                                                                    return {{"pong", true}};
+                                                                }}}));
     auto pong = testcall("org.test.Test", {{"ping", "123"}})["parameters"];
     EXPECT_TRUE(pong["pong"].get<bool>());
 }
@@ -153,7 +140,7 @@ TEST_F(ServiceTest, InvalidParameter) {
 }
 
 TEST_F(ServiceTest, MethodNotImplemented) {
-    service.set_interface(varlink_interface(org_test_varlink));
+    service.add_interface(varlink_interface(org_test_varlink));
     auto err = testcall("org.test.Test", {{"ping", ""}});
     EXPECT_EQ(err["error"].get<string>(), "org.varlink.service.MethodNotImplemented");
     EXPECT_EQ(err["parameters"]["method"].get<string>(), "org.test.Test");

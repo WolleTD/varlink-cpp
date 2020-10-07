@@ -9,7 +9,7 @@ using std::string;
 
 class Environment : public ::testing::Environment {
     const std::string_view varlink_uri{"unix:test-integration.socket"};
-    const varlink_service::descr description{"varlink", "test", "1", "test.org"};
+    const varlink_service::description description{"varlink", "test", "1", "test.org"};
     std::unique_ptr<varlink_server> server;
 
    public:
@@ -29,9 +29,9 @@ class Environment : public ::testing::Environment {
             }
             return {{"m", count}};
         };
-        server->setInterface(testif, callback_map{{"P", ping_callback}, {"M", more_callback}});
-        server->setInterface("interface org.err\nmethod E() -> ()\n",
-                             callback_map{{"E", [] varlink_callback { throw std::exception{}; }}});
+        server->add_interface(testif, callback_map{{"P", ping_callback}, {"M", more_callback}});
+        server->add_interface("interface org.err\nmethod E() -> ()\n",
+                              callback_map{{"E", [] varlink_callback { throw std::exception{}; }}});
     }
 };
 

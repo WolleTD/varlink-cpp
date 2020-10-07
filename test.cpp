@@ -51,12 +51,12 @@ int main() {
     try {
         std::filesystem::remove("/tmp/test.socket");
         service =
-            std::make_unique<varlink_server>("unix:/tmp/test.socket", varlink_service::descr{"a", "b", "c", "d"});
+            std::make_unique<varlink_server>("unix:/tmp/test.socket", varlink_service::description{"a", "b", "c", "d"});
     } catch (std::exception& e) {
         std::cerr << "Couldn't start service: " << e.what() << "\n";
         return 1;
     }
-    service->setInterface(
+    service->add_interface(
         org_example_more_varlink,
         callback_map{
             {"Ping",

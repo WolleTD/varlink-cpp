@@ -68,7 +68,7 @@ class varlink_server {
     }
 
    public:
-    varlink_server(std::string_view uri, const varlink_service::descr &description)
+    varlink_server(std::string_view uri, const varlink_service::description &description)
         : listen_socket(std::make_unique<socket::variant>(
               make_from_uri<socket::basic_socket>(varlink_uri(uri), socket::mode::listen))),
           service(std::make_unique<varlink_service>(description)),
@@ -89,8 +89,8 @@ class varlink_server {
     }
 
     template <typename... Args>
-    void setInterface(Args &&...args) {
-        service->set_interface(std::forward<Args>(args)...);
+    void add_interface(Args &&...args) {
+        service->add_interface(std::forward<Args>(args)...);
     }
 
     void join() { listen_thread.join(); }

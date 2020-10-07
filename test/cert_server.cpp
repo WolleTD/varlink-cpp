@@ -1,8 +1,8 @@
 #include <csignal>
 #include <iostream>
+#include <mutex>
 #include <set>
 #include <string>
-#include <mutex>
 #include <varlink/server.hpp>
 
 #include "org.varlink.certification.varlink.hpp"
@@ -197,9 +197,9 @@ int main(int argc, char* argv[]) {
         std::cerr << "Error: varlink socket path required\n";
         return 1;
     }
-    server = std::make_unique<varlink::varlink_server>(argv[1], varlink::varlink_service::descr{});
+    server = std::make_unique<varlink::varlink_server>(argv[1], varlink::varlink_service::description{});
     auto cert = varlink_certification{};
-    server->setInterface(varlink::org_varlink_certification_varlink,
+    server->add_interface(varlink::org_varlink_certification_varlink,
                          varlink::callback_map{
                              {"Start", varlink_callback_forward(cert.Start)},
                              {"Test01", varlink_callback_forward(cert.Test01)},

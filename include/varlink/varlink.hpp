@@ -6,6 +6,7 @@
 #include <exception>
 #include <functional>
 #include <iostream>
+#include <mutex>
 #include <nlohmann/json.hpp>
 #include <sstream>
 #include <string_view>
@@ -241,7 +242,7 @@ class varlink_message {
 
 class varlink_service {
    public:
-    struct descr {
+    struct description {
         std::string vendor{};
         std::string product{};
         std::string version{};
@@ -249,19 +250,23 @@ class varlink_service {
     };
 
    private:
-    descr desc;
+    description desc;
+    std::mutex interfaces_mut;
     std::vector<varlink_interface> interfaces{};
 
     auto find_interface(const std::string& ifname) {
-        return std::find_if(interfaces.begin(), interfaces.end(), [&ifname](auto& i) { return (ifname == i.name()); });
+        auto lock = std::lock_guard(interfaces_mut);
+        return std::find_if(interfaces.cbegin(), interfaces.cend(),
+                            [&ifname](auto& i) { return (ifname == i.name()); });
     }
 
    public:
-    explicit varlink_service(descr description) : desc(std::move(description)) {
+    explicit varlink_service(description Description) : desc(std::move(Description)) {
         auto getInfo = [this] varlink_callback {
             json info = {
                 {"vendor", desc.vendor}, {"product", desc.product}, {"version", desc.version}, {"url", desc.url}};
             info["interfaces"] = json::array();
+            auto lock = std::lock_guard(interfaces_mut);
             for (const auto& interface : interfaces) {
                 info["interfaces"].push_back(interface.name());
             }
@@ -278,12 +283,12 @@ class varlink_service {
                 throw varlink_error("org.varlink.service.InterfaceNotFound", {{"interface", ifname}});
             }
         };
-        set_interface(org_varlink_service_varlink,
+        add_interface(org_varlink_service_varlink,
                       {{"GetInfo", getInfo}, {"GetInterfaceDescription", getInterfaceDescription}});
     }
 
     varlink_service(std::string vendor, std::string product, std::string version, std::string url)
-        : varlink_service(descr{std::move(vendor), std::move(product), std::move(version), std::move(url)}) {}
+        : varlink_service(description{std::move(vendor), std::move(product), std::move(version), std::move(url)}) {}
 
     varlink_service(const varlink_service& src) = delete;
     varlink_service& operator=(const varlink_service&) = delete;
@@ -335,18 +340,17 @@ class varlink_service {
         }
     }
 
-    void set_interface(varlink_interface&& interface, bool allowReplace = false) {
+    void add_interface(varlink_interface&& interface) {
         if (auto pos = find_interface(interface.name()); pos == interfaces.end()) {
+            auto lock = std::lock_guard(interfaces_mut);
             interfaces.push_back(std::move(interface));
-        } else if (allowReplace) {
-            *pos = std::move(interface);
         } else {
-            throw std::invalid_argument("Interface already exists and allowReplace not set!");
+            throw std::invalid_argument("Interface already exists!");
         }
     }
 
-    void set_interface(std::string_view definition, const callback_map& callbacks, bool allowReplace = false) {
-        set_interface(varlink_interface(definition, callbacks), allowReplace);
+    void add_interface(std::string_view definition, const callback_map& callbacks) {
+        add_interface(varlink_interface(definition, callbacks));
     }
 };
 
