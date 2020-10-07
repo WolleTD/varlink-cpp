@@ -33,7 +33,7 @@ target_link_libraries(cert_client PRIVATE varlink++)
 varlink_wrapper(org.varlink.certification.varlink)
 add_executable(cert_server cert_server.cpp org.varlink.certification.varlink.hpp)
 target_include_directories(cert_server PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
-target_link_libraries(cert_server PRIVATE varlink++ pthread)
+target_link_libraries(cert_server PRIVATE varlink++)
 
 setup_target_for_coverage_gcovr_html(
     NAME coverage
