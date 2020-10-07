@@ -30,6 +30,11 @@ varlink_test(self_errors self_errors.cpp)
 add_executable(cert_client cert_client.cpp)
 target_link_libraries(cert_client PRIVATE varlink++)
 
+varlink_wrapper(org.varlink.certification.varlink)
+add_executable(cert_server cert_server.cpp org.varlink.certification.varlink.hpp)
+target_include_directories(cert_server PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_link_libraries(cert_server PRIVATE varlink++ pthread)
+
 setup_target_for_coverage_gcovr_html(
     NAME coverage
     EXECUTABLE test_self_unix COMMAND test_self_tcp COMMAND test_self_errors COMMAND test_unittests
