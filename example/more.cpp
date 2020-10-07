@@ -5,7 +5,6 @@
 #include <string>
 #include <string_view>
 #include <thread>
-#include <varlink/client.hpp>
 #include <varlink/server.hpp>
 
 #include "org.example.more.varlink.hpp"

@@ -130,7 +130,9 @@ class varlink_interface {
     [[nodiscard]] bool has_error(const std::string& name) const noexcept { return has_member(errors, name); }
 
     void validate(const json& data, const json& typespec) const {
-        // std::cout << data << "\n" << typespec << "\n";
+        if (not data.is_object()) {
+            throw varlink_error("org.varlink.service.InvalidParameter", {{"parameter", data.dump()}});
+        }
         for (const auto& param : typespec.items()) {
             if (param.key() == "_order") continue;
             const auto& name = param.key();
@@ -297,11 +299,6 @@ class varlink_service {
 
     // Template dependency: Interface
     json message_call(const varlink_message& message, const sendmore_function& moreSender) noexcept {
-        const sendmore_function sendmore = [&moreSender](const json& msg) {
-            assert(msg.is_object());
-            moreSender({{"parameters", msg}, {"continues", true}});
-        };
-
         const auto error = [](const std::string& what, const json& params) -> json {
             assert(params.is_object());
             return {{"error", what}, {"parameters", params}};
@@ -315,13 +312,15 @@ class varlink_service {
         try {
             const auto& method = interface->method(methodname);
             interface->validate(message.parameters(), method.parameters);
+
+            const sendmore_function sendmore = [&](const json& msg) {
+              interface->validate(msg, method.return_value);
+              moreSender({{"parameters", msg}, {"continues", true}});
+            };
+
             auto reply_params = method.callback(message.parameters(), (message.more() ? sendmore : nullptr));
-            assert(reply_params.is_object());
-            try {
-                interface->validate(reply_params, method.return_value);
-            } catch (varlink_error& e) {
-                std::cout << "Response validation error: " << e.args().dump() << std::endl;
-            }
+            interface->validate(reply_params, method.return_value);
+
             if (message.oneway()) {
                 return nullptr;
             } else if (message.more()) {
