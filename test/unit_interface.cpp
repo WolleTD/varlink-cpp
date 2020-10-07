@@ -278,6 +278,8 @@ TEST(varlink_interface, Validate1) {
         {R"({"a":{}})"_json, R"({"a":{"type":{"b":{"type":"string","maybe_type":true}}}})"_json},
         {R"({"a":{"n":1}})"_json, R"({"a":{"type":"T"}})"_json},
         {R"({"a":{}})"_json, R"({"a":{"type":"T"}})"_json},
+        {R"({"a":"one"})"_json, R"({"a":{"type":["one","two","three"]}})"_json},
+        {R"({"a":"three"})"_json, R"({"a":{"type":["one","two","three"]}})"_json},
     };
     for (const auto& test : testdata) {
         EXPECT_NO_THROW(interface.validate(test.data, test.type));
@@ -310,6 +312,7 @@ TEST(varlink_interface, Validate2) {
         {R"({"a":{}})"_json, R"({"a":{"type":{"b":{"type":"string"}}}})"_json},
         {R"({"a":{"n":"string"}})"_json, R"({"a":{"type":"T"}})"_json},
         {R"({"a":{}})"_json, R"({"a":{"type":"T"}})"_json},
+        {R"({"a":"four"})"_json, R"({"a":{"type":["one","two","three"]}})"_json},
     };
     for (const auto& test : testdata) {
         EXPECT_THROW(interface.validate(test.data, test.type), varlink_error);

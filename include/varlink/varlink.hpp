@@ -148,6 +148,10 @@ class varlink_interface {
                     } else {
                         throw varlink_error("org.varlink.service.InvalidParameter", {{"parameter", name}});
                     }
+                } else if (spec["type"].is_array() && value.is_string()) {
+                    if (std::find(spec["type"].cbegin(), spec["type"].cend(), value) == spec["type"].cend()) {
+                        throw varlink_error("org.varlink.service.InvalidParameter", {{"parameter", name}});
+                    }
                 } else if (spec["type"].is_object() && value.is_object()) {
                     validate(value, spec["type"]);
                     continue;
