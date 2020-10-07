@@ -13,6 +13,11 @@ function(varlink_test NAME)
     add_test(${NAME} test_${NAME})
 endfunction()
 
+function(bash_test NAME SCRIPT)
+    configure_file(${SCRIPT} ${SCRIPT})
+    add_test(NAME ${NAME} COMMAND ${SCRIPT})
+endfunction()
+
 varlink_test(unittests
         unit_interface.cpp
         unit_message.cpp
@@ -34,6 +39,8 @@ varlink_wrapper(org.varlink.certification.varlink)
 add_executable(cert_server cert_server.cpp org.varlink.certification.varlink.hpp)
 target_include_directories(cert_server PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 target_link_libraries(cert_server PRIVATE varlink++)
+
+bash_test(certification self_cert.sh)
 
 setup_target_for_coverage_gcovr_html(
     NAME coverage

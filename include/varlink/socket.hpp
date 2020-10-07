@@ -19,7 +19,11 @@
 
 namespace varlink::socket {
 inline std::system_error system_error_from_errno(const std::string &what) {
-    return {std::error_code(errno, std::system_category()), what};
+    if (errno == 0) {
+        return {std::make_error_code(std::errc{}), what};
+    } else {
+        return {std::error_code(errno, std::system_category()), what};
+    }
 }
 
 namespace type {
