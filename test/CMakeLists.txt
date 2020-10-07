@@ -1,11 +1,13 @@
-include(CodeCoverage)
-
 add_compile_definitions(_GNU_SOURCE __SANE_USERSPACE_TYPES__)
 add_compile_options(-Wall -Wextra -Wshadow -Wnon-virtual-dtor -Wold-style-cast -Wcast-align
         -Wunused -Woverloaded-virtual -Wpedantic -Wconversion -Wsign-conversion
         -Wmisleading-indentation -Wduplicated-cond -Wduplicated-branches -Wlogical-op
-        -Wnull-dereference -Wuseless-cast -Wdouble-promotion -Wformat=2)
+        -Wnull-dereference -Wdouble-promotion -Wformat=2)
+
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+include(CodeCoverage)
 append_coverage_compiler_flags()
+endif ()
 
 function(varlink_test NAME)
     add_executable(test_${NAME} ${ARGN})
@@ -42,7 +44,9 @@ target_link_libraries(cert_server PRIVATE varlink++)
 
 bash_test(certification self_cert.sh)
 
-setup_target_for_coverage_gcovr_html(
-    NAME coverage
-    EXECUTABLE test_self_unix COMMAND test_self_tcp COMMAND test_self_errors COMMAND test_unittests
-    EXCLUDE "${PROJECT_SOURCE_DIR}/3rdparty" "${PROJECT_SOURCE_DIR}/test")
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    setup_target_for_coverage_gcovr_html(
+        NAME coverage
+        EXECUTABLE test_self_unix COMMAND test_self_tcp COMMAND test_self_errors COMMAND test_unittests
+        EXCLUDE "${PROJECT_SOURCE_DIR}/3rdparty" "${PROJECT_SOURCE_DIR}/test")
+endif()
