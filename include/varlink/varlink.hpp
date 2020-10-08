@@ -2,6 +2,7 @@
 #ifndef LIBVARLINK_VARLINK_HPP
 #define LIBVARLINK_VARLINK_HPP
 
+#undef JSON_USE_IMPLICIT_CONVERSIONS
 #define JSON_USE_IMPLICIT_CONVERSIONS 0
 #include <exception>
 #include <functional>
