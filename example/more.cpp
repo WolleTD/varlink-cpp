@@ -18,7 +18,6 @@ class example_more_server {
    public:
     explicit example_more_server(const std::string& uri)
         : _server(uri, varlink_service::description{"Varlink", "More example", "1", "https://varlink.org"}) {
-
         auto ping = [] varlink_callback { return {{"pong", parameters["ping"]}}; };
 
         auto more = [] varlink_callback {
@@ -42,7 +41,13 @@ class example_more_server {
             }
         };
 
-        _server.add_interface(varlink::org_example_more_varlink, callback_map{{"Ping", ping}, {"TestMore", more}});
+        auto stop = [&] varlink_callback {
+            _server.stop_serving();
+            return varlink::json::object();
+        };
+
+        _server.add_interface(varlink::org_example_more_varlink,
+                              callback_map{{"Ping", ping}, {"TestMore", more}, {"StopServing", stop}});
     }
 
     void join() { _server.join(); }

@@ -85,10 +85,14 @@ class varlink_server {
     varlink_server(varlink_server &&src) noexcept = delete;
     varlink_server &operator=(varlink_server &&src) noexcept = delete;
 
-    ~varlink_server() {
+    void stop_serving() {
         terminate = true;
         // Calling shutdown will release the thread from it's accept() call
         std::visit([&](auto &&sock) { sock.shutdown(SHUT_RDWR); }, listen_socket);
+    }
+
+    ~varlink_server() {
+        stop_serving();
         if (listen_thread.joinable()) listen_thread.join();
     }
 
