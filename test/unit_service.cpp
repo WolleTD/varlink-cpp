@@ -136,28 +136,6 @@ TEST_F(ServiceTest, SetInterfaceMoreResponseError) {
     EXPECT_EQ(err["parameters"]["parameter"].get<string>(), "pong");
 }
 
-TEST_F(ServiceTest, SetInterfaceResponseNotObjectError) {
-    service.add_interface(varlink_interface(org_test_varlink, {{"Test", [] varlink_callback {
-      return {"pong", "123"};
-                                                                }}}));
-    auto err = testcall("org.test.Test", {{"ping", "123"}});
-    EXPECT_EQ(err["error"].get<string>(), "org.varlink.service.InvalidParameter");
-    EXPECT_EQ(err["parameters"]["parameter"].get<string>(), "[\"pong\",\"123\"]");
-}
-
-TEST_F(ServiceTest, SetInterfaceMoreResponseNotObjectError) {
-    service.add_interface(varlink_interface(org_test_varlink, {{"Test", [] varlink_callback {
-                                                                    sendmore({"pong", "123"});
-                                                                    return {"pong", "123"};
-                                                                }}}));
-    bool more_called = false;
-    auto testmore = [&more_called](const json&) { more_called = true; };
-    auto err = testcall("org.test.Test", {{"ping", "123"}}, true, false, testmore);
-    EXPECT_FALSE(more_called);
-    EXPECT_EQ(err["error"].get<string>(), "org.varlink.service.InvalidParameter");
-    EXPECT_EQ(err["parameters"]["parameter"].get<string>(), "[\"pong\",\"123\"]");
-}
-
 TEST_F(ServiceTest, InterfaceNotFound) {
     auto err = testcall("org.test.Test");
     EXPECT_EQ(err["error"].get<string>(), "org.varlink.service.InterfaceNotFound");

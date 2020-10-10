@@ -169,7 +169,7 @@ class varlink_certification {
         if (parameters["last_more_replies"] != expected) {
             throw certification_error(expected.dump(), parameters.dump());
         }
-        return varlink::json::object();
+        return {};
     };
 
     auto End varlink_callback {

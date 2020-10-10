@@ -19,7 +19,7 @@
 
 #define varlink_callback                                                                                            \
     ([[maybe_unused]] const varlink::json& parameters, [[maybe_unused]] const varlink::sendmore_function& sendmore) \
-        ->varlink::json
+        ->varlink::json::object_t
 
 namespace grammar {
 template <typename Rule>
@@ -29,8 +29,8 @@ struct inserter;
 namespace varlink {
 
 using nlohmann::json;
-using callback_function = std::function<json(const json&, const std::function<void(json)>&)>;
-using sendmore_function = std::function<void(json)>;
+using sendmore_function = std::function<void(json::object_t)>;
+using callback_function = std::function<json(const json&, const sendmore_function&)>;
 
 struct method_callback {
     std::string_view method;
@@ -266,7 +266,7 @@ class varlink_service {
    public:
     explicit varlink_service(description Description) : desc(std::move(Description)) {
         auto getInfo = [this] varlink_callback {
-            json info = {
+            json::object_t info = {
                 {"vendor", desc.vendor}, {"product", desc.product}, {"version", desc.version}, {"url", desc.url}};
             info["interfaces"] = json::array();
             auto lock = std::lock_guard(interfaces_mut);
@@ -311,7 +311,7 @@ class varlink_service {
             const auto& method = interface->method(methodname);
             interface->validate(message.parameters(), method.parameters);
 
-            const sendmore_function sendmore = [&](const json& msg) {
+            const sendmore_function sendmore = [&](const json::object_t& msg) {
               interface->validate(msg, method.return_value);
               moreSender({{"parameters", msg}, {"continues", true}});
             };

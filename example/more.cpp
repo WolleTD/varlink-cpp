@@ -43,7 +43,7 @@ class example_more_server {
 
         auto stop = [&] varlink_callback {
             _server.stop_serving();
-            return varlink::json::object();
+            return {};
         };
 
         _server.add_interface(varlink::org_example_more_varlink,
