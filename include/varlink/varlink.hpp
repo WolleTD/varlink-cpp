@@ -290,9 +290,6 @@ class varlink_service {
                       {{"GetInfo", getInfo}, {"GetInterfaceDescription", getInterfaceDescription}});
     }
 
-    varlink_service(std::string vendor, std::string product, std::string version, std::string url)
-        : varlink_service(description{std::move(vendor), std::move(product), std::move(version), std::move(url)}) {}
-
     varlink_service(const varlink_service& src) = delete;
     varlink_service& operator=(const varlink_service&) = delete;
     varlink_service(varlink_service&& src) = delete;

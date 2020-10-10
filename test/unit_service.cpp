@@ -18,7 +18,7 @@ class ServiceTest : public ::testing::Test {
             varlink_message({{"method", method}, {"parameters", parameters}, {"more", more}, {"oneway", oneway}}),
             sendmore);
     }
-    varlink_service service{"test", "unit", "1", "http://example.org"};
+    varlink_service service{{"test", "unit", "1", "http://example.org"}};
 };
 
 TEST_F(ServiceTest, Create) {

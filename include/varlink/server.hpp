@@ -30,7 +30,7 @@ class varlink_server {
             try {
                 while (not terminate) {
                     const varlink_message message{conn.receive()};
-                    const auto reply = service.message_call(message, [&](auto &&more) {
+                    const auto reply = service.message_call(message, [&conn,this](auto &&more) {
                         if (terminate) {
                             throw std::system_error(std::make_error_code(std::errc::connection_aborted));
                         } else {
@@ -88,7 +88,7 @@ class varlink_server {
     void stop_serving() {
         terminate = true;
         // Calling shutdown will release the thread from it's accept() call
-        std::visit([&](auto &&sock) { sock.shutdown(SHUT_RDWR); }, listen_socket);
+        std::visit([](auto &&sock) { sock.shutdown(SHUT_RDWR); }, listen_socket);
     }
 
     ~varlink_server() {

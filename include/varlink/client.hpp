@@ -38,7 +38,7 @@ class varlink_client {
                 continues = (more and reply.contains("continues") and reply["continues"].get<bool>());
                 return reply["parameters"];
             } else {
-                return {};
+                return nullptr;
             }
         };
     }
