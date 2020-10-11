@@ -13,7 +13,7 @@ using namespace varlink;
 
 class example_more_server {
    private:
-    varlink_server _server;
+    threaded_server _server;
 
    public:
     explicit example_more_server(const std::string& uri)

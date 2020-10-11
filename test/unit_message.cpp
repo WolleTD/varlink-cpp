@@ -1,77 +1,77 @@
-#include <gtest/gtest.h>
+#include <catch2/catch.hpp>
 
 #include <varlink/varlink.hpp>
 
 using namespace varlink;
 
-TEST(Message, Create) {
-    EXPECT_NO_THROW(varlink_message(R"({"method":""})"_json));
-    EXPECT_NO_THROW(varlink_message(R"({"method":"test"})"_json));
-    EXPECT_NO_THROW(varlink_message(R"({"method":"a.b.C"})"_json));
-    EXPECT_NO_THROW(varlink_message(R"({"method":"a.b.C","parameters":{}})"_json));
-    EXPECT_NO_THROW(varlink_message(R"({"method":"","parameters":{"a":1}})"_json));
+TEST_CASE("Message, Create") {
+    REQUIRE_NOTHROW(varlink_message(R"({"method":""})"_json));
+    REQUIRE_NOTHROW(varlink_message(R"({"method":"test"})"_json));
+    REQUIRE_NOTHROW(varlink_message(R"({"method":"a.b.C"})"_json));
+    REQUIRE_NOTHROW(varlink_message(R"({"method":"a.b.C","parameters":{}})"_json));
+    REQUIRE_NOTHROW(varlink_message(R"({"method":"","parameters":{"a":1}})"_json));
 
-    EXPECT_THROW(varlink_message(R"({"method":42})"_json), std::invalid_argument);
-    EXPECT_THROW(varlink_message(R"({"method":null})"_json), std::invalid_argument);
-    EXPECT_THROW(varlink_message(R"({"method":[]})"_json), std::invalid_argument);
-    EXPECT_THROW(varlink_message(R"({"method":"","parameters":1})"_json), std::invalid_argument);
-    EXPECT_THROW(varlink_message(R"({"method":"","parameters":null})"_json), std::invalid_argument);
-    EXPECT_THROW(varlink_message(R"({"method":"","parameters":[]})"_json), std::invalid_argument);
+    REQUIRE_THROWS_AS(varlink_message(R"({"method":42})"_json), std::invalid_argument);
+    REQUIRE_THROWS_AS(varlink_message(R"({"method":null})"_json), std::invalid_argument);
+    REQUIRE_THROWS_AS(varlink_message(R"({"method":[]})"_json), std::invalid_argument);
+    REQUIRE_THROWS_AS(varlink_message(R"({"method":"","parameters":1})"_json), std::invalid_argument);
+    REQUIRE_THROWS_AS(varlink_message(R"({"method":"","parameters":null})"_json), std::invalid_argument);
+    REQUIRE_THROWS_AS(varlink_message(R"({"method":"","parameters":[]})"_json), std::invalid_argument);
 
-    EXPECT_THROW(varlink_message(R"(null)"_json), std::invalid_argument);
-    EXPECT_THROW(varlink_message(R"(42)"_json), std::invalid_argument);
-    EXPECT_THROW(varlink_message(R"("string")"_json), std::invalid_argument);
-    EXPECT_THROW(varlink_message(R"({})"_json), std::invalid_argument);
-    EXPECT_THROW(varlink_message(R"({"parameters":{}})"_json), std::invalid_argument);
+    REQUIRE_THROWS_AS(varlink_message(R"(null)"_json), std::invalid_argument);
+    REQUIRE_THROWS_AS(varlink_message(R"(42)"_json), std::invalid_argument);
+    REQUIRE_THROWS_AS(varlink_message(R"("string")"_json), std::invalid_argument);
+    REQUIRE_THROWS_AS(varlink_message(R"({})"_json), std::invalid_argument);
+    REQUIRE_THROWS_AS(varlink_message(R"({"parameters":{}})"_json), std::invalid_argument);
 }
 
-TEST(Message, Parameters) {
+TEST_CASE("Message, Parameters") {
     auto defaultParams = varlink_message(R"({"method":""})"_json);
-    EXPECT_EQ(defaultParams.parameters(), json::object());
+    REQUIRE(defaultParams.parameters() == json::object());
     auto withParams = varlink_message(R"({"method":"","parameters":{"a":1}})"_json);
-    EXPECT_EQ(withParams.parameters(), R"({"a":1})"_json);
+    REQUIRE(withParams.parameters() == R"({"a":1})"_json);
 }
 
-TEST(Message, More) {
+TEST_CASE("Message, More") {
     auto defaultParams = varlink_message(R"({"method":""})"_json);
-    EXPECT_EQ(defaultParams.more(), false);
+    REQUIRE(defaultParams.more() == false);
     auto withMoreTrue = varlink_message(R"({"method":"","more":true})"_json);
-    EXPECT_EQ(withMoreTrue.more(), true);
+    REQUIRE(withMoreTrue.more() == true);
     auto withMoreFalse = varlink_message(R"({"method":"","more":false})"_json);
-    EXPECT_EQ(withMoreFalse.more(), false);
+    REQUIRE(withMoreFalse.more() == false);
     auto fromCallmode = varlink_message("org.test", {}, varlink_message::callmode::more);
-    EXPECT_EQ(fromCallmode.more(), true);
-    EXPECT_EQ(fromCallmode.oneway(), false);
-    EXPECT_EQ(fromCallmode.upgrade(), false);
+    REQUIRE(fromCallmode.more() == true);
+    REQUIRE(fromCallmode.oneway() == false);
+    REQUIRE(fromCallmode.upgrade() == false);
 }
 
-TEST(Message, Oneway) {
+TEST_CASE("Message, Oneway") {
     auto defaultParams = varlink_message(R"({"method":""})"_json);
-    EXPECT_EQ(defaultParams.oneway(), false);
+    REQUIRE(defaultParams.oneway() == false);
     auto withOnewayTrue = varlink_message(R"({"method":"","oneway":true})"_json);
-    EXPECT_EQ(withOnewayTrue.oneway(), true);
+    REQUIRE(withOnewayTrue.oneway() == true);
     auto withOnewayFalse = varlink_message(R"({"method":"","oneway":false})"_json);
-    EXPECT_EQ(withOnewayFalse.oneway(), false);
+    REQUIRE(withOnewayFalse.oneway() == false);
     auto fromCallmode = varlink_message("org.test", {}, varlink_message::callmode::oneway);
-    EXPECT_EQ(fromCallmode.oneway(), true);
-    EXPECT_EQ(fromCallmode.more(), false);
-    EXPECT_EQ(fromCallmode.upgrade(), false);
+    REQUIRE(fromCallmode.oneway() == true);
+    REQUIRE(fromCallmode.more() == false);
+    REQUIRE(fromCallmode.upgrade() == false);
 }
 
-TEST(Message, Upgrade) {
+TEST_CASE("Message, Upgrade") {
     auto defaultParams = varlink_message(R"({"method":""})"_json);
-    EXPECT_EQ(defaultParams.upgrade(), false);
+    REQUIRE(defaultParams.upgrade() == false);
     auto withOnewayTrue = varlink_message(R"({"method":"","upgrade":true})"_json);
-    EXPECT_EQ(withOnewayTrue.upgrade(), true);
+    REQUIRE(withOnewayTrue.upgrade() == true);
     auto withOnewayFalse = varlink_message(R"({"method":"","upgrade":false})"_json);
-    EXPECT_EQ(withOnewayFalse.upgrade(), false);
+    REQUIRE(withOnewayFalse.upgrade() == false);
     auto fromCallmode = varlink_message("org.test", {}, varlink_message::callmode::upgrade);
-    EXPECT_EQ(fromCallmode.upgrade(), true);
-    EXPECT_EQ(fromCallmode.oneway(), false);
-    EXPECT_EQ(fromCallmode.more(), false);
+    REQUIRE(fromCallmode.upgrade() == true);
+    REQUIRE(fromCallmode.oneway() == false);
+    REQUIRE(fromCallmode.more() == false);
 }
 
-TEST(Message, InterfaceAndMethod) {
+TEST_CASE("Message, InterfaceAndMethod") {
     struct TestData {
         std::string input;
         std::pair<std::string, std::string> output;
@@ -86,6 +86,6 @@ TEST(Message, InterfaceAndMethod) {
     };
     for (const auto& test : testdata) {
         auto msg = varlink_message(json{{"method", test.input}});
-        EXPECT_EQ(msg.interface_and_method(), test.output);
+        REQUIRE(msg.interface_and_method() == test.output);
     }
 }

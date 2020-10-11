@@ -27,7 +27,7 @@ Server:
 
 {
 // server starts listening immediately
-auto threaded_server = varlink::varlink_server("unix:/tmp/example.varlink",
+auto threaded_server = varlink::threaded_server("unix:/tmp/example.varlink",
                 {"vendor", "product", "version", "url"});
 
 // interfaces can only be added once and callbacks can't be changed

@@ -1,11 +1,11 @@
-#include <gtest/gtest.h>
+#include <catch2/catch.hpp>
 
 #include <varlink/varlink.hpp>
 
 using namespace varlink;
 using std::string;
 
-TEST(UriStatic, UnixNoMethod) {
+TEST_CASE("UriStatic, UnixNoMethod") {
     constexpr std::string_view test = "unix:/tmp/test.sock";
     constexpr auto uri = varlink_uri(test);
     static_assert(uri.type == varlink_uri::type::unix);
@@ -15,7 +15,7 @@ TEST(UriStatic, UnixNoMethod) {
     static_assert(uri.method == "");
 }
 
-TEST(UriStatic, UnixWithMethod) {
+TEST_CASE("UriStatic, UnixWithMethod") {
     constexpr std::string_view test = "unix:/tmp/test.sock/org.test.Method";
     constexpr auto uri = varlink_uri(test, true);
     static_assert(uri.type == varlink_uri::type::unix);
@@ -25,7 +25,7 @@ TEST(UriStatic, UnixWithMethod) {
     static_assert(uri.method == "Method");
 }
 
-TEST(UriStatic, TcpNoMethod) {
+TEST_CASE("UriStatic, TcpNoMethod") {
     constexpr std::string_view test = "tcp:127.0.0.1:1337";
     constexpr auto uri = varlink_uri(test);
     static_assert(uri.type == varlink_uri::type::tcp);
@@ -36,7 +36,7 @@ TEST(UriStatic, TcpNoMethod) {
     static_assert(uri.method == "");
 }
 
-TEST(UriStatic, TcpWithMethod) {
+TEST_CASE("UriStatic, TcpWithMethod") {
     constexpr std::string_view test = "tcp:127.0.0.1:1337/org.test.Method";
     constexpr auto uri = varlink_uri(test);
     static_assert(uri.type == varlink_uri::type::tcp);
@@ -47,7 +47,7 @@ TEST(UriStatic, TcpWithMethod) {
     static_assert(uri.method == "Method");
 }
 
-TEST(UriStatic, RemoveRfu) {
+TEST_CASE("UriStatic, RemoveRfu") {
     constexpr std::string_view test = "tcp:127.0.0.1:1337/org.test.Method;rfu=foo";
     constexpr auto uri = varlink_uri(test);
     static_assert(uri.type == varlink_uri::type::tcp);
@@ -58,18 +58,18 @@ TEST(UriStatic, RemoveRfu) {
     static_assert(uri.method == "Method");
 }
 
-TEST(Uri, Invalid) {
-    EXPECT_THROW(varlink_uri("unx:/tmp/test.sock"), std::invalid_argument);
-    EXPECT_THROW(varlink_uri("/tmp/test.sock"), std::invalid_argument);
-    EXPECT_THROW(varlink_uri(""), std::invalid_argument);
-    EXPECT_THROW(varlink_uri("udp:127.0.0.1:123"), std::invalid_argument);
-    EXPECT_THROW(varlink_uri("tcp:127.0.0.1/no.port"), std::invalid_argument);
+TEST_CASE("Uri, Invalid") {
+    REQUIRE_THROWS_AS(varlink_uri("unx:/tmp/test.sock"), std::invalid_argument);
+    REQUIRE_THROWS_AS(varlink_uri("/tmp/test.sock"), std::invalid_argument);
+    REQUIRE_THROWS_AS(varlink_uri(""), std::invalid_argument);
+    REQUIRE_THROWS_AS(varlink_uri("udp:127.0.0.1:123"), std::invalid_argument);
+    REQUIRE_THROWS_AS(varlink_uri("tcp:127.0.0.1/no.port"), std::invalid_argument);
 }
 
-TEST(Uri, Valid) {
-    EXPECT_NO_THROW(varlink_uri("unix:/tmp/test.sock"));
-    EXPECT_NO_THROW(varlink_uri("unix:/tmp/test.sock/org.test.Method", true));
-    EXPECT_NO_THROW(varlink_uri("tcp:127.0.0.1:123"));
-    EXPECT_NO_THROW(varlink_uri("tcp:127.0.0.1:123/org.test.Method"));
-    EXPECT_NO_THROW(varlink_uri("tcp:127.0.0.1:123/org.test.Method;rfu-extension"));
+TEST_CASE("Uri, Valid") {
+    REQUIRE_NOTHROW(varlink_uri("unix:/tmp/test.sock"));
+    REQUIRE_NOTHROW(varlink_uri("unix:/tmp/test.sock/org.test.Method", true));
+    REQUIRE_NOTHROW(varlink_uri("tcp:127.0.0.1:123"));
+    REQUIRE_NOTHROW(varlink_uri("tcp:127.0.0.1:123/org.test.Method"));
+    REQUIRE_NOTHROW(varlink_uri("tcp:127.0.0.1:123/org.test.Method;rfu-extension"));
 }

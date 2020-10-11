@@ -2,51 +2,47 @@
 #ifndef LIBVARLINK_VARLINK_TRANSPORT_HPP
 #define LIBVARLINK_VARLINK_TRANSPORT_HPP
 
+#include <asio.hpp>
+#include <asio/ts/buffer.hpp>
+#include <asio/ts/internet.hpp>
 #include <string>
 #include <utility>
-#include <varlink/socket.hpp>
 #include <varlink/varlink.hpp>
 
 namespace varlink {
-template <typename SockaddrT, typename SocketT = socket::basic_socket<SockaddrT> >
-class basic_json_connection {
+template <typename Socket, typename = std::enable_if_t<std::is_base_of_v<asio::socket_base, Socket> > >
+class json_connection {
+   public:
+    using socket_type = Socket;
+    using protocol_type = typename Socket::protocol_type;
+
    private:
-    std::unique_ptr<SocketT> socket;
+    Socket stream;
     using byte_buffer = std::vector<char>;
     byte_buffer readbuf;
     byte_buffer::iterator read_end;
 
    public:
-    template <typename... Args>
-    explicit basic_json_connection(Args &&...args)
-        : socket(std::make_unique<SocketT>(socket::mode::connect, args...)),
-          readbuf(BUFSIZ),
-          read_end(readbuf.begin()) {}
+    explicit json_connection(Socket socket) : stream(std::move(socket)), readbuf(BUFSIZ), read_end(readbuf.begin()) {}
 
-    // Setup message stream on existing connection
-    explicit basic_json_connection(int posix_fd)
-        : socket(std::make_unique<SocketT>(posix_fd)), readbuf(BUFSIZ), read_end(readbuf.begin()) {}
-
-    explicit basic_json_connection(std::unique_ptr<SocketT> existingSocket)
-        : socket(std::move(existingSocket)), readbuf(BUFSIZ), read_end(readbuf.begin()) {}
-
-    basic_json_connection(const basic_json_connection &) = delete;
-    basic_json_connection &operator=(const basic_json_connection &) = delete;
-    basic_json_connection(basic_json_connection &&) noexcept = default;
-    basic_json_connection &operator=(basic_json_connection &&) noexcept = default;
+    json_connection(const json_connection &) = delete;
+    json_connection &operator=(const json_connection &) = delete;
+    json_connection(json_connection &&) noexcept = default;
+    json_connection &operator=(json_connection &&) noexcept = default;
 
     void send(const json &message) {
         const auto m = message.dump();
-        const auto end = m.end() + 1;  // Include \0
-        auto sent = m.begin();
-        while (sent < end) {
-            sent = socket->write(sent, end);
+        const auto size = m.size() + 1;  // Include \0
+        size_t sent = 0;
+        while (sent < size) {
+            sent += stream.send(asio::buffer(m.data() + sent, size - sent));
         }
     }
 
     [[nodiscard]] json receive() {
         if (read_end == readbuf.begin()) {
-            read_end = socket->read(readbuf.begin(), readbuf.end());
+            const auto bytes_read = stream.receive(asio::buffer(readbuf));
+            read_end = readbuf.begin() + static_cast<ptrdiff_t>(bytes_read);
         }
         const auto next_message_end = std::find(readbuf.begin(), read_end, '\0');
         if (next_message_end == read_end) {
@@ -62,19 +58,23 @@ class basic_json_connection {
     }
 };
 
-using json_connection_unix = basic_json_connection<socket::type::unix>;
-using json_connection_tcp = basic_json_connection<socket::type::tcp>;
-using json_connection_variant = std::variant<json_connection_unix, json_connection_tcp>;
+using json_connection_unix = json_connection<asio::local::stream_protocol::socket>;
+using json_connection_tcp = json_connection<asio::ip::tcp::socket>;
 
-template <template <typename> typename Target,
-          typename ResultT = std::variant<Target<socket::type::unix>, Target<socket::type::tcp> >, typename... Args>
-ResultT make_from_uri(const varlink_uri &uri, Args &&...args) {
-    return std::visit(
-        [&](auto &&sockaddr) -> ResultT {
-            using T = std::decay_t<decltype(sockaddr)>;
-            return Target<T>(args..., sockaddr);
-        },
-        socket::type::from_uri(uri));
+using endpoint_variant = std::variant<asio::local::stream_protocol::endpoint, asio::ip::tcp::endpoint>;
+
+inline endpoint_variant endpoint_from_uri(const varlink_uri &uri) {
+    if (uri.type == varlink_uri::type::unix) {
+        return asio::local::stream_protocol::endpoint{uri.path};
+    } else if (uri.type == varlink_uri::type::tcp) {
+        uint16_t port{0};
+        if (auto r = std::from_chars(uri.port.begin(), uri.port.end(), port); r.ptr != uri.port.end()) {
+            throw std::invalid_argument("Invalid port");
+        }
+        return asio::ip::tcp::endpoint(asio::ip::make_address_v4(uri.host), port);
+    } else {
+        throw std::invalid_argument("Unsupported protocol");
+    }
 }
 }  // namespace varlink
 

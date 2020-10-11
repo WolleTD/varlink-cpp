@@ -183,7 +183,7 @@ class varlink_certification {
 
 #define varlink_callback_forward(callback) [&] varlink_callback { return callback(parameters, sendmore); }
 
-std::unique_ptr<varlink::varlink_server> server;
+std::unique_ptr<varlink::threaded_server> server;
 
 void stop_server(int) {
     server.reset(nullptr);
@@ -197,23 +197,23 @@ int main(int argc, char* argv[]) {
         std::cerr << "Error: varlink socket path required\n";
         return 1;
     }
-    server = std::make_unique<varlink::varlink_server>(argv[1], varlink::varlink_service::description{});
+    server = std::make_unique<varlink::threaded_server>(argv[1], varlink::varlink_service::description{});
     auto cert = varlink_certification{};
     server->add_interface(varlink::org_varlink_certification_varlink,
-                         varlink::callback_map{
-                             {"Start", varlink_callback_forward(cert.Start)},
-                             {"Test01", varlink_callback_forward(cert.Test01)},
-                             {"Test02", varlink_callback_forward(cert.Test02)},
-                             {"Test03", varlink_callback_forward(cert.Test03)},
-                             {"Test04", varlink_callback_forward(cert.Test04)},
-                             {"Test05", varlink_callback_forward(cert.Test05)},
-                             {"Test06", varlink_callback_forward(cert.Test06)},
-                             {"Test07", varlink_callback_forward(cert.Test07)},
-                             {"Test08", varlink_callback_forward(cert.Test08)},
-                             {"Test09", varlink_callback_forward(cert.Test09)},
-                             {"Test10", varlink_callback_forward(cert.Test10)},
-                             {"Test11", varlink_callback_forward(cert.Test11)},
-                             {"End", varlink_callback_forward(cert.End)},
-                         });
+                          varlink::callback_map{
+                              {"Start", varlink_callback_forward(cert.Start)},
+                              {"Test01", varlink_callback_forward(cert.Test01)},
+                              {"Test02", varlink_callback_forward(cert.Test02)},
+                              {"Test03", varlink_callback_forward(cert.Test03)},
+                              {"Test04", varlink_callback_forward(cert.Test04)},
+                              {"Test05", varlink_callback_forward(cert.Test05)},
+                              {"Test06", varlink_callback_forward(cert.Test06)},
+                              {"Test07", varlink_callback_forward(cert.Test07)},
+                              {"Test08", varlink_callback_forward(cert.Test08)},
+                              {"Test09", varlink_callback_forward(cert.Test09)},
+                              {"Test10", varlink_callback_forward(cert.Test10)},
+                              {"Test11", varlink_callback_forward(cert.Test11)},
+                              {"End", varlink_callback_forward(cert.End)},
+                          });
     server->join();
 }

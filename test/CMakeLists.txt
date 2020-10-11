@@ -11,7 +11,7 @@ endif ()
 
 function(varlink_test NAME)
     add_executable(test_${NAME} ${ARGN})
-    target_link_libraries(test_${NAME} PRIVATE GTest::gtest GTest::gmock varlink++)
+    target_link_libraries(test_${NAME} PRIVATE Catch2::Catch2 varlink++)
     add_test(${NAME} test_${NAME})
 endfunction()
 
@@ -26,9 +26,8 @@ varlink_test(unittests
         unit_service.cpp
         unit_transport.cpp
         unit_uri.cpp
-        unit_socket.cpp
+        unit_main.cpp
         )
-target_link_libraries(test_unittests PRIVATE GTest::gtest_main)
 
 varlink_test(self_unix self_unix.cpp)
 varlink_test(self_tcp self_tcp.cpp)
