@@ -109,9 +109,10 @@ TEST_CASE("UnixSocket, orgtestMoreThread") {
     REQUIRE(more() == nullptr);
     auto time_to_send = begin2 - begin;
     auto latency = done2 - begin2;
-    REQUIRE(time_to_send < 1ms);
-    REQUIRE(latency < 1ms);
+    REQUIRE(duration_cast<milliseconds>(time_to_send) < 1ms);
+    REQUIRE(duration_cast<milliseconds>(latency) < 1ms);
 }
+
 TEST_CASE("UnixSocket, orgtestMoreAndQuit") {
     auto client = varlink_client("unix:test-integration.socket");
     auto more = client.call("org.test.M", {{"n", 5}}, callmode::more);
@@ -184,6 +185,39 @@ TEST_CASE("UnixSocket, NotJsonMessage") {
     std::string data = "{totally_not\"a json-message]";
     client.send(asio::buffer(data.data(), data.size() + 1));
     REQUIRE_THROWS_AS((void)client.receive(asio::buffer(data.data(), data.size())), std::system_error);
+}
+
+TEST_CASE("UnixSocket, Incomplete Message") {
+    using asio::local::stream_protocol;
+    asio::io_context ctx{};
+    auto client = stream_protocol::socket(ctx);
+    auto endpoint = stream_protocol::endpoint("test-integration.socket");
+    client.open(endpoint.protocol());
+    client.connect(endpoint);
+    std::string data = R"({"method":"org.)";
+    client.send(asio::buffer(data.data(), data.size()));
+    REQUIRE_THROWS_AS((void)client.receive(asio::buffer(data.data(), data.size())), std::system_error);
+}
+
+TEST_CASE("UnixSocket, MultipleMessagesInBuffer") {
+    using asio::local::stream_protocol;
+    asio::io_context ctx{};
+    auto client = stream_protocol::socket(ctx);
+    auto endpoint = stream_protocol::endpoint("test-integration.socket");
+    client.open(endpoint.protocol());
+    client.connect(endpoint);
+    std::string data = R"({"method":"org.not.found"})";
+    data += '\0';
+    data += R"({"method":"org.not.found"})";
+    client.send(asio::buffer(data.data(), data.size() + 1));
+    data.resize(174);
+    auto n = client.receive(asio::buffer(data.data(), data.size()));
+    client.receive(asio::buffer(data.data() + n, data.size() - n));
+    std::string exp = R"({"error":"org.varlink.service.InterfaceNotFound","parameters":{"interface":"org.not"}})";
+    exp += '\0';
+    exp += R"({"error":"org.varlink.service.InterfaceNotFound","parameters":{"interface":"org.not"}})";
+    exp += '\0';
+    REQUIRE(exp == data);
 }
 
 TEST_CASE("UnixSocket, Nothing") {

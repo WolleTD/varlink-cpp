@@ -42,7 +42,7 @@ class example_more_server {
         };
 
         auto stop = [&] varlink_callback {
-            _server.stop_serving();
+            _server.stop();
             return {};
         };
 

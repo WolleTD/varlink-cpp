@@ -13,6 +13,7 @@ inline std::system_error system_error_from_errno(const std::string &what) {
 
 struct FakeSocket : public asio::socket_base {
     using protocol_type = asio::local::stream_protocol;
+    using executor_type = asio::any_io_executor;
     size_t write_max{BUFSIZ};
     std::vector<char> data{};
     std::vector<char> exp{};

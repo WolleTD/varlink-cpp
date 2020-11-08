@@ -111,6 +111,7 @@ TEST_CASE("TCPSocket, orgtestMoreThread") {
     REQUIRE(time_to_send < 1ms);
     REQUIRE(latency < 1ms);
 }
+
 TEST_CASE("TCPSocket, orgtestMoreAndQuit") {
     auto client = varlink_client("tcp:127.0.0.1:51337");
     auto more = client.call("org.test.M", {{"n", 5}}, callmode::more);

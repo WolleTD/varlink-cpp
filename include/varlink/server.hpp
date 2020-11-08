@@ -16,111 +16,141 @@
 #include <varlink/varlink.hpp>
 
 namespace varlink {
-template <typename Acceptor, typename = std::enable_if_t<std::is_base_of_v<asio::socket_base, Acceptor> > >
-class basic_server {
+template <typename Socket>
+class server_session : public json_connection<Socket>, public std::enable_shared_from_this<server_session<Socket> > {
    public:
-    using acceptor_type = Acceptor;
-    using protocol_type = typename Acceptor::protocol_type;
-    using socket_type = typename protocol_type::socket;
-    using Connection = json_connection<socket_type>;
+    using socket_type = Socket;
+    using protocol_type = typename socket_type::protocol_type;
+    using executor_type = typename socket_type::executor_type;
+    using connection_type = json_connection<socket_type>;
 
-   private:
-    Acceptor listen_socket;
+    using std::enable_shared_from_this<server_session<Socket> >::shared_from_this;
+    using json_connection<Socket>::async_send;
+    using json_connection<Socket>::async_receive;
 
    public:
-    explicit basic_server(Acceptor acceptor) : listen_socket(std::move(acceptor)) {}
+    explicit server_session(socket_type socket) : json_connection<Socket>(std::move(socket)) {}
 
-    basic_server(const basic_server &src) = delete;
-    basic_server &operator=(const basic_server &) = delete;
-    basic_server(basic_server &&src) noexcept = default;
-    basic_server &operator=(basic_server &&src) noexcept = default;
+    server_session(const server_session &) = delete;
+    server_session &operator=(const server_session &) = delete;
+    server_session(server_session &&) noexcept = default;
+    server_session &operator=(server_session &&) noexcept = default;
 
-    Connection accept() { return Connection(listen_socket.accept()); }
-
-    void shutdown() { ::shutdown(listen_socket.native_handle(), SHUT_RDWR); }
-
-    ~basic_server() {
-        shutdown();
-        if constexpr (std::is_same_v<protocol_type, asio::local::stream_protocol>) {
-            if (listen_socket.is_open()) {
-                std::filesystem::remove(listen_socket.local_endpoint().path());
+    template <typename MessageHandler>
+    void start(MessageHandler &&handler) {
+        async_receive([self = shared_from_this(), handler](auto ec, auto &&j) {
+            if (ec) {
+                return;
             }
-        }
+            try {
+                const auto reply = handler(j);
+                if (reply.is_object()) {
+                    self->async_send(reply, asio::use_future);
+                }
+                self->start(handler);
+            } catch (...) {
+            }
+        });
     }
 };
 
-using json_acceptor_unix = basic_server<asio::local::stream_protocol::acceptor>;
-using json_acceptor_tcp = basic_server<asio::ip::tcp::acceptor>;
-using json_acceptor_variant = std::variant<json_acceptor_unix, json_acceptor_tcp>;
+template <typename Acceptor>
+class async_server : public std::enable_shared_from_this<async_server<Acceptor> > {
+   public:
+    using acceptor_type = Acceptor;
+    using protocol_type = typename acceptor_type::protocol_type;
+    using socket_type = typename protocol_type::socket;
+    using executor_type = typename acceptor_type::executor_type;
+    using session_type = server_session<socket_type>;
+
+    using std::enable_shared_from_this<async_server<Acceptor> >::shared_from_this;
+
+   private:
+    acceptor_type acceptor_;
+
+   public:
+    explicit async_server(acceptor_type acceptor) : acceptor_(std::move(acceptor)) {}
+
+    async_server(const async_server &src) = delete;
+    async_server &operator=(const async_server &) = delete;
+    async_server(async_server &&src) noexcept = default;
+    async_server &operator=(async_server &&src) noexcept = default;
+
+    template <ASIO_COMPLETION_TOKEN_FOR(void(asio::error_code, std::shared_ptr<connection_type>))
+                  ConnectionHandler ASIO_DEFAULT_COMPLETION_TOKEN_TYPE(executor_type)>
+    auto async_accept(ConnectionHandler &&handler ASIO_DEFAULT_COMPLETION_TOKEN(executor_type)) {
+        return asio::async_initiate<ConnectionHandler, void(asio::error_code, std::shared_ptr<session_type>)>(
+            async_accept_initiator(this), handler);
+    }
+
+    void async_serve_forever(varlink_service &service) {
+        async_accept([this, &service](auto ec, auto session) {
+            if (ec) {
+                return;
+            }
+            session->start([session, &service](auto &&j) {
+                const varlink_message message{j};
+                return service.message_call(message,
+                                            [session](auto &&more) { session->async_send(more, asio::use_future); });
+            });
+            async_serve_forever(service);
+        });
+    }
+
+    ~async_server() {
+        if constexpr (std::is_same_v<protocol_type, asio::local::stream_protocol>) {
+            if (acceptor_.is_open()) {
+                std::filesystem::remove(acceptor_.local_endpoint().path());
+            }
+        }
+    }
+
+   private:
+    class async_accept_initiator {
+       private:
+        async_server<Acceptor> *self_;
+
+       public:
+        explicit async_accept_initiator(async_server<Acceptor> *self) : self_(self) {}
+
+        template <typename ConnectionHandler>
+        void operator()(ConnectionHandler &&handler) {
+            self_->acceptor_.async_accept(
+                [handler_ = std::forward<ConnectionHandler>(handler)](asio::error_code ec, socket_type socket) mutable {
+                    std::shared_ptr<session_type> session;
+                    if (!ec) {
+                        session = std::make_shared<session_type>(std::move(socket));
+                    }
+                    handler_(ec, std::move(session));
+                });
+        }
+    };
+};
+
+using async_server_unix = async_server<asio::local::stream_protocol::acceptor>;
+using async_server_tcp = async_server<asio::ip::tcp::acceptor>;
+using async_server_variant = std::variant<async_server_unix, async_server_tcp>;
 
 class threaded_server {
    private:
-    std::atomic_bool terminate{false};
-    asio::io_context ctx;
-    json_acceptor_variant server;
+    asio::thread_pool ctx;
+    async_server_variant server;
     varlink_service service;
-    std::thread listen_thread;
 
-    auto make_client_thread() {
-        return [this](auto conn) {
-            try {
-                while (not terminate) {
-                    const varlink_message message{conn.receive()};
-                    const auto reply = service.message_call(message, [&conn, this](auto &&more) {
-                        if (terminate) {
-                            throw std::system_error(std::make_error_code(std::errc::connection_aborted));
-                        } else {
-                            conn.send(more);
-                        }
-                    });
-                    if (reply.is_object()) {
-                        conn.send(reply);
-                    }
-                }
-            } catch (std::system_error &e) {
-                if ((e.code() != asio::error::eof) and (e.code() != asio::error::broken_pipe)) {
-                    std::cerr << "Terminate connection: " << e.what() << std::endl;
-                }
-            } catch (std::invalid_argument &e) {
-                std::cerr << "Couldn't read message: " << e.what() << std::endl;
-            }
-        };
-    }
-
-    auto make_listen_thread() {
-        return [this]() {
-            std::vector<std::future<void> > clients{};
-            const auto accept_and_detach = [&](auto &&s) {
-                using Connection = typename std::decay_t<decltype(s)>::Connection;
-                auto client_task = std::packaged_task<void(Connection)>{make_client_thread()};
-                clients.push_back(client_task.get_future());
-                std::thread{std::move(client_task), Connection(s.accept())}.detach();
-            };
-            while (not terminate) {
-                try {
-                    std::visit(accept_and_detach, server);
-                } catch (std::system_error &e) {
-                    if (e.code() != asio::error::invalid_argument) {
-                        std::cerr << e.what() << " (" << e.code() << ")\n";
-                    }
-                }
-            }
-            for (auto &&p : clients) p.wait();
-        };
-    }
-
-    auto make_acceptor(const varlink_uri &uri) {
+    auto make_async_server(const varlink_uri &uri) {
         return std::visit(
-            [&](auto &&sockaddr) -> json_acceptor_variant {
+            [&](auto &&sockaddr) -> async_server_variant {
                 using Acceptor = typename std::decay_t<decltype(sockaddr)>::protocol_type::acceptor;
-                return basic_server(Acceptor{ctx, sockaddr});
+                return async_server(Acceptor{ctx, sockaddr});
             },
             endpoint_from_uri(uri));
     }
 
    public:
     threaded_server(const varlink_uri &uri, const varlink_service::description &description)
-        : ctx(1), server(make_acceptor(uri)), service(description), listen_thread(make_listen_thread()) {}
+        : ctx(4), server(make_async_server(uri)), service(description) {
+        std::visit([&](auto &&s) { asio::post(ctx, [&]() { s.async_serve_forever(service); }); }, server);
+    }
 
     threaded_server(std::string_view uri, const varlink_service::description &description)
         : threaded_server(varlink_uri(uri), description) {}
@@ -130,23 +160,14 @@ class threaded_server {
     threaded_server(threaded_server &&src) noexcept = delete;
     threaded_server &operator=(threaded_server &&src) noexcept = delete;
 
-    void stop_serving() {
-        terminate = true;
-        // Calling shutdown will release the thread from it's accept() call
-        std::visit([](auto &&s) { s.shutdown(); }, server);
-    }
-
-    ~threaded_server() {
-        if (not terminate) stop_serving();
-        if (listen_thread.joinable()) listen_thread.join();
-    }
-
     template <typename... Args>
     void add_interface(Args &&...args) {
         service.add_interface(std::forward<Args>(args)...);
     }
 
-    void join() { listen_thread.join(); }
+    void stop() { ctx.stop(); }
+
+    void join() { ctx.join(); }
 };
 }  // namespace varlink
 
