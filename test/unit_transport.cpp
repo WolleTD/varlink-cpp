@@ -19,24 +19,29 @@ struct FakeSocket : public asio::socket_base {
     std::vector<char> exp{};
 
     FakeSocket() = default;
-    explicit FakeSocket([[maybe_unused]] asio::io_context &ctx, [[maybe_unused]] asio::local::stream_protocol p,
+    explicit FakeSocket([[maybe_unused]] asio::io_context &ctx,
+                        [[maybe_unused]] asio::local::stream_protocol p,
                         [[maybe_unused]] int fd) {}
     FakeSocket(FakeSocket &&r) noexcept = default;
     FakeSocket &operator=(FakeSocket &&r) noexcept = default;
     ~FakeSocket() { REQUIRE(data == exp); }
 
     template <typename IteratorT,
-              typename = std::enable_if_t<std::is_convertible_v<typename IteratorT::value_type, char> > >
+              typename = std::enable_if_t<std::is_convertible_v<
+                  typename IteratorT::value_type, char> > >
     IteratorT write(IteratorT begin, IteratorT end) {
         if (static_cast<size_t>(end - begin) > write_max) {
-            data.insert(data.end(), begin, begin + static_cast<long>(write_max));
+            data.insert(data.end(), begin,
+                        begin + static_cast<long>(write_max));
             return begin + static_cast<long>(write_max);
         } else {
             data.insert(data.end(), begin, end);
             return end;
         }
     }
-    std::string::const_iterator write(const std::string &vec) { return write(vec.cbegin(), vec.cend() + 1); }
+    std::string::const_iterator write(const std::string &vec) {
+        return write(vec.cbegin(), vec.cend() + 1);
+    }
     template <typename T>
     typename T::const_iterator write(const T &vec) {
         return write(vec.cbegin(), vec.cend());
@@ -50,12 +55,15 @@ struct FakeSocket : public asio::socket_base {
     }
 
     template <typename IteratorT,
-              typename = std::enable_if_t<std::is_convertible_v<typename IteratorT::value_type, char> > >
+              typename = std::enable_if_t<std::is_convertible_v<
+                  typename IteratorT::value_type, char> > >
     IteratorT write_exp(IteratorT begin, IteratorT end) {
         exp.insert(exp.end(), begin, end);
         return end;
     }
-    std::string::const_iterator write_exp(const std::string &vec) { return write_exp(vec.cbegin(), vec.cend() + 1); }
+    std::string::const_iterator write_exp(const std::string &vec) {
+        return write_exp(vec.cbegin(), vec.cend() + 1);
+    }
 
     size_t receive(const asio::mutable_buffer &buffer) {
         const auto size = data.size();
@@ -67,7 +75,8 @@ struct FakeSocket : public asio::socket_base {
             return size;
         } else {
             std::memcpy(buffer.data(), data.data(), buffer.size());
-            data.erase(data.begin(), data.begin() + static_cast<ptrdiff_t>(buffer.size()));
+            data.erase(data.begin(),
+                       data.begin() + static_cast<ptrdiff_t>(buffer.size()));
             return buffer.size();
         }
     }
@@ -88,7 +97,8 @@ class ConnectionRead {
 };
 
 TEST_CASE_METHOD(ConnectionRead, "ConnectionRead, Success") {
-    SetUp(R"({"object":true})", R"("string")", R"({"int":42})", R"({"float":3.14})", R"(["array"])", R"(null)");
+    SetUp(R"({"object":true})", R"("string")", R"({"int":42})",
+          R"({"float":3.14})", R"(["array"])", R"(null)");
     REQUIRE(conn.receive()["object"].get<bool>() == true);
     REQUIRE(conn.receive().get<std::string>() == "string");
     REQUIRE(conn.receive()["int"].get<int>() == 42);
@@ -140,7 +150,8 @@ class ConnectionWrite {
 };
 
 TEST_CASE_METHOD(ConnectionWrite, "ConnectionWrite, Success") {
-    SetUp(BUFSIZ, "{\"object\":true}", "\"string\"", "{\"float\":3.14}", "null");
+    SetUp(BUFSIZ, "{\"object\":true}", "\"string\"", "{\"float\":3.14}",
+          "null");
     conn.send(R"({"object":true})"_json);
     conn.send(R"("string")"_json);
     conn.send(R"({"float":3.14})"_json);
@@ -148,7 +159,8 @@ TEST_CASE_METHOD(ConnectionWrite, "ConnectionWrite, Success") {
 }
 
 TEST_CASE_METHOD(ConnectionWrite, "ConnectionWrite, Partial") {
-    SetUp(10, R"({"s":1})", R"({"object":true,"toolong":true})", R"({"last":true})");
+    SetUp(10, R"({"s":1})", R"({"object":true,"toolong":true})",
+          R"({"last":true})");
     conn.send(R"({"s":1})"_json);
     conn.send(R"({"object":true,"toolong":true})"_json);
     conn.send(R"({"last":true})"_json);
