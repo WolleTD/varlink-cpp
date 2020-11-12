@@ -1,6 +1,6 @@
 #define CATCH_CONFIG_RUNNER
-#include <catch2/catch.hpp>
 #include <filesystem>
+#include <catch2/catch.hpp>
 #include <varlink/client.hpp>
 #include <varlink/server.hpp>
 
@@ -9,29 +9,40 @@ using std::string;
 
 class Environment {
     const std::string_view varlink_uri{"unix:test-integration.socket"};
-    const varlink_service::description description{"varlink", "test", "1", "test.org"};
+    const varlink_service::description description{
+        "varlink",
+        "test",
+        "1",
+        "test.org"};
     std::unique_ptr<threaded_server> server;
 
-   public:
-    Environment() {
+  public:
+    Environment()
+    {
         const auto testif =
             "interface org.test\nmethod P(p:string) -> (q:string)\n"
             "method M(n:int,t:?bool)->(m:int)\n";
         std::filesystem::remove("test-integration.socket");
         server = std::make_unique<threaded_server>(varlink_uri, description);
-        auto ping_callback = [] varlink_callback { return {{"q", parameters["p"].get<string>()}}; };
+        auto ping_callback = [] varlink_callback {
+            return {{"q", parameters["p"].get<string>()}};
+        };
         auto more_callback = [] varlink_callback {
             const auto count = parameters["n"].get<int>();
-            const bool wait = parameters.contains("t") && parameters["t"].get<bool>();
+            const bool wait = parameters.contains("t")
+                              && parameters["t"].get<bool>();
             for (auto i = 0; i < count; i++) {
                 sendmore({{"m", i}});
-                if (wait) std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                if (wait)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
             }
             return {{"m", count}};
         };
-        server->add_interface(testif, callback_map{{"P", ping_callback}, {"M", more_callback}});
-        server->add_interface("interface org.err\nmethod E() -> ()\n",
-                              callback_map{{"E", [] varlink_callback { throw std::exception{}; }}});
+        server->add_interface(
+            testif, callback_map{{"P", ping_callback}, {"M", more_callback}});
+        server->add_interface(
+            "interface org.err\nmethod E() -> ()\n",
+            callback_map{{"E", [] varlink_callback { throw std::exception{}; }}});
     }
 };
 
@@ -39,12 +50,14 @@ class Environment {
     try {                                                         \
         statement;                                                \
         REQUIRE_THROWS_AS(statement, varlink_error);              \
-    } catch (varlink_error & e) {                                 \
+    }                                                             \
+    catch (varlink_error & e) {                                   \
         REQUIRE(std::string(e.what()) == error);                  \
         REQUIRE(e.args()[parameter].get<string>() == value);      \
     }
 
-TEST_CASE("UnixSocket, GetInfo") {
+TEST_CASE("UnixSocket, GetInfo")
+{
     auto client = varlink_client("unix:test-integration.socket");
     auto resp = client.call("org.varlink.service.GetInfo", {})();
     REQUIRE(resp["vendor"].get<string>() == "varlink");
@@ -56,30 +69,49 @@ TEST_CASE("UnixSocket, GetInfo") {
     // REQUIRE(resp["parameter"].get<string>() == "value");
 }
 
-TEST_CASE("UnixSocket, GetInterfaceDescription") {
+TEST_CASE("UnixSocket, GetInterfaceDescription")
+{
     auto client = varlink_client("unix:test-integration.socket");
-    auto resp = client.call("org.varlink.service.GetInterfaceDescription", {{"interface", "org.test"}})();
+    auto resp = client.call(
+        "org.varlink.service.GetInterfaceDescription",
+        {{"interface", "org.test"}})();
     REQUIRE(resp["description"].get<string>() ==
             "interface org.test\n\n"
             "method P(p: string) -> (q: string)\n\n"
             "method M(n: int, t: ?bool) -> (m: int)\n");
-    REQUIRE_VARLINK_ERROR(client.call("org.varlink.service.GetInterfaceDescription", {{"interface", "org.notfound"}})(),
-                          "org.varlink.service.InterfaceNotFound", "interface", "org.notfound");
-    REQUIRE_VARLINK_ERROR(client.call("org.varlink.service.GetInterfaceDescription", {})(),
-                          "org.varlink.service.InvalidParameter", "parameter", "interface");
+    REQUIRE_VARLINK_ERROR(
+        client.call(
+            "org.varlink.service.GetInterfaceDescription",
+            {{"interface", "org.notfound"}})(),
+        "org.varlink.service.InterfaceNotFound",
+        "interface",
+        "org.notfound");
+    REQUIRE_VARLINK_ERROR(
+        client.call("org.varlink.service.GetInterfaceDescription", {})(),
+        "org.varlink.service.InvalidParameter",
+        "parameter",
+        "interface");
 }
 
-TEST_CASE("UnixSocket, orgtestPing") {
+TEST_CASE("UnixSocket, orgtestPing")
+{
     auto client = varlink_client("unix:test-integration.socket");
     auto resp = client.call("org.test.P", {{"p", "test"}})();
     REQUIRE(resp["q"].get<string>() == "test");
-    REQUIRE_VARLINK_ERROR(client.call("org.test.P", {{"q", "invalid"}})(), "org.varlink.service.InvalidParameter",
-                          "parameter", "p");
-    REQUIRE_VARLINK_ERROR(client.call("org.test.P", {{"p", 20}})(), "org.varlink.service.InvalidParameter", "parameter",
-                          "p");
+    REQUIRE_VARLINK_ERROR(
+        client.call("org.test.P", {{"q", "invalid"}})(),
+        "org.varlink.service.InvalidParameter",
+        "parameter",
+        "p");
+    REQUIRE_VARLINK_ERROR(
+        client.call("org.test.P", {{"p", 20}})(),
+        "org.varlink.service.InvalidParameter",
+        "parameter",
+        "p");
 }
 
-TEST_CASE("UnixSocket, orgtestMore") {
+TEST_CASE("UnixSocket, orgtestMore")
+{
     auto client = varlink_client("unix:test-integration.socket");
     auto more = client.call("org.test.M", {{"n", 5}}, callmode::more);
     REQUIRE(more()["m"].get<int>() == 0);
@@ -89,31 +121,51 @@ TEST_CASE("UnixSocket, orgtestMore") {
     REQUIRE(more()["m"].get<int>() == 4);
     REQUIRE(more()["m"].get<int>() == 5);
     REQUIRE(more() == nullptr);
-    REQUIRE_VARLINK_ERROR(client.call("org.test.M", {{"n", 5}}, callmode::basic)(),
-                          "org.varlink.service.MethodNotImplemented", "method", "org.test.M");
+    REQUIRE_VARLINK_ERROR(
+        client.call("org.test.M", {{"n", 5}}, callmode::basic)(),
+        "org.varlink.service.MethodNotImplemented",
+        "method",
+        "org.test.M");
 }
 
-TEST_CASE("UnixSocket, orgtestMoreThread") {
+TEST_CASE("UnixSocket, orgtestMoreThread")
+{
     using namespace std::chrono;
     using namespace std::chrono_literals;
     auto client = varlink_client("unix:test-integration.socket");
     auto client2 = varlink_client("unix:test-integration.socket");
     auto begin = steady_clock::now();
-    auto more = client.call("org.test.M", {{"n", 1}, {"t", true}}, callmode::more);
+    auto more = client.call(
+        "org.test.M", {{"n", 1}, {"t", true}}, callmode::more);
     REQUIRE(more()["m"].get<int>() == 0);
     auto begin2 = steady_clock::now();
     auto resp = client2.call("org.test.P", {{"p", "test"}})();
     auto done2 = steady_clock::now();
     REQUIRE(resp["q"].get<string>() == "test");
     REQUIRE(more()["m"].get<int>() == 1);
+    auto done = steady_clock::now();
     REQUIRE(more() == nullptr);
-    auto time_to_send = begin2 - begin;
-    auto latency = done2 - begin2;
-    REQUIRE(duration_cast<milliseconds>(time_to_send) < 1ms);
-    REQUIRE(duration_cast<milliseconds>(latency) < 1ms);
+    auto latency = done - begin;
+    auto latency2 = done2 - begin2;
+    REQUIRE(latency2 < latency);
 }
 
-TEST_CASE("UnixSocket, orgtestMoreAndQuit") {
+TEST_CASE("UnixSocket, orgtestMoreNoMultiplex")
+{
+    using namespace std::chrono;
+    using namespace std::chrono_literals;
+    auto client = varlink_client("unix:test-integration.socket");
+    auto more = client.call(
+        "org.test.M", {{"n", 1}, {"t", true}}, callmode::more);
+    REQUIRE(more()["m"].get<int>() == 0);
+    auto resp = client.call("org.test.P", {{"p", "test"}});
+    REQUIRE(more()["m"].get<int>() == 1);
+    REQUIRE(resp()["q"].get<string>() == "test");
+    REQUIRE(more() == nullptr);
+}
+
+TEST_CASE("UnixSocket, orgtestMoreAndQuit")
+{
     auto client = varlink_client("unix:test-integration.socket");
     auto more = client.call("org.test.M", {{"n", 5}}, callmode::more);
     REQUIRE(more()["m"].get<int>() == 0);
@@ -121,41 +173,60 @@ TEST_CASE("UnixSocket, orgtestMoreAndQuit") {
     REQUIRE(more()["m"].get<int>() == 2);
 }
 
-TEST_CASE("UnixSocket, orgtestDontread") {
+TEST_CASE("UnixSocket, orgtestDontread")
+{
     auto client = varlink_client("unix:test-integration.socket");
     client.call("org.test.P", {{"p", "test"}});
 }
 
-TEST_CASE("UnixSocket, orgtestOneway") {
+TEST_CASE("UnixSocket, orgtestOneway")
+{
     auto client = varlink_client("unix:test-integration.socket");
     auto null = client.call("org.test.P", {{"p", "test"}}, callmode::oneway);
     REQUIRE(null() == nullptr);
 }
 
-TEST_CASE("UnixSocket, Upgrade") {
+TEST_CASE("UnixSocket, Upgrade")
+{
     auto client = varlink_client("unix:test-integration.socket");
     auto resp = client.call("org.test.P", {{"p", "test"}}, callmode::upgrade)();
     REQUIRE(resp["q"].get<string>() == "test");
 }
 
-TEST_CASE("UnixSocket, InterfaceNotFound") {
+TEST_CASE("UnixSocket, InterfaceNotFound")
+{
     auto client = varlink_client("unix:test-integration.socket");
-    REQUIRE_VARLINK_ERROR(client.call("org.notfound.NonExistent", {})(), "org.varlink.service.InterfaceNotFound",
-                          "interface", "org.notfound");
-    REQUIRE_VARLINK_ERROR(client.call("org.notfound", {})(), "org.varlink.service.InterfaceNotFound", "interface",
-                          "org");
-    REQUIRE_VARLINK_ERROR(client.call("org", {})(), "org.varlink.service.InterfaceNotFound", "interface", "org");
+    REQUIRE_VARLINK_ERROR(
+        client.call("org.notfound.NonExistent", {})(),
+        "org.varlink.service.InterfaceNotFound",
+        "interface",
+        "org.notfound");
+    REQUIRE_VARLINK_ERROR(
+        client.call("org.notfound", {})(),
+        "org.varlink.service.InterfaceNotFound",
+        "interface",
+        "org");
+    REQUIRE_VARLINK_ERROR(
+        client.call("org", {})(),
+        "org.varlink.service.InterfaceNotFound",
+        "interface",
+        "org");
 }
 
-TEST_CASE("UnixSocket, MethodNotFound") {
+TEST_CASE("UnixSocket, MethodNotFound")
+{
     auto client = varlink_client("unix:test-integration.socket");
-    REQUIRE_VARLINK_ERROR(client.call("org.test.NonExistent", {})(), "org.varlink.service.MethodNotFound", "method",
-                          "org.test.NonExistent");
+    REQUIRE_VARLINK_ERROR(
+        client.call("org.test.NonExistent", {})(),
+        "org.varlink.service.MethodNotFound",
+        "method",
+        "org.test.NonExistent");
 }
 
-TEST_CASE("UnixSocket, InvalidMessage") {
-    using proto = asio::local::stream_protocol;
-    asio::io_context ctx;
+TEST_CASE("UnixSocket, InvalidMessage")
+{
+    using proto = net::local::stream_protocol;
+    net::io_context ctx;
     auto endpoint = proto::endpoint("test-integration.socket");
     auto socket = proto::socket(ctx, endpoint.protocol());
     socket.connect(endpoint);
@@ -164,9 +235,10 @@ TEST_CASE("UnixSocket, InvalidMessage") {
     REQUIRE_THROWS_AS((void)client.receive(), std::system_error);
 }
 
-TEST_CASE("UnixSocket, InvalidParameterType") {
-    using proto = asio::local::stream_protocol;
-    asio::io_context ctx;
+TEST_CASE("UnixSocket, InvalidParameterType")
+{
+    using proto = net::local::stream_protocol;
+    net::io_context ctx;
     auto endpoint = proto::endpoint("test-integration.socket");
     auto socket = proto::socket(ctx, endpoint.protocol());
     socket.connect(endpoint);
@@ -175,33 +247,40 @@ TEST_CASE("UnixSocket, InvalidParameterType") {
     REQUIRE_THROWS_AS((void)client.receive(), std::system_error);
 }
 
-TEST_CASE("UnixSocket, NotJsonMessage") {
-    using asio::local::stream_protocol;
-    asio::io_context ctx{};
+TEST_CASE("UnixSocket, NotJsonMessage")
+{
+    using net::local::stream_protocol;
+    net::io_context ctx{};
     auto client = stream_protocol::socket(ctx);
     auto endpoint = stream_protocol::endpoint("test-integration.socket");
     client.open(endpoint.protocol());
     client.connect(endpoint);
     std::string data = "{totally_not\"a json-message]";
-    client.send(asio::buffer(data.data(), data.size() + 1));
-    REQUIRE_THROWS_AS((void)client.receive(asio::buffer(data.data(), data.size())), std::system_error);
+    client.send(net::buffer(data.data(), data.size() + 1));
+    REQUIRE_THROWS_AS(
+        (void)client.receive(net::buffer(data.data(), data.size())),
+        std::system_error);
 }
 
-TEST_CASE("UnixSocket, Incomplete Message") {
-    using asio::local::stream_protocol;
-    asio::io_context ctx{};
+TEST_CASE("UnixSocket, Incomplete Message")
+{
+    using net::local::stream_protocol;
+    net::io_context ctx{};
     auto client = stream_protocol::socket(ctx);
     auto endpoint = stream_protocol::endpoint("test-integration.socket");
     client.open(endpoint.protocol());
     client.connect(endpoint);
     std::string data = R"({"method":"org.)";
-    client.send(asio::buffer(data.data(), data.size()));
-    REQUIRE_THROWS_AS((void)client.receive(asio::buffer(data.data(), data.size())), std::system_error);
+    client.send(net::buffer(data.data(), data.size()));
+    REQUIRE_THROWS_AS(
+        (void)client.receive(net::buffer(data.data(), data.size())),
+        std::system_error);
 }
 
-TEST_CASE("UnixSocket, MultipleMessagesInBuffer") {
-    using asio::local::stream_protocol;
-    asio::io_context ctx{};
+TEST_CASE("UnixSocket, MultipleMessagesInBuffer")
+{
+    using net::local::stream_protocol;
+    net::io_context ctx{};
     auto client = stream_protocol::socket(ctx);
     auto endpoint = stream_protocol::endpoint("test-integration.socket");
     client.open(endpoint.protocol());
@@ -209,34 +288,39 @@ TEST_CASE("UnixSocket, MultipleMessagesInBuffer") {
     std::string data = R"({"method":"org.not.found"})";
     data += '\0';
     data += R"({"method":"org.not.found"})";
-    client.send(asio::buffer(data.data(), data.size() + 1));
+    client.send(net::buffer(data.data(), data.size() + 1));
     data.resize(174);
-    auto n = client.receive(asio::buffer(data.data(), data.size()));
-    client.receive(asio::buffer(data.data() + n, data.size() - n));
-    std::string exp = R"({"error":"org.varlink.service.InterfaceNotFound","parameters":{"interface":"org.not"}})";
+    auto n = client.receive(net::buffer(data.data(), data.size()));
+    client.receive(net::buffer(data.data() + n, data.size() - n));
+    std::string exp =
+        R"({"error":"org.varlink.service.InterfaceNotFound","parameters":{"interface":"org.not"}})";
     exp += '\0';
     exp += R"({"error":"org.varlink.service.InterfaceNotFound","parameters":{"interface":"org.not"}})";
     exp += '\0';
     REQUIRE(exp == data);
 }
 
-TEST_CASE("UnixSocket, Nothing") {
+TEST_CASE("UnixSocket, Nothing")
+{
     auto client1 = varlink_client("unix:test-integration.socket");
     auto client2 = varlink_client("unix:test-integration.socket");
     auto client3 = varlink_client("unix:test-integration.socket");
     auto client4 = varlink_client("unix:test-integration.socket");
 }
 
-TEST_CASE("UnixSocket, InternalException") {
+TEST_CASE("UnixSocket, InternalException")
+{
     auto client = varlink_client("unix:test-integration.socket");
     try {
         client.call("org.err.E", {})();
-    } catch (varlink_error& e) {
+    }
+    catch (varlink_error& e) {
         REQUIRE(std::string(e.what()) == "org.varlink.service.InternalError");
     }
 }
 
-int main(int argc, char** argv) {
+int main(int argc, char** argv)
+{
     signal(SIGPIPE, SIG_IGN);
     auto env = Environment();
     return Catch::Session().run(argc, argv);

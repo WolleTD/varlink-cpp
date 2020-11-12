@@ -18,8 +18,7 @@
 namespace varlink {
 template <typename Socket>
 class server_session
-    : public json_connection<Socket>,
-      public std::enable_shared_from_this<server_session<Socket>> {
+    : public std::enable_shared_from_this<server_session<Socket>> {
   public:
     using socket_type = Socket;
     using protocol_type = typename socket_type::protocol_type;
@@ -27,12 +26,14 @@ class server_session
     using connection_type = json_connection<socket_type>;
 
     using std::enable_shared_from_this<server_session<Socket>>::shared_from_this;
-    using json_connection<Socket>::async_send;
-    using json_connection<Socket>::async_receive;
+
+  private:
+    json_connection<socket_type> connection;
+    varlink_service& service_;
 
   public:
-    explicit server_session(socket_type socket)
-        : json_connection<Socket>(std::move(socket))
+    explicit server_session(socket_type socket, varlink_service& service)
+        : connection(std::move(socket)), service_(service)
     {
     }
 
@@ -41,23 +42,37 @@ class server_session
     server_session(server_session&&) noexcept = default;
     server_session& operator=(server_session&&) noexcept = default;
 
-    template <typename MessageHandler>
-    void start(MessageHandler&& handler)
+    void start()
     {
-        async_receive([self = shared_from_this(), handler](auto ec, auto&& j) {
-            if (ec) {
+        connection.async_receive([self = shared_from_this()](auto ec, auto&& j) {
+            if (ec)
                 return;
-            }
             try {
-                const auto reply = handler(j);
-                if (reply.is_object()) {
-                    self->async_send(reply, asio::use_future);
+                const varlink_message message{j};
+                auto reply = std::make_unique<json>(self->service_.message_call(
+                    message, [self](const json& more) {
+                        auto m = std::make_unique<json>(more);
+                        self->async_send_reply(std::move(m));
+                    }));
+                if (reply->is_object()) {
+                    self->async_send_reply(std::move(reply));
                 }
-                self->start(handler);
+                self->start();
             }
             catch (...) {
             }
         });
+    }
+
+  private:
+    void async_send_reply(std::unique_ptr<json> message)
+    {
+        auto& data = *message;
+        connection.async_send(
+            data, [m = std::move(message), self = shared_from_this()](auto ec) {
+                if (ec)
+                    self->connection.socket().cancel();
+            });
     }
 };
 
@@ -74,10 +89,11 @@ class async_server : public std::enable_shared_from_this<async_server<Acceptor>>
 
   private:
     acceptor_type acceptor_;
+    varlink_service& service_;
 
   public:
-    explicit async_server(acceptor_type acceptor)
-        : acceptor_(std::move(acceptor))
+    explicit async_server(acceptor_type acceptor, varlink_service& service)
+        : acceptor_(std::move(acceptor)), service_(service)
     {
     }
 
@@ -87,36 +103,31 @@ class async_server : public std::enable_shared_from_this<async_server<Acceptor>>
     async_server& operator=(async_server&& src) noexcept = default;
 
     template <ASIO_COMPLETION_TOKEN_FOR(
-        void(asio::error_code, std::shared_ptr<connection_type>))
+        void(std::error_code, std::shared_ptr<connection_type>))
                   ConnectionHandler ASIO_DEFAULT_COMPLETION_TOKEN_TYPE(executor_type)>
     auto async_accept(
         ConnectionHandler&& handler ASIO_DEFAULT_COMPLETION_TOKEN(executor_type))
     {
-        return asio::async_initiate<
+        return net::async_initiate<
             ConnectionHandler,
-            void(asio::error_code, std::shared_ptr<session_type>)>(
+            void(std::error_code, std::shared_ptr<session_type>)>(
             async_accept_initiator(this), handler);
     }
 
-    void async_serve_forever(varlink_service& service)
+    void async_serve_forever()
     {
-        async_accept([this, &service](auto ec, auto session) {
+        async_accept([this](auto ec, auto session) {
             if (ec) {
                 return;
             }
-            session->start([session, &service](auto&& j) {
-                const varlink_message message{j};
-                return service.message_call(message, [session](auto&& more) {
-                    session->async_send(more, asio::use_future);
-                });
-            });
-            async_serve_forever(service);
+            session->start();
+            async_serve_forever();
         });
     }
 
     ~async_server()
     {
-        if constexpr (std::is_same_v<protocol_type, asio::local::stream_protocol>) {
+        if constexpr (std::is_same_v<protocol_type, net::local::stream_protocol>) {
             if (acceptor_.is_open()) {
                 std::filesystem::remove(acceptor_.local_endpoint().path());
             }
@@ -138,12 +149,13 @@ class async_server : public std::enable_shared_from_this<async_server<Acceptor>>
         void operator()(ConnectionHandler&& handler)
         {
             self_->acceptor_.async_accept(
-                [handler_ = std::forward<ConnectionHandler>(handler)](
-                    asio::error_code ec, socket_type socket) mutable {
-                    std::shared_ptr<session_type> session;
+                [self = self_,
+                 handler_ = std::forward<ConnectionHandler>(handler)](
+                    std::error_code ec, socket_type socket) mutable {
+                    std::shared_ptr<session_type> session{};
                     if (!ec) {
                         session = std::make_shared<session_type>(
-                            std::move(socket));
+                            std::move(socket), self->service_);
                     }
                     handler_(ec, std::move(session));
                 });
@@ -151,15 +163,15 @@ class async_server : public std::enable_shared_from_this<async_server<Acceptor>>
     };
 };
 
-using async_server_unix = async_server<asio::local::stream_protocol::acceptor>;
-using async_server_tcp = async_server<asio::ip::tcp::acceptor>;
+using async_server_unix = async_server<net::local::stream_protocol::acceptor>;
+using async_server_tcp = async_server<net::ip::tcp::acceptor>;
 using async_server_variant = std::variant<async_server_unix, async_server_tcp>;
 
 class threaded_server {
   private:
-    asio::thread_pool ctx;
-    async_server_variant server;
+    net::thread_pool ctx;
     varlink_service service;
+    async_server_variant server;
 
     auto make_async_server(const varlink_uri& uri)
     {
@@ -167,7 +179,7 @@ class threaded_server {
             [&](auto&& sockaddr) -> async_server_variant {
                 using Acceptor =
                     typename std::decay_t<decltype(sockaddr)>::protocol_type::acceptor;
-                return async_server(Acceptor{ctx, sockaddr});
+                return async_server(Acceptor{ctx, sockaddr}, service);
             },
             endpoint_from_uri(uri));
     }
@@ -176,12 +188,10 @@ class threaded_server {
     threaded_server(
         const varlink_uri& uri,
         const varlink_service::description& description)
-        : ctx(4), server(make_async_server(uri)), service(description)
+        : ctx(4), service(description), server(make_async_server(uri))
     {
         std::visit(
-            [&](auto&& s) {
-                asio::post(ctx, [&]() { s.async_serve_forever(service); });
-            },
+            [&](auto&& s) { net::post(ctx, [&]() { s.async_serve_forever(); }); },
             server);
     }
 

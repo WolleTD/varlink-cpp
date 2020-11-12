@@ -14,7 +14,7 @@ using callmode = varlink_message::callmode;
 
 template <
     typename Socket,
-    typename = std::enable_if_t<std::is_base_of_v<asio::socket_base, Socket>>>
+    typename = std::enable_if_t<std::is_base_of_v<net::socket_base, Socket>>>
 class basic_varlink_client {
   public:
     using socket_type = Socket;
@@ -67,14 +67,14 @@ class basic_varlink_client {
 };
 
 using varlink_client_unix =
-    basic_varlink_client<asio::local::stream_protocol::socket>;
-using varlink_client_tcp = basic_varlink_client<asio::ip::tcp::socket>;
+    basic_varlink_client<net::local::stream_protocol::socket>;
+using varlink_client_tcp = basic_varlink_client<net::ip::tcp::socket>;
 using varlink_client_variant =
     std::variant<varlink_client_unix, varlink_client_tcp>;
 
 class varlink_client {
   private:
-    asio::io_context ctx{};
+    net::io_context ctx{};
     varlink_client_variant client;
 
     auto make_client(const varlink_uri& uri)
@@ -104,7 +104,7 @@ class varlink_client {
     }
     template <
         typename Socket,
-        typename = std::enable_if_t<std::is_base_of_v<asio::socket_base, Socket>>>
+        typename = std::enable_if_t<std::is_base_of_v<net::socket_base, Socket>>>
     explicit varlink_client(Socket&& socket)
         : client(basic_varlink_client(std::forward<Socket>(socket)))
     {
