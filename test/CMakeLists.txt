@@ -21,17 +21,26 @@ function(bash_test NAME SCRIPT)
 endfunction()
 
 varlink_test(unittests
+        unit_client.cpp
         unit_interface.cpp
         unit_message.cpp
+        unit_server_session.cpp
         unit_service.cpp
         unit_transport.cpp
         unit_uri.cpp
         unit_main.cpp
         )
+varlink_test(self_errors self_errors.cpp unit_main.cpp)
 
-varlink_test(self_unix self_unix.cpp)
-varlink_test(self_tcp self_tcp.cpp)
-varlink_test(self_errors self_errors.cpp)
+add_library(catch_main test_main.cpp)
+target_link_libraries(catch_main PUBLIC Catch2::Catch2)
+
+varlink_test(self_unix self_test_impl.cpp)
+target_link_libraries(test_self_unix PRIVATE catch_main)
+target_compile_definitions(test_self_unix PRIVATE VARLINK_TEST_UNIX)
+varlink_test(self_tcp self_test_impl.cpp)
+target_link_libraries(test_self_tcp PRIVATE catch_main)
+target_compile_definitions(test_self_tcp PRIVATE VARLINK_TEST_TCP)
 
 add_executable(cert_client cert_client.cpp)
 target_link_libraries(cert_client PRIVATE varlink++)

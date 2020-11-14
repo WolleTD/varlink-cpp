@@ -18,8 +18,17 @@ template <
 class basic_varlink_client {
   public:
     using socket_type = Socket;
-    using protocol_type = typename Socket::protocol_type;
+    using protocol_type = typename socket_type::protocol_type;
+    using executor_type = typename socket_type::executor_type;
     using Connection = json_connection<Socket>;
+
+    socket_type& socket() { return connection.socket(); }
+    [[nodiscard]] const socket_type& socket() const
+    {
+        return connection.socket();
+    }
+
+    executor_type get_executor() { return socket().get_executor(); }
 
   private:
     Connection connection;
@@ -43,6 +52,7 @@ class basic_varlink_client {
             if (continues) {
                 json reply = connection.receive();
                 if (reply.contains("error")) {
+                    continues = false;
                     throw varlink_error(
                         reply["error"].get<std::string>(), reply["parameters"]);
                 }

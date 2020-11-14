@@ -168,8 +168,8 @@ class json_connection {
                 [self = self_,
                  &message,
                  handler = std::forward<CompletionHandler>(handler)]() mutable {
-                    auto m = std::string(message.dump());
-                    auto buffer = net::buffer(m.data(), m.size() + 1);
+                    auto m = std::make_unique<std::string>(message.dump());
+                    auto buffer = net::buffer(m->data(), m->size() + 1);
                     net::async_write(
                         self->stream,
                         buffer,

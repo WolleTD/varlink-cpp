@@ -27,6 +27,11 @@ class server_session
 
     using std::enable_shared_from_this<server_session<Socket>>::shared_from_this;
 
+    socket_type& socket() { return connection.socket(); }
+    [[nodiscard]] const socket_type& socket() const { return connection.socket(); }
+
+    executor_type get_executor() { return socket().get_executor(); }
+
   private:
     json_connection<socket_type> connection;
     varlink_service& service_;
