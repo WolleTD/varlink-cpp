@@ -244,12 +244,17 @@ TEST_CASE("Testing server with raw socket data")
         REQUIRE_THROWS_AS((void)socket.receive(buffer), std::system_error);
     }
 
-    SECTION("Incomplete message")
+    SECTION("Partial transmission")
     {
         std::string data = R"({"method":"org.)";
-        auto buffer = net::buffer(data.data(), data.size());
-        socket.send(buffer);
-        REQUIRE_THROWS_AS((void)socket.receive(buffer), std::system_error);
+        socket.send(net::buffer(data.data(), data.size()));
+        data = R"(varlink.service.GetInf"})";
+        socket.send(net::buffer(data.data(), data.size() + 1));
+        data.resize(100);
+        socket.receive(net::buffer(data.data(), data.size()));
+        std::string exp = R"({"error":"org.varlink.service.MethodNotFound","parameters":{"method":"org.varlink.service.GetInf"}})";
+        exp += '\0';
+        REQUIRE(exp == data);
     }
 
     SECTION("Don't lose multiple messages in buffer")

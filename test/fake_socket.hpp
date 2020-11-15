@@ -7,6 +7,8 @@ class FakeSocket : public net::socket_base {
   public:
     using protocol_type = net::local::stream_protocol;
     using executor_type = net::any_io_executor;
+    bool error_on_write{false};
+    bool cancelled{false};
     size_t write_max{BUFSIZ};
 
   private:
@@ -14,7 +16,6 @@ class FakeSocket : public net::socket_base {
     std::vector<char> sent_data{};
     std::vector<char> sent_expect{};
     net::io_context* ctx_;
-    bool cancelled{false};
 
   public:
     explicit FakeSocket(net::io_context& ctx) : ctx_(&ctx) {}
@@ -66,7 +67,11 @@ class FakeSocket : public net::socket_base {
 
     size_t send(const net::const_buffer& buffer)
     {
-        return write_buffer(sent_data, buffer);
+        if (error_on_write) {
+            throw std::system_error(net::error::broken_pipe);
+        } else {
+            return write_buffer(sent_data, buffer);
+        }
     }
 
     template <typename CompletionHandler>
@@ -78,8 +83,13 @@ class FakeSocket : public net::socket_base {
              buffer,
              handler = std::forward<CompletionHandler>(handler)]() mutable {
                 if (not cancelled) {
-                    auto n = send(buffer);
-                    return handler(std::error_code{}, n);
+                    if (error_on_write) {
+                        return handler(net::error::broken_pipe, 0);
+                    }
+                    else {
+                        auto n = send(buffer);
+                        return handler(std::error_code{}, n);
+                    }
                 }
                 else {
                     return handler(net::error::operation_aborted, 0);
@@ -93,7 +103,8 @@ class FakeSocket : public net::socket_base {
             throw std::system_error(net::error::eof);
         }
         else {
-            const auto read_count = std::min(fake_data.size(), buffer.size());
+            const auto max_buffer = std::min(fake_data.size(), buffer.size());
+            const auto read_count = std::min(write_max, max_buffer);
             std::memcpy(buffer.data(), fake_data.data(), read_count);
             fake_data.erase(
                 fake_data.begin(),

@@ -156,4 +156,13 @@ method Exception() -> ()
         REQUIRE(ctx.run() > 0);
         conn->socket().validate_write();
     }
+
+    SECTION("Write error")
+    {
+        setup_test(R"({"method":"org.test.NotImplemented"})", "");
+        conn->socket().error_on_write = true;
+        conn->start();
+        REQUIRE(ctx.run() > 0);
+        REQUIRE(conn->socket().cancelled);
+    }
 }

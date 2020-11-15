@@ -83,12 +83,14 @@ class json_connection {
 
     [[nodiscard]] json receive()
     {
-        if (read_end == readbuf.begin()) {
-            const auto bytes_read = stream.receive(net::buffer(readbuf));
-            read_end = readbuf.begin() + static_cast<ptrdiff_t>(bytes_read);
-        }
         std::error_code ec{};
         json j = read_next_message(ec);
+        while (ec == net::error::in_progress) {
+            const auto bytes_read = stream.receive(net::buffer(
+                &(*read_end), static_cast<size_t>(readbuf.end() - read_end)));
+            read_end += static_cast<ptrdiff_t>(bytes_read);
+            j = read_next_message(ec);
+        }
         if (ec) {
             throw std::invalid_argument(std::string(readbuf.begin(), read_end));
         }
@@ -102,17 +104,18 @@ class json_connection {
     {
         const auto next_message_end = std::find(readbuf.begin(), read_end, '\0');
         if (next_message_end == read_end) {
-            ec = std::error_code(net::error::invalid_argument);
+            ec = net::error::in_progress;
             return {};
         }
         const auto message = std::string(readbuf.begin(), next_message_end);
         read_end = std::copy(next_message_end + 1, read_end, readbuf.begin());
 
         try {
+            ec = std::error_code{};
             return json::parse(message);
         }
         catch (json::parse_error& e) {
-            ec = std::error_code(net::error::invalid_argument);
+            ec = net::error::invalid_argument;
             return {};
         }
     };
@@ -131,21 +134,27 @@ class json_connection {
         void operator()(CompletionHandler&& handler)
         {
             self_->stream.async_receive(
-                net::buffer(self_->readbuf),
+                net::buffer(
+                    &(*self_->read_end),
+                    static_cast<size_t>(self_->readbuf.end() - self_->read_end)),
                 net::bind_executor(
                     self_->read_strand,
                     [self = self_,
-                     handler_ = std::forward<CompletionHandler>(handler)](
+                     handler = std::forward<CompletionHandler>(handler)](
                         std::error_code ec, size_t n) mutable {
                         if (ec) {
-                            handler_(ec, json{});
+                            handler(ec, json{});
                         }
                         else {
-                            self->read_end = self->readbuf.begin()
-                                             + static_cast<ptrdiff_t>(n);
-                            while (!ec) {
+                            self->read_end += static_cast<ptrdiff_t>(n);
+                            while (not ec) {
                                 auto message = self->read_next_message(ec);
-                                handler_(ec, message);
+                                if (ec != net::error::in_progress) {
+                                    handler(ec, message);
+                                }
+                                else if (self->read_end != self->readbuf.begin()) {
+                                    self->async_receive(handler);
+                                }
                             }
                         }
                     }));

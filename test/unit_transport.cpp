@@ -33,6 +33,13 @@ TEST_CASE("JSON transport sync read")
         REQUIRE(conn->receive().is_null() == true);
     }
 
+    SECTION("Read partial")
+    {
+        setup_test(R"({"object":true})");
+        conn->socket().write_max = 10;
+        REQUIRE(conn->receive()["object"].get<bool>() == true);
+    }
+
     SECTION("Throw on partial json")
     {
         setup_test(R"({"object":)");
@@ -42,13 +49,6 @@ TEST_CASE("JSON transport sync read")
     SECTION("Throw on trailing bytes")
     {
         setup_test(R"({"object":true}trailing)");
-        REQUIRE_THROWS_AS((void)conn->receive(), std::invalid_argument);
-    }
-
-    SECTION("Throw on partial transmission (without null terminator)")
-    {
-        // TODO: This behaviour is invalid if we ever expect partial transmissions
-        setup_test(net::buffer("{\"cde"));
         REQUIRE_THROWS_AS((void)conn->receive(), std::invalid_argument);
     }
 
@@ -97,13 +97,26 @@ TEST_CASE("JSON transport async read")
         };
         auto test = testers.begin();
         conn->async_receive([&test](auto ec, const json& r) {
-            if (ec)
-                return;
+            REQUIRE(not ec);
             (*test++)(r);
         });
         REQUIRE(test == testers.begin());
         REQUIRE(ctx.run() > 0);
         REQUIRE(test == testers.end());
+    }
+
+    SECTION("Allow partial transmissions")
+    {
+        setup_test(R"({"object":true})");
+        conn->socket().write_max = 10;
+        bool flag{false};
+        conn->async_receive([&](auto ec, const json& r) {
+            REQUIRE(not ec);
+            flag = true;
+            REQUIRE(r["object"].get<bool>() == true);
+        });
+        REQUIRE(ctx.run() > 0);
+        REQUIRE(flag);
     }
 
     SECTION("Throw on partial json")
@@ -122,15 +135,6 @@ TEST_CASE("JSON transport async read")
         REQUIRE(ctx.run() > 0);
     }
 
-    SECTION("Throw on partial transmission (without null terminator)")
-    {
-        // TODO: This behaviour is invalid if we ever expect partial transmissions
-        setup_test(net::buffer("{\"cde"));
-        conn->async_receive(
-            [](auto ec, auto) { REQUIRE(ec == net::error::invalid_argument); });
-        REQUIRE(ctx.run() > 0);
-    }
-
     SECTION("Throw on immediate end of file")
     {
         setup_test();
@@ -143,8 +147,7 @@ TEST_CASE("JSON transport async read")
         setup_test(R"({"object":true})");
         int flag{0};
         conn->async_receive([&flag](auto ec, const json& j) {
-            if (ec)
-                return;
+            REQUIRE(not ec);
             REQUIRE(flag == 0);
             flag = 1;
             REQUIRE(j["object"].get<bool>() == true);
@@ -221,7 +224,7 @@ TEST_CASE("JSON transport async write")
             R"(null)"_json,
         };
         for (const auto& t : tests) {
-            conn->async_send(t, [](auto) {});
+            conn->async_send(t, [](auto ec) { REQUIRE(not ec); });
         }
         REQUIRE(ctx.run() > 0);
         conn->socket().validate_write();
@@ -238,7 +241,7 @@ TEST_CASE("JSON transport async write")
             R"({"last":true})"_json,
         };
         for (const auto& t : tests) {
-            conn->async_send(t, [](auto) {});
+            conn->async_send(t, [](auto ec) { REQUIRE(not ec); });
         }
         REQUIRE(ctx.run() > 0);
         conn->socket().validate_write();

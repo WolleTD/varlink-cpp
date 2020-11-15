@@ -42,6 +42,48 @@ class basic_varlink_client {
     {
     }
 
+    template <ASIO_COMPLETION_TOKEN_FOR(
+        void(std::error_code, std::shared_ptr<connection_type>))
+                  ReplyHandler ASIO_DEFAULT_COMPLETION_TOKEN_TYPE(executor_type)>
+    auto async_call(
+        const varlink_message& message,
+        ReplyHandler&& handler ASIO_DEFAULT_COMPLETION_TOKEN(executor_type))
+    {
+        connection.async_send(
+            message.json_data(),
+            [this,
+             oneway = message.oneway(),
+             more = message.more(),
+             handler = std::forward<ReplyHandler>(handler)](auto ec) mutable {
+                if (ec)
+                    return handler(ec, json{}, false);
+                if (oneway)
+                    return handler(net::error_code{}, json{}, false);
+                else
+                    async_read_reply(more, std::forward<ReplyHandler>(handler));
+            });
+    }
+
+    template <typename ReplyHandler>
+    void async_read_reply(bool wants_more, ReplyHandler&& handler)
+    {
+        connection.async_receive(
+            [this, wants_more, handler = std::forward<ReplyHandler>(handler)](
+                auto ec, json reply) mutable {
+                if (reply.contains("error")) {
+                    ec = net::error::no_data;
+                }
+                const auto continues =
+                    (wants_more and reply.contains("continues")
+                     and reply["continues"].get<bool>());
+                handler(ec, reply["parameters"], continues);
+                if (continues) {
+                    async_read_reply(
+                        wants_more, std::forward<ReplyHandler>(handler));
+                }
+            });
+    }
+
     std::function<json()> call(const varlink_message& message)
     {
         connection.send(message.json_data());
@@ -124,6 +166,14 @@ class varlink_client {
     varlink_client& operator=(const varlink_client&) = delete;
     varlink_client(varlink_client&& src) noexcept = delete;
     varlink_client& operator=(varlink_client&& src) noexcept = delete;
+
+    template <typename... Args>
+    auto async_call(Args&&... args)
+    {
+        return std::visit(
+            [&](auto&& c) { return c.async_call(std::forward<Args>(args)...); },
+            client);
+    }
 
     std::function<json()> call(const varlink_message& message)
     {
