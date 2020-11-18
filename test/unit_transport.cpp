@@ -229,14 +229,13 @@ TEST_CASE("JSON transport async write")
 
     SECTION("Write partial")
     {
-        // TODO: the the third part will interleave with the first
         setup_test(
-            R"({"s":1})",
-            R"({"object":true,"toolong":true})" /*, R"({"last":true})"*/);
+            R"({"s":1})", R"({"object":true,"toolong":true})", R"({"last":true})");
         conn->socket().write_max = 10;
         std::vector<json> tests = {
-            R"({"s":1})"_json, R"({"object":true,"toolong":true})"_json,
-            // R"({"last":true})"_json,
+            R"({"s":1})"_json,
+            R"({"object":true,"toolong":true})"_json,
+            R"({"last":true})"_json,
         };
         for (const auto& t : tests) {
             conn->async_send(t, [](auto) {});

@@ -7,6 +7,7 @@
 #include <asio.hpp>
 #include <asio/ts/buffer.hpp>
 #include <asio/ts/internet.hpp>
+#include <varlink/detail/manual_strand.hpp>
 #include <varlink/varlink.hpp>
 
 namespace varlink {
@@ -34,7 +35,7 @@ class json_connection {
     byte_buffer::iterator read_end;
     socket_type stream;
     net::strand<executor_type> read_strand;
-    net::strand<executor_type> write_strand;
+    detail::manual_strand<executor_type> write_strand;
 
   public:
     explicit json_connection(socket_type socket)
@@ -163,8 +164,7 @@ class json_connection {
         template <typename CompletionHandler>
         void operator()(CompletionHandler&& handler, const json& message)
         {
-            net::post(
-                self_->write_strand,
+            self_->write_strand.push(
                 [self = self_,
                  &message,
                  handler = std::forward<CompletionHandler>(handler)]() mutable {
@@ -174,7 +174,9 @@ class json_connection {
                         self->stream,
                         buffer,
                         [handler = std::forward<CompletionHandler>(handler),
+                         self,
                          m = std::move(m)](std::error_code ec, size_t) mutable {
+                            self->write_strand.next();
                             handler(ec);
                         });
                 });
