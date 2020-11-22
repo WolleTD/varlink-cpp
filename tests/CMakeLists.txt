@@ -11,7 +11,7 @@ endif ()
 
 function(varlink_test NAME)
     add_executable(test_${NAME} ${ARGN})
-    target_link_libraries(test_${NAME} PRIVATE GTest::gtest GTest::gmock varlink++)
+    target_link_libraries(test_${NAME} PRIVATE Catch2::Catch2 varlink++)
     add_test(${NAME} test_${NAME})
 endfunction()
 
@@ -21,18 +21,33 @@ function(bash_test NAME SCRIPT)
 endfunction()
 
 varlink_test(unittests
+        unit_client.cpp
         unit_interface.cpp
         unit_message.cpp
+        unit_server_session.cpp
         unit_service.cpp
         unit_transport.cpp
         unit_uri.cpp
-        unit_socket.cpp
+        unit_main.cpp
         )
-target_link_libraries(test_unittests PRIVATE GTest::gtest_main)
+varlink_test(self_errors self_errors.cpp unit_main.cpp)
 
-varlink_test(self_unix self_unix.cpp)
-varlink_test(self_tcp self_tcp.cpp)
-varlink_test(self_errors self_errors.cpp)
+add_library(catch_main test_main.cpp)
+target_link_libraries(catch_main PUBLIC Catch2::Catch2 varlink++)
+
+varlink_test(self_unix self_test_threaded.cpp)
+target_link_libraries(test_self_unix PRIVATE catch_main)
+target_compile_definitions(test_self_unix PRIVATE VARLINK_TEST_UNIX)
+varlink_test(self_tcp self_test_threaded.cpp)
+target_link_libraries(test_self_tcp PRIVATE catch_main)
+target_compile_definitions(test_self_tcp PRIVATE VARLINK_TEST_TCP)
+
+varlink_test(self_unix_async self_test_async.cpp)
+target_link_libraries(test_self_unix_async PRIVATE catch_main)
+target_compile_definitions(test_self_unix_async PRIVATE VARLINK_TEST_UNIX VARLINK_TEST_ASYNC)
+varlink_test(self_tcp_async self_test_async.cpp)
+target_link_libraries(test_self_tcp_async PRIVATE catch_main)
+target_compile_definitions(test_self_tcp_async PRIVATE VARLINK_TEST_TCP VARLINK_TEST_ASYNC)
 
 add_executable(cert_client cert_client.cpp)
 target_link_libraries(cert_client PRIVATE varlink++)

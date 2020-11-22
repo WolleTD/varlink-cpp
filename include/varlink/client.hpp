@@ -2,51 +2,70 @@
 #ifndef LIBVARLINK_VARLINK_CLIENT_HPP
 #define LIBVARLINK_VARLINK_CLIENT_HPP
 
-#include <charconv>
-#include <string>
-#include <utility>
-#include <variant>
-#include <varlink/transport.hpp>
-#include <varlink/varlink.hpp>
+#include <varlink/async_client.hpp>
+#include <varlink/service.hpp>
+#include <varlink/uri.hpp>
 
 namespace varlink {
-using callmode = varlink_message::callmode;
-
 class varlink_client {
-   private:
-    json_connection_variant conn;
+  private:
+    varlink_client_variant client;
 
-   public:
-    explicit varlink_client(const varlink_uri &uri) : conn(make_from_uri<basic_json_connection>(uri)) {}
-    explicit varlink_client(std::string_view uri) : varlink_client(varlink_uri(uri)) {}
-    explicit varlink_client(json_connection_variant &&connection) : conn(std::move(connection)) {}
-
-    varlink_client(const varlink_client &src) = delete;
-    varlink_client &operator=(const varlink_client &) = delete;
-    varlink_client(varlink_client &&src) noexcept = default;
-    varlink_client &operator=(varlink_client &&src) noexcept = default;
-
-    std::function<json()> call(const varlink_message &message) {
-        std::visit([&](auto &&c) { c.send(message.json_data()); }, conn);
-
-        return [this, continues = not message.oneway(), more = message.more()]() mutable -> json {
-            if (continues) {
-                json reply = std::visit([](auto &&c) { return c.receive(); }, conn);
-                if (reply.contains("error")) {
-                    throw varlink_error(reply["error"].get<std::string>(), reply["parameters"]);
-                }
-                continues = (more and reply.contains("continues") and reply["continues"].get<bool>());
-                return reply["parameters"];
-            } else {
-                return {};
-            }
-        };
+    static auto make_client(net::io_context& ctx, const varlink_uri& uri)
+    {
+        return std::visit(
+            [&](auto&& sockaddr) -> varlink_client_variant {
+                using Socket =
+                    typename std::decay_t<decltype(sockaddr)>::protocol_type::socket;
+                auto socket = Socket{ctx, sockaddr.protocol()};
+                socket.connect(sockaddr);
+                return async_client(std::move(socket));
+            },
+            endpoint_from_uri(uri));
     }
 
-    std::function<json()> call(const std::string &method, const json &parameters, callmode mode = callmode::basic) {
+  public:
+    explicit varlink_client(net::io_context& ctx, const varlink_uri& uri)
+        : client(make_client(ctx, uri))
+    {
+    }
+    explicit varlink_client(net::io_context& ctx, std::string_view uri)
+        : varlink_client(ctx, varlink_uri(uri))
+    {
+    }
+    template <
+        typename Socket,
+        typename = std::enable_if_t<std::is_base_of_v<net::socket_base, Socket>>>
+    explicit varlink_client(Socket&& socket)
+        : client(async_client(std::forward<Socket>(socket)))
+    {
+    }
+
+    varlink_client(const varlink_client& src) = delete;
+    varlink_client& operator=(const varlink_client&) = delete;
+    varlink_client(varlink_client&& src) noexcept = delete;
+    varlink_client& operator=(varlink_client&& src) noexcept = delete;
+
+    template <typename... Args>
+    auto async_call(Args&&... args)
+    {
+        return std::visit(
+            [&](auto&& c) { return c.async_call(std::forward<Args>(args)...); },
+            client);
+    }
+
+    std::function<json()> call(const varlink_message& message)
+    {
+        return std::visit([&](auto&& c) { return c.call(message); }, client);
+    }
+    std::function<json()> call(
+        const std::string& method,
+        const json& parameters,
+        callmode mode = callmode::basic)
+    {
         return call(varlink_message(method, parameters, mode));
     }
 };
-}  // namespace varlink
+} // namespace varlink
 
 #endif

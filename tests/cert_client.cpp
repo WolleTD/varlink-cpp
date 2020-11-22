@@ -7,7 +7,8 @@ int main(int argc, char* argv[]) {
         std::cerr << "Error: varlink socket path required\n";
         return 1;
     }
-    auto client = varlink::varlink_client(argv[1]);
+    varlink::net::io_context ctx{};
+    auto client = varlink::varlink_client(ctx, argv[1]);
 
     try {
         auto resp = client.call("org.varlink.certification.Start", {})();
@@ -40,5 +41,6 @@ int main(int argc, char* argv[]) {
         return (resp["all_ok"].get<bool>()) ? 0 : 1;
     } catch (varlink::varlink_error& e) {
         std::cout << "Failed: " << e.what() << " parameters: " << e.args().dump() << "\n";
+        return 1;
     }
 }
