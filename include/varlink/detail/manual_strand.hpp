@@ -9,10 +9,8 @@
 
 #include <queue>
 #include <asio/strand.hpp>
+#include <varlink/detail/config.hpp>
 #include <varlink/detail/unique_function.hpp>
-
-//#include "config.h"
-namespace net = asio;
 
 namespace varlink::detail {
 template <typename Executor>

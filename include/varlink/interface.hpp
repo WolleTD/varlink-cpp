@@ -1,35 +1,20 @@
-/* Varlink C++ implementation using nlohmann/json as data format */
-#ifndef LIBVARLINK_VARLINK_HPP
-#define LIBVARLINK_VARLINK_HPP
+#ifndef LIBVARLINK_INTERFACE_HPP
+#define LIBVARLINK_INTERFACE_HPP
 
-#undef JSON_USE_IMPLICIT_CONVERSIONS
-#define JSON_USE_IMPLICIT_CONVERSIONS 0
-#include <exception>
-#include <functional>
-#include <iostream>
-#include <mutex>
-#include <sstream>
-#include <string_view>
-#include <utility>
-#include <vector>
-#include <nlohmann/json.hpp>
-#include <varlink/org.varlink.service.varlink.hpp>
-#include <varlink/peg.hpp>
-#undef unix
-
-#define varlink_callback                               \
-    ([[maybe_unused]] const varlink::json& parameters, \
-     [[maybe_unused]] bool wants_more,                 \
-     [[maybe_unused]] const varlink::reply_function& send_reply)
+#include <varlink/detail/peg.hpp>
+#include <varlink/detail/varlink_error.hpp>
 
 namespace grammar {
 template <typename Rule>
 struct inserter;
 }
 
-namespace varlink {
+#define varlink_callback                               \
+    ([[maybe_unused]] const varlink::json& parameters, \
+     [[maybe_unused]] bool wants_more,                 \
+     [[maybe_unused]] const varlink::reply_function& send_reply)
 
-using nlohmann::json;
+namespace varlink {
 using reply_function = std::function<void(json::object_t, bool)>;
 using callback_function =
     std::function<void(const json&, bool, const reply_function&)>;
@@ -39,17 +24,6 @@ struct method_callback {
     callback_function callback;
 };
 using callback_map = std::vector<method_callback>;
-
-class varlink_error : public std::logic_error {
-    json _args;
-
-  public:
-    varlink_error(const std::string& what, json args)
-        : std::logic_error(what), _args(std::move(args))
-    {
-    }
-    [[nodiscard]] const json& args() const { return _args; }
-};
 
 namespace interface {
 struct type {
@@ -272,282 +246,6 @@ class varlink_interface {
         const varlink_interface& interface);
 };
 
-class varlink_message {
-  public:
-    enum class callmode {
-        basic,
-        oneway,
-        more,
-        upgrade,
-    };
-
-  private:
-    json _json;
-    callmode _mode{callmode::basic};
-
-  public:
-    varlink_message() = default;
-    explicit varlink_message(const json& msg) : _json(msg)
-    {
-        if (!_json.is_object() or !_json.contains("method")
-            or !_json["method"].is_string()
-            or (_json.contains("parameters") && !_json["parameters"].is_object())) {
-            throw std::invalid_argument("Not a varlink message: " + msg.dump());
-        }
-        _mode = (msg.contains("more") && msg["more"].get<bool>()) ? callmode::more
-                : (msg.contains("oneway") && msg["oneway"].get<bool>())
-                    ? callmode::oneway
-                : (msg.contains("upgrade") && msg["upgrade"].get<bool>())
-                    ? callmode::upgrade
-                    : callmode::basic;
-    }
-    varlink_message(
-        const std::string_view method,
-        const json& parameters,
-        callmode mode = callmode::basic)
-        : _json({{"method", method}}), _mode(mode)
-    {
-        if (not parameters.is_null() and not parameters.is_object()) {
-            throw std::invalid_argument("parameters is not an object");
-        }
-        else if (not parameters.empty()) {
-            _json["parameters"] = parameters;
-        }
-        if (_mode == callmode::oneway) {
-            _json["oneway"] = true;
-        }
-        else if (_mode == callmode::more) {
-            _json["more"] = true;
-        }
-        else if (_mode == callmode::upgrade) {
-            _json["upgrade"] = true;
-        }
-    }
-    [[nodiscard]] bool more() const { return (_mode == callmode::more); }
-    [[nodiscard]] bool oneway() const { return (_mode == callmode::oneway); }
-    [[nodiscard]] bool upgrade() const { return (_mode == callmode::upgrade); }
-
-    [[nodiscard]] json parameters() const
-    {
-        return _json.contains("parameters") ? _json["parameters"]
-                                            : json::object();
-    }
-    [[nodiscard]] const json& json_data() const { return _json; }
-
-    [[nodiscard]] std::pair<std::string, std::string> interface_and_method() const
-    {
-        const auto& fqmethod = _json["method"].get<std::string>();
-        const auto dot = fqmethod.rfind('.');
-        // When there is no dot at all, both fields contain the same value, but
-        // it's an invalid interface name anyway
-        return {fqmethod.substr(0, dot), fqmethod.substr(dot + 1)};
-    }
-
-    friend bool operator==(
-        const varlink_message& lhs,
-        const varlink_message& rhs) noexcept;
-};
-
-class varlink_service {
-  public:
-    struct description {
-        std::string vendor{};
-        std::string product{};
-        std::string version{};
-        std::string url{};
-    };
-
-  private:
-    description desc;
-    std::mutex interfaces_mut;
-    std::vector<varlink_interface> interfaces{};
-
-    auto find_interface(const std::string& ifname)
-    {
-        auto lock = std::lock_guard(interfaces_mut);
-        return std::find_if(
-            interfaces.cbegin(), interfaces.cend(), [&ifname](auto& i) {
-                return (ifname == i.name());
-            });
-    }
-
-  public:
-    explicit varlink_service(description Description)
-        : desc(std::move(Description))
-    {
-        auto getInfo = [this] varlink_callback {
-            json::object_t info = {
-                {"vendor", desc.vendor},
-                {"product", desc.product},
-                {"version", desc.version},
-                {"url", desc.url}};
-            info["interfaces"] = json::array();
-            auto lock = std::lock_guard(interfaces_mut);
-            for (const auto& interface : interfaces) {
-                info["interfaces"].push_back(interface.name());
-            }
-            send_reply(info, false);
-        };
-        auto getInterfaceDescription = [this] varlink_callback {
-            const auto& ifname = parameters["interface"].get<std::string>();
-
-            if (const auto interface = find_interface(ifname);
-                interface != interfaces.cend()) {
-                std::stringstream ss;
-                ss << *interface;
-                send_reply({{"description", ss.str()}}, false);
-            }
-            else {
-                throw varlink_error(
-                    "org.varlink.service.InterfaceNotFound",
-                    {{"interface", ifname}});
-            }
-        };
-        add_interface(
-            org_varlink_service_varlink,
-            {{"GetInfo", getInfo},
-             {"GetInterfaceDescription", getInterfaceDescription}});
-    }
-
-    varlink_service(const varlink_service& src) = delete;
-    varlink_service& operator=(const varlink_service&) = delete;
-    varlink_service(varlink_service&& src) = delete;
-    varlink_service& operator=(varlink_service&&) = delete;
-
-    template <typename ReplyHandler>
-    void message_call(const varlink_message& message, ReplyHandler&& replySender) noexcept
-    {
-        const auto error = [&](const std::string& what, const json& params) {
-            assert(params.is_object());
-            replySender({{"error", what}, {"parameters", params}}, false);
-        };
-        const auto [ifname, methodname] = message.interface_and_method();
-        const auto interface = find_interface(ifname);
-        if (interface == interfaces.cend()) {
-            error(
-                "org.varlink.service.InterfaceNotFound", {{"interface", ifname}});
-            return;
-        }
-
-        try {
-            const auto& method = interface->method(methodname);
-            interface->validate(message.parameters(), method.parameters);
-
-            method.callback(
-                message.parameters(),
-                message.more(),
-                // This is not an asynchronous callback and exceptions
-                // will propagate up to the outer try-catch in this fn.
-                [oneway = message.oneway(),
-                 more = message.more(),
-                 &interface,
-                 &method,
-                 replySender = std::forward<ReplyHandler>(replySender)](
-                    const json::object_t& params, bool continues) mutable {
-                    interface->validate(params, method.return_value);
-
-                    if (oneway) {
-                        replySender(nullptr, false);
-                    }
-                    else if (more) {
-                        replySender(
-                            {{"parameters", params}, {"continues", continues}},
-                            continues);
-                    }
-                    else if (continues) { // and not more
-                        throw std::bad_function_call{};
-                    }
-                    else {
-                        replySender({{"parameters", params}}, false);
-                    }
-                });
-        }
-        catch (std::out_of_range& e) {
-            error(
-                "org.varlink.service.MethodNotFound",
-                {{"method", ifname + '.' + methodname}});
-        }
-        catch (std::bad_function_call& e) {
-            error(
-                "org.varlink.service.MethodNotImplemented",
-                {{"method", ifname + '.' + methodname}});
-        }
-        catch (varlink_error& e) {
-            error(e.what(), e.args());
-        }
-        catch (std::exception& e) {
-            error("org.varlink.service.InternalError", {{"what", e.what()}});
-        }
-    }
-
-    void add_interface(varlink_interface&& interface)
-    {
-        if (auto pos = find_interface(interface.name()); pos == interfaces.end()) {
-            auto lock = std::lock_guard(interfaces_mut);
-            interfaces.push_back(std::move(interface));
-        }
-        else {
-            throw std::invalid_argument("Interface already exists!");
-        }
-    }
-
-    void add_interface(std::string_view definition, const callback_map& callbacks)
-    {
-        add_interface(varlink_interface(definition, callbacks));
-    }
-};
-
-struct varlink_uri {
-    enum class type { unix, tcp };
-    type type{};
-    std::string_view host{};
-    std::string_view port{};
-    std::string_view path{};
-    std::string_view qualified_method{};
-    std::string_view interface{};
-    std::string_view method{};
-
-    constexpr explicit varlink_uri(std::string_view uri, bool has_interface = false)
-    {
-        uri = uri.substr(0, uri.find(';'));
-        if (has_interface or (uri.find("tcp:") == 0)) {
-            const auto end_of_host = uri.rfind('/');
-            path = uri.substr(0, end_of_host);
-            if (end_of_host != std::string_view::npos) {
-                qualified_method = uri.substr(end_of_host + 1);
-                const auto end_of_if = qualified_method.rfind('.');
-                interface = qualified_method.substr(0, end_of_if);
-                method = qualified_method.substr(end_of_if + 1);
-            }
-        }
-        else {
-            path = uri;
-        }
-        if (uri.find("unix:") == 0) {
-            type = type::unix;
-            path = path.substr(5);
-        }
-        else if (uri.find("tcp:") == 0) {
-            type = type::tcp;
-            path = path.substr(4);
-            const auto colon = path.find(':');
-            if (colon == std::string_view::npos) {
-                throw std::invalid_argument("Missing port");
-            }
-            host = path.substr(0, colon);
-            port = path.substr(colon + 1);
-        }
-        else {
-            throw std::invalid_argument("Unknown protocol / bad URI");
-        }
-    }
-};
-
-inline bool operator==(const varlink_message& lhs, const varlink_message& rhs) noexcept
-{
-    return (lhs._json == rhs._json);
-}
-
 namespace interface {
 inline std::string element_to_string(const json& elem, int indent = 4, size_t depth = 0)
 {
@@ -657,5 +355,4 @@ inline std::ostream& operator<<(
     return os;
 }
 } // namespace varlink
-
-#endif // LIBVARLINK_VARLINK_HPP
+#endif // LIBVARLINK_INTERFACE_HPP

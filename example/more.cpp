@@ -1,10 +1,4 @@
-#include <csignal>
-#include <exception>
 #include <iostream>
-#include <memory>
-#include <string>
-#include <string_view>
-#include <thread>
 #include <varlink/server.hpp>
 
 #include "org.example.more.varlink.hpp"
@@ -13,38 +7,56 @@ using namespace varlink;
 
 class example_more_server {
   private:
-    threaded_server _server;
+    net::io_context ctx;
+    varlink_server _server;
+    net::steady_timer timer;
+
+    void start_timer(int i, int count, const reply_function& send_reply)
+    {
+        timer.expires_after(std::chrono::seconds(1));
+        timer.async_wait([this, i, count, send_reply](auto ec) mutable {
+            if (not ec) {
+                json state = json::object();
+                state["progress"] = (100 / count) * i;
+                send_reply({{"state", state}}, true);
+                if (i < count) {
+                    start_timer(i + 1, count, send_reply);
+                }
+                else {
+                    state.erase("progress");
+                    state["end"] = true;
+                    send_reply({{"state", state}}, false);
+                }
+            }
+        });
+    }
 
   public:
     explicit example_more_server(const std::string& uri)
-        : _server(
-            uri,
-            varlink_service::description{
-                "Varlink",
-                "More example",
-                "1",
-                "https://varlink.org"})
+        : ctx(),
+          _server(
+              ctx,
+              uri,
+              varlink_service::description{
+                  "Varlink",
+                  "More example",
+                  "1",
+                  "https://varlink.org"}),
+          timer(ctx)
     {
         auto ping = [] varlink_callback {
             send_reply({{"pong", parameters["ping"]}}, false);
         };
 
-        auto more = [] varlink_callback {
+        auto more = [this] varlink_callback {
             if (wants_more) {
                 nlohmann::json state = {{"start", true}};
                 send_reply({{"state", state}}, true);
                 state.erase("start");
                 auto n = parameters["n"].get<size_t>();
-                for (size_t i = 0; i < n; i++) {
-                    state["progress"] = (100 / n) * i;
-                    send_reply({{"state", state}}, true);
-                    std::this_thread::sleep_for(std::chrono::seconds(1));
-                }
-                state["progress"] = 100;
+                state["progress"] = 0;
                 send_reply({{"state", state}}, true);
-                state.erase("progress");
-                state["end"] = true;
-                send_reply({{"state", state}}, false);
+                start_timer(1, n, send_reply);
             }
             else {
                 throw varlink::varlink_error(
@@ -54,7 +66,7 @@ class example_more_server {
         };
 
         auto stop = [&] varlink_callback {
-            _server.stop();
+            ctx.stop();
             send_reply({}, false);
         };
 
@@ -64,7 +76,7 @@ class example_more_server {
                 {"Ping", ping}, {"TestMore", more}, {"StopServing", stop}});
     }
 
-    void join() { _server.join(); }
+    void run() { ctx.run(); }
 };
 
 std::unique_ptr<example_more_server> service;
@@ -84,8 +96,12 @@ int main()
     try {
         service = std::make_unique<example_more_server>(
             "unix:/tmp/test.socket");
-        service->join();
+        service->run();
         return 0;
+    }
+    catch (varlink_error& e) {
+        std::cerr << "Couldn't start service: " << e.what() << e.args() << "\n";
+        return 1;
     }
     catch (std::exception& e) {
         std::cerr << "Couldn't start service: " << e.what() << "\n";

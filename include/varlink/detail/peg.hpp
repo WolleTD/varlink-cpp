@@ -1,8 +1,8 @@
 #ifndef LIBVARLINK_VARLINK_PEG_HPP
 #define LIBVARLINK_VARLINK_PEG_HPP
 
-#include <nlohmann/json.hpp>
 #include <tao/pegtl.hpp>
+#include <varlink/detail/nl_json.hpp>
 
 namespace pegtl = tao::pegtl;
 

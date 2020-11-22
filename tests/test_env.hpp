@@ -1,17 +1,19 @@
 #pragma once
 #include <varlink/client.hpp>
-#include <varlink/server.hpp>
 
 using namespace varlink;
 
 #ifdef VARLINK_TEST_ASYNC
-using test_server = managed_async_server;
+#include <varlink/server.hpp>
+using test_server = varlink_server;
 #else
+#include <varlink/threaded_server.hpp>
 using test_server = threaded_server;
 #endif
 
 class BaseEnvironment {
   protected:
+    net::io_context ctx{};
     std::unique_ptr<test_server> server;
 #ifdef VARLINK_TEST_ASYNC
     std::unique_ptr<net::steady_timer> timer;
@@ -23,7 +25,7 @@ class BaseEnvironment {
     {
 #ifdef VARLINK_TEST_ASYNC
         if (worker.joinable()) {
-            server->stop();
+            ctx.stop();
             worker.join();
         }
 #endif

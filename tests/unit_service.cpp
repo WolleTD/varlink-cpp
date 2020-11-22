@@ -1,6 +1,6 @@
 #include <catch2/catch.hpp>
 
-#include <varlink/varlink.hpp>
+#include <varlink/service.hpp>
 
 using namespace varlink;
 using std::string;

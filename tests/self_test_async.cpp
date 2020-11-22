@@ -74,15 +74,13 @@ std::unique_ptr<BaseEnvironment> getEnvironment()
         REQUIRE(e.args()[parameter].get<string>() == value);      \
     }
 
-using test_client = basic_varlink_client<Environment::protocol::socket>;
+using test_client = async_client<Environment::protocol::socket>;
 using socket_type = typename test_client::socket_type;
 
 TEST_CASE("Testing server with client")
 {
     asio::io_context ctx{};
-    auto socket = socket_type(ctx, Environment::get_endpoint().protocol());
-    socket.connect(Environment::get_endpoint());
-    auto client = test_client(std::move(socket));
+    auto client = varlink_client(ctx, Environment::varlink_uri);
 
     SECTION("Call method GetInfo")
     {

@@ -33,10 +33,12 @@ class TCPEnvironment : public BaseEnvironment {
   public:
     TCPEnvironment() : BaseEnvironment()
     {
-        server = std::make_unique<test_server>(varlink_uri, description);
 #ifdef VARLINK_TEST_ASYNC
+        server = std::make_unique<test_server>(ctx, varlink_uri, description);
         timer = std::make_unique<net::steady_timer>(server->get_executor());
-        worker = std::thread([&]() { server->run(); });
+        worker = std::thread([&]() { ctx.run(); });
+#else
+        server = std::make_unique<test_server>(varlink_uri, description);
 #endif
     }
 };

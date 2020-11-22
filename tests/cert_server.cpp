@@ -1,9 +1,5 @@
-#include <csignal>
 #include <iostream>
-#include <mutex>
-#include <set>
-#include <string>
-#include <varlink/server.hpp>
+#include <varlink/threaded_server.hpp>
 
 #include "org.varlink.certification.varlink.hpp"
 

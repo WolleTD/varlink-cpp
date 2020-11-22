@@ -1,5 +1,5 @@
 #include <catch2/catch.hpp>
-#include <varlink/client.hpp>
+#include <varlink/json_connection.hpp>
 
 #include "fake_socket.hpp"
 

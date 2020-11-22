@@ -50,9 +50,9 @@ endif()
 
 # main header only library
 
-varlink_wrapper(include/varlink/org.varlink.service.varlink)
+varlink_wrapper(include/varlink/detail/org.varlink.service.varlink)
 
-add_library(varlink++ OBJECT include/varlink/org.varlink.service.varlink.hpp)
+add_library(varlink++ OBJECT include/varlink/detail/org.varlink.service.varlink.hpp)
 
 target_include_directories(varlink++ PUBLIC
         ${PROJECT_SOURCE_DIR}/include
@@ -75,5 +75,5 @@ if(VARLINK_BUILD_TESTS)
         VERSION 2.13.2
     )
     include(CTest)
-    add_subdirectory(test)
+    add_subdirectory(tests)
 endif()

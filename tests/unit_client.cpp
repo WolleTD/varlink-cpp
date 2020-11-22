@@ -1,10 +1,10 @@
 #include <catch2/catch.hpp>
-#include <varlink/client.hpp>
+#include <varlink/async_client.hpp>
 
 #include "fake_socket.hpp"
 
 using namespace varlink;
-using test_client = basic_varlink_client<FakeSocket>;
+using test_client = async_client<FakeSocket>;
 
 TEST_CASE("Client sync call processing")
 {

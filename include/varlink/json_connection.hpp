@@ -2,17 +2,11 @@
 #ifndef LIBVARLINK_VARLINK_TRANSPORT_HPP
 #define LIBVARLINK_VARLINK_TRANSPORT_HPP
 
-#include <string>
-#include <utility>
-#include <asio.hpp>
-#include <asio/ts/buffer.hpp>
-#include <asio/ts/internet.hpp>
+#include <varlink/detail/config.hpp>
 #include <varlink/detail/manual_strand.hpp>
-#include <varlink/varlink.hpp>
+#include <varlink/detail/nl_json.hpp>
 
 namespace varlink {
-namespace net = ::asio;
-static_assert(std::is_same_v<net::error_code, std::error_code>);
 
 template <
     typename Socket,
@@ -195,30 +189,6 @@ class json_connection {
         }
     };
 };
-
-using json_connection_unix = json_connection<net::local::stream_protocol::socket>;
-using json_connection_tcp = json_connection<net::ip::tcp::socket>;
-
-using endpoint_variant =
-    std::variant<net::local::stream_protocol::endpoint, net::ip::tcp::endpoint>;
-
-inline endpoint_variant endpoint_from_uri(const varlink_uri& uri)
-{
-    if (uri.type == varlink_uri::type::unix) {
-        return net::local::stream_protocol::endpoint{uri.path};
-    }
-    else if (uri.type == varlink_uri::type::tcp) {
-        uint16_t port{0};
-        if (auto r = std::from_chars(uri.port.begin(), uri.port.end(), port);
-            r.ptr != uri.port.end()) {
-            throw std::invalid_argument("Invalid port");
-        }
-        return net::ip::tcp::endpoint(net::ip::make_address_v4(uri.host), port);
-    }
-    else {
-        throw std::invalid_argument("Unsupported protocol");
-    }
-}
 } // namespace varlink
 
 #endif

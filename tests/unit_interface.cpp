@@ -1,7 +1,6 @@
 #include <catch2/catch.hpp>
 
-#include <string_view>
-#include <varlink/varlink.hpp>
+#include <varlink/interface.hpp>
 
 using namespace varlink;
 using namespace varlink::interface;

@@ -1,6 +1,6 @@
 #include <catch2/catch.hpp>
 
-#include <varlink/varlink.hpp>
+#include <varlink/detail/message.hpp>
 
 using namespace varlink;
 

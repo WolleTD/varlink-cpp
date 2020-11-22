@@ -56,7 +56,8 @@ std::unique_ptr<BaseEnvironment> getEnvironment()
 
 TEST_CASE("Testing server with client")
 {
-    auto client = varlink_client(Environment::varlink_uri);
+    net::io_context ctx{};
+    auto client = varlink_client(ctx, Environment::varlink_uri);
 
     SECTION("Call method GetInfo")
     {
@@ -230,7 +231,7 @@ TEST_CASE("Testing server with client")
     {
         using namespace std::chrono;
         using namespace std::chrono_literals;
-        auto client2 = varlink_client(Environment::varlink_uri);
+        auto client2 = varlink_client(ctx, Environment::varlink_uri);
         auto begin = steady_clock::now();
         auto more = client.call(
             "org.test.M", {{"n", 1}, {"t", true}}, callmode::more);
@@ -249,10 +250,10 @@ TEST_CASE("Testing server with client")
 
     SECTION("Noop connections")
     {
-        auto client1 = varlink_client(Environment::varlink_uri);
-        auto client2 = varlink_client(Environment::varlink_uri);
-        auto client3 = varlink_client(Environment::varlink_uri);
-        auto client4 = varlink_client(Environment::varlink_uri);
+        auto client1 = varlink_client(ctx, Environment::varlink_uri);
+        auto client2 = varlink_client(ctx, Environment::varlink_uri);
+        auto client3 = varlink_client(ctx, Environment::varlink_uri);
+        auto client4 = varlink_client(ctx, Environment::varlink_uri);
     }
 }
 

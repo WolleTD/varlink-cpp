@@ -1,7 +1,7 @@
 # C++17 implementation of the Varlink protocol
 
-This is an implementation of [Varlink](https://varlink.org) in C++17. It's not yet complete,
-but as TCP and Unix connections are working and certification succeeds, I thought to share it.
+This is an implementation of [Varlink](https://varlink.org) in C++17 built on top of asio.
+It's not yet feature complete, but in general it's working.
 
 It is using [nlohmann/json](https://github.com/nlohmann/json) as data format and provides a
 `std::function` service callback interface. I consider it work in progress still, API may change.
@@ -17,7 +17,7 @@ varlink_wrapper(org.example.more.varlink)
 add_executable(example [...] org.example.more.varlink.hpp)
 ```
 
-Server:
+## Server
 
 ```cpp
 #include <varlink/server.hpp>
@@ -26,23 +26,23 @@ Server:
 ...
 
 {
-// server starts listening immediately
-auto threaded_server = varlink::threaded_server("unix:/tmp/example.varlink",
+// varlink_server class provides encapsulation for an async_server and a varlink_service
+// and resolves varlink-uris to the corresponding asio endpoints
+varlink::net::io_context ctx{};
+auto varlink_srv = varlink::varlink_server(ctx, "unix:/tmp/example.varlink",
                 {"vendor", "product", "version", "url"});
 
 // interfaces can only be added once and callbacks can't be changed
-threaded_server.add_interface(org_example_more_varlink, varlink::callback_map{
-    // varlink_callback is a macro containing the callback parameter list and
-    // a trailing return value. It can also be used for named functions
-    {"Ping", [] varlink_callback { return {{"pong", parameters["ping"]}}; }}
+varlink_srv.add_interface(org_example_more_varlink, varlink::callback_map{
+    // varlink_callback is a macro containing the callback parameter list
+    {"Ping", [] varlink_callback { send_reply({{"pong", parameters["ping"]}}, /* continues = */ false); }}
 });
 
-// optional, if needed
-// threaded_server.join();
-} // dtor will close socket and join threads
+ctx.run();
+}
 ```
 
-Client:
+## Client (sync):
 
 ```cpp
 #include <varlink/client.hpp>
@@ -50,8 +50,9 @@ Client:
 ...
 
 {
-// ctor will connect successfully or throw
-auto client = varlink::varlink_client{"unix:/tmp/example.varlink"};
+// Connect on creation
+varlink::net::io_context ctx{};
+auto client = varlink::varlink_client{ctx, "unix:/tmp/example.varlink"};
 
 // .call returns a callable object which will retrieve the result
 auto read_reply = client.call("org.example.more.Ping", R"({"ping":"Test"})"_json);
@@ -66,4 +67,28 @@ assert(reply["pong"].get<std::string>() == "Test");
 // or nullptr if no more replies are available (immediately on "oneway" calls)
 assert(read_reply() == nullptr);
 } // dtor closes connection
+```
+
+## Client (async):
+
+```cpp
+#include <varlink/client.hpp>
+
+...
+
+{
+// Connect on creation
+varlink::net::io_context ctx{};
+auto client = varlink::varlink_client{ctx, "unix:/tmp/example.varlink"};
+
+json reply{};
+// async_call (currently) captures the message by value
+client.async_call(varlink::varlink_message("org.example.more.Ping", R"({"ping":"Test"})"_json),
+                  [](auto ec, const json& rep, bool continues){
+    reply = rep;
+});
+
+ctx.run();
+assert(reply["pong"].get<std::string>() == "Test");
+}
 ```

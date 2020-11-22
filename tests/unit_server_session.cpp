@@ -1,5 +1,5 @@
 #include <catch2/catch.hpp>
-#include <varlink/server.hpp>
+#include <varlink/server_session.hpp>
 
 #include "fake_socket.hpp"
 
