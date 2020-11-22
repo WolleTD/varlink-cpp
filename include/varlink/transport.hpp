@@ -91,7 +91,7 @@ class json_connection {
             read_end += static_cast<ptrdiff_t>(bytes_read);
             j = read_next_message(ec);
         }
-        if (ec) {
+        if (ec and ec != net::error::try_again) {
             throw std::invalid_argument(std::string(readbuf.begin(), read_end));
         }
         else {
@@ -102,6 +102,7 @@ class json_connection {
   private:
     json read_next_message(std::error_code& ec)
     {
+        ec = std::error_code{};
         const auto next_message_end = std::find(readbuf.begin(), read_end, '\0');
         if (next_message_end == read_end) {
             ec = net::error::in_progress;
@@ -109,9 +110,11 @@ class json_connection {
         }
         const auto message = std::string(readbuf.begin(), next_message_end);
         read_end = std::copy(next_message_end + 1, read_end, readbuf.begin());
+        if (read_end != readbuf.begin()) {
+            ec = net::error::try_again;
+        }
 
         try {
-            ec = std::error_code{};
             return json::parse(message);
         }
         catch (json::parse_error& e) {
@@ -147,7 +150,7 @@ class json_connection {
                         }
                         else {
                             self->read_end += static_cast<ptrdiff_t>(n);
-                            while (not ec) {
+                            while (not ec or ec == net::error::try_again) {
                                 auto message = self->read_next_message(ec);
                                 if (ec != net::error::in_progress) {
                                     handler(ec, message);

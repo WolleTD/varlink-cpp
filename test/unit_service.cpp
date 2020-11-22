@@ -10,11 +10,11 @@ TEST_CASE("Varlink service")
     varlink_service service{{"test", "unit", "1", "http://example.org"}};
     auto testcall = [&service](
                         std::string_view method,
-                        const json& parameters = json::object(),
-                        bool more = false,
-                        bool oneway = false,
-                        const sendmore_function& sendmore = nullptr) {
-        return service.message_call(
+                        const json& parameters,
+                        bool more,
+                        bool oneway,
+                        const std::function<void(const json&, bool)>& sendmore) {
+        service.message_call(
             varlink_message(
                 {{"method", method},
                  {"parameters", parameters},
@@ -25,7 +25,13 @@ TEST_CASE("Varlink service")
 
     SECTION("Call org.varlink.service.GetInfo")
     {
-        auto info = testcall("org.varlink.service.GetInfo")["parameters"];
+        json info;
+        testcall(
+            "org.varlink.service.GetInfo",
+            json::object(),
+            false,
+            false,
+            [&](auto&& r, bool) { info = r["parameters"]; });
         REQUIRE(info["vendor"].get<string>() == "test");
         REQUIRE(info["product"].get<string>() == "unit");
         REQUIRE(info["version"].get<string>() == "1");
@@ -43,24 +49,38 @@ method Test(ping: string) -> (pong: string)
 
     SECTION("Add an interface and call .GetInfo")
     {
-        auto info = testcall("org.varlink.service.GetInfo")["parameters"];
+        json info;
+        testcall(
+            "org.varlink.service.GetInfo",
+            json::object(),
+            false,
+            false,
+            [&](auto&& r, bool) { info = r["parameters"]; });
         REQUIRE(info["interfaces"].size() == 2);
         REQUIRE(info["interfaces"][1].get<string>() == "org.test");
     }
 
     SECTION("Add an interface and get it's description")
     {
-        auto info = testcall(
+        json info;
+        testcall(
             "org.varlink.service.GetInterfaceDescription",
-            {{"interface", "org.test"}})["parameters"];
+            {{"interface", "org.test"}},
+            false,
+            false,
+            [&](auto&& r, bool) { info = r["parameters"]; });
         REQUIRE(info["description"].get<string>() == "interface org.test\n\nmethod Test(ping: string) -> (pong: string)\n");
     }
 
     SECTION("Call GetInterfaceDescription for an unknown interface")
     {
-        auto err = testcall(
+        json err;
+        testcall(
             "org.varlink.service.GetInterfaceDescription",
-            {{"interface", "org.not.test"}});
+            {{"interface", "org.not.test"}},
+            false,
+            false,
+            [&](auto&& r, bool) { err = r; });
         REQUIRE(
             err["error"].get<string>()
             == "org.varlink.service.InterfaceNotFound");
@@ -72,7 +92,13 @@ method Test(ping: string) -> (pong: string)
         REQUIRE_THROWS_AS(
             service.add_interface(varlink_interface(org_test_varlink)),
             std::invalid_argument);
-        auto info = testcall("org.varlink.service.GetInfo")["parameters"];
+        json info;
+        testcall(
+            "org.varlink.service.GetInfo",
+            json::object(),
+            false,
+            false,
+            [&](auto&& r, bool) { info = r["parameters"]; });
         REQUIRE(info["interfaces"].size() == 2);
         REQUIRE(info["interfaces"][1].get<string>() == "org.test");
     }
@@ -83,11 +109,11 @@ TEST_CASE("Varlink service callbacks")
     varlink_service service{{"test", "unit", "1", "http://example.org"}};
     auto testcall = [&service](
                         std::string_view method,
-                        const json& parameters = json::object(),
-                        bool more = false,
-                        bool oneway = false,
-                        const sendmore_function& sendmore = nullptr) {
-        return service.message_call(
+                        const json& parameters,
+                        bool more,
+                        bool oneway,
+                        const std::function<void(const json&, bool)>& sendmore) {
+        service.message_call(
             varlink_message(
                 {{"method", method},
                  {"parameters", parameters},
@@ -103,6 +129,7 @@ method TestTypes(ping: string) -> (pong: string)
 method NotImplemented(ping: string) -> (pong: string)
 method VarlinkError(ping: string) -> (pong: string)
 method Exception(ping: string) -> (pong: string)
+method EmptyReply() -> ()
 )INTERFACE";
 
     service.add_interface(varlink_interface(
@@ -110,26 +137,31 @@ method Exception(ping: string) -> (pong: string)
         {
             {"Test",
              [] varlink_callback {
-                 if (sendmore)
-                     sendmore({{"pong", parameters["ping"]}});
-                 return {{"pong", parameters["ping"]}};
+                 if (wants_more)
+                     send_reply({{"pong", parameters["ping"]}}, true);
+                 send_reply({{"pong", parameters["ping"]}}, false);
              }},
             {"TestTypes",
              [] varlink_callback {
-                 if (sendmore)
-                     sendmore({{"pong", 123}});
-                 return {{"pong", 123}};
+                 if (wants_more)
+                     send_reply({{"pong", 123}}, true);
+                 send_reply({{"pong", 123}}, false);
              }},
             {"VarlinkError",
              [] varlink_callback {
                  throw varlink_error("org.test.Error", json::object());
              }},
             {"Exception", [] varlink_callback { throw std::exception(); }},
+            {"EmptyReply", [] varlink_callback { send_reply({}, false); }},
         }));
 
     SECTION("Call a method on an unknown interface")
     {
-        auto err = testcall("org.not.test.Test");
+        json err;
+        testcall(
+            "org.not.test.Test", json::object(), false, false, [&](auto&& r, bool) {
+                err = r;
+            });
         REQUIRE(
             err["error"].get<string>()
             == "org.varlink.service.InterfaceNotFound");
@@ -138,16 +170,26 @@ method Exception(ping: string) -> (pong: string)
 
     SECTION("Call a unknown method on a known interface")
     {
-        auto err = testcall("org.test.Nonexistent");
+        json err;
+        testcall(
+            "org.test.Nonexistent",
+            json::object(),
+            false,
+            false,
+            [&](auto&& r, bool) { err = r; });
         REQUIRE(
             err["error"].get<string>() == "org.varlink.service.MethodNotFound");
         REQUIRE(
             err["parameters"]["method"].get<string>() == "org.test.Nonexistent");
     }
 
-    SECTION("Call GetInterfaceDescription with missing parameters")
+    SECTION("Call a method with missing parameters")
     {
-        auto err = testcall("org.test.Test");
+        json err;
+        testcall(
+            "org.test.Test", json::object(), false, false, [&](auto&& r, bool) {
+                err = r;
+            });
         REQUIRE(
             err["error"].get<string>()
             == "org.varlink.service.InvalidParameter");
@@ -156,7 +198,13 @@ method Exception(ping: string) -> (pong: string)
 
     SECTION("Call a method that has no callback defined")
     {
-        auto err = testcall("org.test.NotImplemented", {{"ping", ""}});
+        json err;
+        testcall(
+            "org.test.NotImplemented",
+            {{"ping", ""}},
+            false,
+            false,
+            [&](auto&& r, bool) { err = r; });
         REQUIRE(
             err["error"].get<string>()
             == "org.varlink.service.MethodNotImplemented");
@@ -167,38 +215,87 @@ method Exception(ping: string) -> (pong: string)
 
     SECTION("Add interface with callback and call it")
     {
-        auto pong = testcall("org.test.Test", {{"ping", "123"}})["parameters"];
+        json pong;
+        testcall(
+            "org.test.Test", {{"ping", "123"}}, false, false, [&](auto&& r, bool) {
+                pong = r["parameters"];
+            });
         REQUIRE(pong["pong"].get<string>() == "123");
+    }
+
+    SECTION("Correctly serialize an empty reply")
+    {
+        json pong;
+        testcall(
+            "org.test.EmptyReply",
+            json::object(),
+            false,
+            false,
+            [&](auto&& r, bool) { pong = r["parameters"]; });
+        REQUIRE(pong.is_object());
+        REQUIRE(pong.empty());
     }
 
     SECTION("Add interface with callback and call it (oneway)")
     {
-        auto pong = testcall("org.test.Test", {{"ping", "123"}}, false, true);
+        json pong = "not null";
+        testcall(
+            "org.test.Test", {{"ping", "123"}}, false, true, [&](auto&& r, bool) {
+                pong = r;
+            });
         REQUIRE(pong == nullptr);
+    }
+
+    SECTION("Add interface with callback and call it (oneway and regular)")
+    {
+        json pong = "not null";
+        testcall(
+            "org.test.Test", {{"ping", "123"}}, false, true, [&](auto&& r, bool) {
+                pong = r;
+            });
+        REQUIRE(pong == nullptr);
+        testcall(
+            "org.test.Test", {{"ping", "123"}}, false, false, [&](auto&& r, bool) {
+                pong = r["parameters"];
+            });
+        REQUIRE(pong["pong"].get<string>() == "123");
     }
 
     SECTION("Add interface with callback and call it (more)")
     {
-        std::string more_reply;
-        auto testmore = [&more_reply](const json& more) {
-            more_reply = more["parameters"]["pong"].get<string>();
-        };
-        auto pong = testcall(
-            "org.test.Test", {{"ping", "123"}}, true, false, testmore);
-        REQUIRE(more_reply == "123");
-        REQUIRE(pong["parameters"]["pong"].get<string>() == "123");
-        REQUIRE_FALSE(pong["continues"].get<bool>());
+        std::array<json, 2> replies;
+        size_t i = 0;
+        testcall(
+            "org.test.Test", {{"ping", "123"}}, true, false, [&](auto&& r, bool) {
+                replies[i++] = r;
+            });
+        REQUIRE(replies[0]["parameters"]["pong"].get<string>() == "123");
+        REQUIRE(replies[1]["parameters"]["pong"].get<string>() == "123");
+        REQUIRE(replies[0]["continues"].get<bool>());
+        REQUIRE(not replies[1]["continues"].get<bool>());
     }
 
     SECTION("Throw a varlink_error in the callback")
     {
-        auto err = testcall("org.test.VarlinkError", {{"ping", "test"}});
+        json err;
+        testcall(
+            "org.test.VarlinkError",
+            {{"ping", "test"}},
+            false,
+            false,
+            [&](auto&& r, bool) { err = r; });
         REQUIRE(err["error"].get<string>() == "org.test.Error");
     }
 
     SECTION("Throw std::exception in the callback")
     {
-        auto err = testcall("org.test.Exception", {{"ping", "test"}});
+        json err;
+        testcall(
+            "org.test.Exception",
+            {{"ping", "test"}},
+            false,
+            false,
+            [&](auto&& r, bool) { err = r; });
         REQUIRE(
             err["error"].get<string>() == "org.varlink.service.InternalError");
         REQUIRE(err["parameters"]["what"].get<string>() == "std::exception");
@@ -206,7 +303,13 @@ method Exception(ping: string) -> (pong: string)
 
     SECTION("Varlink error on response type error")
     {
-        auto err = testcall("org.test.TestTypes", {{"ping", "123"}});
+        json err;
+        testcall(
+            "org.test.TestTypes",
+            {{"ping", "123"}},
+            false,
+            false,
+            [&](auto&& r, bool) { err = r; });
         REQUIRE(
             err["error"].get<string>()
             == "org.varlink.service.InvalidParameter");
@@ -215,11 +318,14 @@ method Exception(ping: string) -> (pong: string)
 
     SECTION("Varlink error on more response type error")
     {
-        bool more_called = false;
-        auto testmore = [&more_called](const json&) { more_called = true; };
-        auto err = testcall(
-            "org.test.TestTypes", {{"ping", "123"}}, true, false, testmore);
-        REQUIRE_FALSE(more_called);
+        json err;
+        size_t num_called = 0;
+        testcall(
+            "org.test.TestTypes", {{"ping", "123"}}, true, false, [&](auto&& r, bool) {
+                num_called++;
+                err = r;
+            });
+        REQUIRE(num_called == 1);
         REQUIRE(
             err["error"].get<string>()
             == "org.varlink.service.InvalidParameter");

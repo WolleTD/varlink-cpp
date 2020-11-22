@@ -141,13 +141,16 @@ TEST_CASE("Client async call processing")
         setup_test(
             R"({"method":"org.test.Test","parameters":{"ping":"123"}})",
             R"({"parameters":{"pong":"123"}})");
+        bool flag{false};
         auto msg = varlink_message("org.test.Test", {{"ping", "123"}});
         client->async_call(msg, [&](auto ec, const json& reply, bool more) {
             REQUIRE(not ec);
             REQUIRE(more == false);
             REQUIRE(reply["pong"].get<std::string>() == "123");
+            flag = true;
         });
         REQUIRE(ctx.run() > 0);
+        REQUIRE(flag);
         client->socket().validate_write();
     }
 
@@ -156,14 +159,17 @@ TEST_CASE("Client async call processing")
         setup_test(
             R"({"method":"org.test.Test","oneway":true,"parameters":{"ping":"123"}})",
             net::buffer(&client, 0));
+        bool flag{false};
         auto msg = varlink_message(
             "org.test.Test", {{"ping", "123"}}, callmode::oneway);
         client->async_call(msg, [&](auto ec, const json& reply, bool more) {
             REQUIRE(not ec);
             REQUIRE(more == false);
             REQUIRE(reply == nullptr);
+            flag = true;
         });
         REQUIRE(ctx.run() > 0);
+        REQUIRE(flag);
         client->socket().validate_write();
     }
 
@@ -175,18 +181,21 @@ TEST_CASE("Client async call processing")
         setup_test(
             R"({"method":"org.test.Test","more":true,"parameters":{"ping":"123"}})",
             reply);
+        bool flag{false};
         bool was_more{false};
         auto msg = varlink_message(
             "org.test.Test", {{"ping", "123"}}, callmode::more);
         client->async_call(msg, [&](auto ec, const json& r, bool more) {
-            if (not ec) {
-                REQUIRE(was_more == not more);
-                was_more = more;
-                REQUIRE(r["pong"].get<std::string>() == "123");
-            }
+            REQUIRE(not ec);
+            REQUIRE(was_more == not more);
+            was_more = more;
+            REQUIRE(r["pong"].get<std::string>() == "123");
+            if (not more)
+                flag = true;
         });
         REQUIRE(ctx.run() > 0);
         REQUIRE(not was_more);
+        REQUIRE(flag);
         client->socket().validate_write();
     }
 
@@ -195,14 +204,16 @@ TEST_CASE("Client async call processing")
         setup_test(
             R"({"method":"org.test.Test","parameters":{"ping":"123"}})",
             R"({"error":"org.test.Error","parameters":{"test":1337}})");
+        bool flag{false};
         auto msg = varlink_message("org.test.Test", {{"ping", "123"}});
         client->async_call(msg, [&](auto ec, const json& r, bool more) {
-            if (ec == net::error::no_data) {
-                REQUIRE(r["test"].get<int>() == 1337);
-                REQUIRE(not more);
-            }
+            REQUIRE(ec == net::error::no_data);
+            REQUIRE(r["test"].get<int>() == 1337);
+            REQUIRE(not more);
+            flag = true;
         });
         REQUIRE(ctx.run() > 0);
+        REQUIRE(flag);
         client->socket().validate_write();
     }
 
@@ -211,13 +222,16 @@ TEST_CASE("Client async call processing")
         setup_test(
             R"({"method":"org.test.Test","parameters":{"ping":"123"}})",
             net::buffer(std::string_view(R"({"parameters":{"pong":)")));
+        bool flag{false};
         auto msg = varlink_message("org.test.Test", {{"ping", "123"}});
         client->async_call(msg, [&](auto ec, const json& r, bool more) {
             REQUIRE(ec == net::error::eof);
             REQUIRE(r == nullptr);
             REQUIRE(not more);
+            flag = true;
         });
         REQUIRE(ctx.run() > 0);
+        REQUIRE(flag);
         client->socket().validate_write();
     }
 
@@ -226,26 +240,32 @@ TEST_CASE("Client async call processing")
         setup_test(
             R"({"method":"org.test.Test","parameters":{"ping":"123"}})",
             R"({"parameters":{"pong":)");
+        bool flag{false};
         auto msg = varlink_message("org.test.Test", {{"ping", "123"}});
         client->async_call(msg, [&](auto ec, const json& r, bool more) {
             REQUIRE(ec == net::error::invalid_argument);
             REQUIRE(r == nullptr);
             REQUIRE(not more);
+            flag = true;
         });
         REQUIRE(ctx.run() > 0);
+        REQUIRE(flag);
         client->socket().validate_write();
     }
 
     SECTION("Broken pipe")
     {
         setup_test("", "");
+        bool flag{false};
         client->socket().error_on_write = true;
         auto msg = varlink_message("org.test.Test", {{"ping", "123"}});
         client->async_call(msg, [&](auto ec, const json& r, bool more) {
             REQUIRE(ec == net::error::broken_pipe);
             REQUIRE(r == nullptr);
             REQUIRE(not more);
+            flag = true;
         });
         REQUIRE(ctx.run() > 0);
+        REQUIRE(flag);
     }
 }

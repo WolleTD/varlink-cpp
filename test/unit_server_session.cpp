@@ -27,13 +27,13 @@ method Exception() -> ()
         {
             {"Test",
              [] varlink_callback {
-                 if (sendmore)
-                     sendmore({{"pong", parameters["ping"]}});
-                 return {{"pong", parameters["ping"]}};
+                 if (wants_more)
+                     send_reply({{"pong", parameters["ping"]}}, true);
+                 send_reply({{"pong", parameters["ping"]}}, false);
              }},
             {"TestTypes",
              [] varlink_callback {
-                 return {{"pong", 123}};
+                 send_reply({{"pong", 123}}, false);
              }},
             {"VarlinkError",
              [] varlink_callback {
@@ -96,6 +96,18 @@ method Exception() -> ()
         setup_test(
             R"({"method":"org.test.Test","parameters":{"ping":"123"},"oneway":true})",
             asio::buffer(&conn, 0));
+        conn->start();
+        REQUIRE(ctx.run() > 0);
+        conn->socket().validate_write();
+    }
+
+    SECTION("Oneway call and regular call")
+    {
+        std::string req =
+            R"({"method":"org.test.Test","parameters":{"ping":"123"},"oneway":true})";
+        req += '\0';
+        req += R"({"method":"org.test.Test","parameters":{"ping":"123"}})";
+        setup_test(req, R"({"parameters":{"pong":"123"}})");
         conn->start();
         REQUIRE(ctx.run() > 0);
         conn->socket().validate_write();

@@ -28,7 +28,10 @@ class server_session
     using std::enable_shared_from_this<server_session<Socket>>::shared_from_this;
 
     socket_type& socket() { return connection.socket(); }
-    [[nodiscard]] const socket_type& socket() const { return connection.socket(); }
+    [[nodiscard]] const socket_type& socket() const
+    {
+        return connection.socket();
+    }
 
     executor_type get_executor() { return socket().get_executor(); }
 
@@ -50,19 +53,20 @@ class server_session
     void start()
     {
         connection.async_receive([self = shared_from_this()](auto ec, auto&& j) {
-            if (ec)
+            if (ec and ec != net::error::try_again)
                 return;
             try {
                 const varlink_message message{j};
-                auto reply = std::make_unique<json>(self->service_.message_call(
-                    message, [self](const json& more) {
-                        auto m = std::make_unique<json>(more);
-                        self->async_send_reply(std::move(m));
-                    }));
-                if (reply->is_object()) {
-                    self->async_send_reply(std::move(reply));
-                }
-                self->start();
+                self->service_.message_call(
+                    message, [self, ec](const json& reply, bool continues) {
+                        if (reply.is_object()) {
+                            auto m = std::make_unique<json>(reply);
+                            self->async_send_reply(std::move(m));
+                        }
+                        if (not continues and (ec != net::error::try_again)) {
+                            self->start();
+                        }
+                    });
             }
             catch (...) {
             }
@@ -75,8 +79,9 @@ class server_session
         auto& data = *message;
         connection.async_send(
             data, [m = std::move(message), self = shared_from_this()](auto ec) {
-                if (ec)
+                if (ec) {
                     self->connection.socket().cancel();
+                }
             });
     }
 };
@@ -91,6 +96,8 @@ class async_server : public std::enable_shared_from_this<async_server<Acceptor>>
     using session_type = server_session<socket_type>;
 
     using std::enable_shared_from_this<async_server<Acceptor>>::shared_from_this;
+
+    executor_type get_executor() { return acceptor_.get_executor(); }
 
   private:
     acceptor_type acceptor_;
@@ -216,9 +223,64 @@ class threaded_server {
         service.add_interface(std::forward<Args>(args)...);
     }
 
+    auto get_executor() { return ctx.get_executor(); }
+
     void stop() { ctx.stop(); }
 
     void join() { ctx.join(); }
+};
+
+class managed_async_server {
+  private:
+    net::io_context ctx;
+    varlink_service service;
+    async_server_variant server;
+
+    auto make_async_server(const varlink_uri& uri)
+    {
+        return std::visit(
+            [&](auto&& sockaddr) -> async_server_variant {
+                using Acceptor =
+                    typename std::decay_t<decltype(sockaddr)>::protocol_type::acceptor;
+                return async_server(Acceptor{ctx, sockaddr}, service);
+            },
+            endpoint_from_uri(uri));
+    }
+
+  public:
+    managed_async_server(
+        const varlink_uri& uri,
+        const varlink_service::description& description)
+        : ctx(4), service(description), server(make_async_server(uri))
+    {
+        std::visit(
+            [&](auto&& s) { net::post(ctx, [&]() { s.async_serve_forever(); }); },
+            server);
+    }
+
+    managed_async_server(
+        std::string_view uri,
+        const varlink_service::description& description)
+        : managed_async_server(varlink_uri(uri), description)
+    {
+    }
+
+    managed_async_server(const managed_async_server& src) = delete;
+    managed_async_server& operator=(const managed_async_server&) = delete;
+    managed_async_server(managed_async_server&& src) noexcept = delete;
+    managed_async_server& operator=(managed_async_server&& src) noexcept = delete;
+
+    template <typename... Args>
+    void add_interface(Args&&... args)
+    {
+        service.add_interface(std::forward<Args>(args)...);
+    }
+
+    auto get_executor() { return ctx.get_executor(); }
+
+    auto run() { ctx.run(); }
+
+    void stop() { ctx.stop(); }
 };
 } // namespace varlink
 

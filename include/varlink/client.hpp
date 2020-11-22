@@ -32,13 +32,15 @@ class basic_varlink_client {
 
   private:
     Connection connection;
+    detail::manual_strand<executor_type> call_strand;
 
   public:
-    explicit basic_varlink_client(Socket socket) : connection(std::move(socket))
+    explicit basic_varlink_client(Socket socket)
+        : connection(std::move(socket)), call_strand(get_executor())
     {
     }
     explicit basic_varlink_client(Connection&& existing_connection)
-        : connection(std::move(existing_connection))
+        : connection(std::move(existing_connection)), call_strand(get_executor())
     {
     }
 
@@ -49,19 +51,29 @@ class basic_varlink_client {
         const varlink_message& message,
         ReplyHandler&& handler ASIO_DEFAULT_COMPLETION_TOKEN(executor_type))
     {
-        connection.async_send(
-            message.json_data(),
-            [this,
-             oneway = message.oneway(),
-             more = message.more(),
-             handler = std::forward<ReplyHandler>(handler)](auto ec) mutable {
-                if (ec)
-                    return handler(ec, json{}, false);
-                if (oneway)
-                    return handler(net::error_code{}, json{}, false);
-                else
-                    async_read_reply(more, std::forward<ReplyHandler>(handler));
-            });
+        call_strand.push([this,
+                          &message,
+                          handler = std::forward<ReplyHandler>(handler)]() mutable {
+            connection.async_send(
+                message.json_data(),
+                [this,
+                 oneway = message.oneway(),
+                 more = message.more(),
+                 handler = std::forward<ReplyHandler>(handler)](auto ec) mutable {
+                    if (ec) {
+                        call_strand.next();
+                        return handler(ec, json{}, false);
+                    }
+                    if (oneway) {
+                        call_strand.next();
+                        return handler(net::error_code{}, json{}, false);
+                    }
+                    else {
+                        async_read_reply(
+                            more, std::forward<ReplyHandler>(handler));
+                    }
+                });
+        });
     }
 
     template <typename ReplyHandler>
@@ -70,17 +82,22 @@ class basic_varlink_client {
         connection.async_receive(
             [this, wants_more, handler = std::forward<ReplyHandler>(handler)](
                 auto ec, json reply) mutable {
-                if (reply.contains("error")) {
-                    ec = net::error::no_data;
-                }
                 const auto continues =
                     (wants_more and reply.contains("continues")
                      and reply["continues"].get<bool>());
-                handler(ec, reply["parameters"], continues);
-                if (continues) {
-                    async_read_reply(
-                        wants_more, std::forward<ReplyHandler>(handler));
+                if (reply.contains("error")) {
+                    ec = net::error::no_data;
                 }
+                if (not ec and continues) {
+                    async_read_reply(wants_more, handler);
+                }
+                if (ec == net::error::try_again) {
+                    ec = std::error_code{};
+                }
+                else if (not continues) {
+                    call_strand.next();
+                }
+                handler(ec, reply["parameters"], continues);
             });
     }
 

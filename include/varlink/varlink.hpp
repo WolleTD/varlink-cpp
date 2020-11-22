@@ -17,10 +17,10 @@
 #include <varlink/peg.hpp>
 #undef unix
 
-#define varlink_callback                                          \
-    ([[maybe_unused]] const varlink::json& parameters,            \
-     [[maybe_unused]] const varlink::sendmore_function& sendmore) \
-        ->varlink::json::object_t
+#define varlink_callback                               \
+    ([[maybe_unused]] const varlink::json& parameters, \
+     [[maybe_unused]] bool wants_more,                 \
+     [[maybe_unused]] const varlink::reply_function& send_reply)
 
 namespace grammar {
 template <typename Rule>
@@ -30,9 +30,9 @@ struct inserter;
 namespace varlink {
 
 using nlohmann::json;
-using sendmore_function = std::function<void(json::object_t)>;
+using reply_function = std::function<void(json::object_t, bool)>;
 using callback_function =
-    std::function<json(const json&, const sendmore_function&)>;
+    std::function<void(const json&, bool, const reply_function&)>;
 
 struct method_callback {
     std::string_view method;
@@ -294,13 +294,12 @@ class varlink_message {
             or (_json.contains("parameters") && !_json["parameters"].is_object())) {
             throw std::invalid_argument("Not a varlink message: " + msg.dump());
         }
-        _mode = (msg.contains("more") && msg["more"].get<bool>())
-                    ? callmode::more
-                    : (msg.contains("oneway") && msg["oneway"].get<bool>())
-                          ? callmode::oneway
-                          : (msg.contains("upgrade") && msg["upgrade"].get<bool>())
-                                ? callmode::upgrade
-                                : callmode::basic;
+        _mode = (msg.contains("more") && msg["more"].get<bool>()) ? callmode::more
+                : (msg.contains("oneway") && msg["oneway"].get<bool>())
+                    ? callmode::oneway
+                : (msg.contains("upgrade") && msg["upgrade"].get<bool>())
+                    ? callmode::upgrade
+                    : callmode::basic;
     }
     varlink_message(
         const std::string_view method,
@@ -387,7 +386,7 @@ class varlink_service {
             for (const auto& interface : interfaces) {
                 info["interfaces"].push_back(interface.name());
             }
-            return info;
+            send_reply(info, false);
         };
         auto getInterfaceDescription = [this] varlink_callback {
             const auto& ifname = parameters["interface"].get<std::string>();
@@ -396,7 +395,7 @@ class varlink_service {
                 interface != interfaces.cend()) {
                 std::stringstream ss;
                 ss << *interface;
-                return {{"description", ss.str()}};
+                send_reply({{"description", ss.str()}}, false);
             }
             else {
                 throw varlink_error(
@@ -415,62 +414,69 @@ class varlink_service {
     varlink_service(varlink_service&& src) = delete;
     varlink_service& operator=(varlink_service&&) = delete;
 
-    // Template dependency: Interface
-    json message_call(
-        const varlink_message& message,
-        const sendmore_function& moreSender) noexcept
+    template <typename ReplyHandler>
+    void message_call(const varlink_message& message, ReplyHandler&& replySender) noexcept
     {
-        const auto error = [](const std::string& what,
-                              const json& params) -> json {
+        const auto error = [&](const std::string& what, const json& params) {
             assert(params.is_object());
-            return {{"error", what}, {"parameters", params}};
+            replySender({{"error", what}, {"parameters", params}}, false);
         };
         const auto [ifname, methodname] = message.interface_and_method();
         const auto interface = find_interface(ifname);
         if (interface == interfaces.cend()) {
-            return error(
+            error(
                 "org.varlink.service.InterfaceNotFound", {{"interface", ifname}});
+            return;
         }
 
         try {
             const auto& method = interface->method(methodname);
             interface->validate(message.parameters(), method.parameters);
 
-            const sendmore_function sendmore = [&](const json::object_t& msg) {
-                interface->validate(msg, method.return_value);
-                moreSender({{"parameters", msg}, {"continues", true}});
-            };
+            method.callback(
+                message.parameters(),
+                message.more(),
+                // This is not an asynchronous callback and exceptions
+                // will propagate up to the outer try-catch in this fn.
+                [oneway = message.oneway(),
+                 more = message.more(),
+                 &interface,
+                 &method,
+                 replySender = std::forward<ReplyHandler>(replySender)](
+                    const json::object_t& params, bool continues) mutable {
+                    interface->validate(params, method.return_value);
 
-            auto reply_params = method.callback(
-                message.parameters(), (message.more() ? sendmore : nullptr));
-            interface->validate(reply_params, method.return_value);
-
-            if (message.oneway()) {
-                return nullptr;
-            }
-            else if (message.more()) {
-                return {{"parameters", reply_params}, {"continues", false}};
-            }
-            else {
-                return {{"parameters", reply_params}};
-            }
+                    if (oneway) {
+                        replySender(nullptr, false);
+                    }
+                    else if (more) {
+                        replySender(
+                            {{"parameters", params}, {"continues", continues}},
+                            continues);
+                    }
+                    else if (continues) { // and not more
+                        throw std::bad_function_call{};
+                    }
+                    else {
+                        replySender({{"parameters", params}}, false);
+                    }
+                });
         }
         catch (std::out_of_range& e) {
-            return error(
+            error(
                 "org.varlink.service.MethodNotFound",
                 {{"method", ifname + '.' + methodname}});
         }
         catch (std::bad_function_call& e) {
-            return error(
+            error(
                 "org.varlink.service.MethodNotImplemented",
                 {{"method", ifname + '.' + methodname}});
         }
         catch (varlink_error& e) {
-            return error(e.what(), e.args());
+            error(e.what(), e.args());
         }
         catch (std::exception& e) {
-            return error(
-                "org.varlink.service.InternalError", {{"what", e.what()}});
+            error("org.varlink.service.InternalError", {{"what", e.what()}});
         }
     }
 

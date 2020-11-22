@@ -13,8 +13,35 @@
 using namespace varlink;
 using std::string;
 
-std::unique_ptr<BaseEnvironment> getEnvironment() {
-    return std::make_unique<Environment>();
+std::unique_ptr<BaseEnvironment> getEnvironment()
+{
+    auto env = std::make_unique<Environment>();
+    const auto testif =
+        "interface org.test\nmethod P(p:string) -> (q:string)\n"
+        "method M(n:int,t:?bool)->(m:int)\n"
+        "method E()->()\n";
+    auto ping_callback = [] varlink_callback {
+        send_reply({{"q", parameters["p"].get<string>()}}, false);
+    };
+    auto more_callback = [] varlink_callback {
+        const auto count = parameters["n"].get<int>();
+        const bool wait = parameters.contains("t") && parameters["t"].get<bool>();
+        for (auto i = 0; i < count; i++) {
+            send_reply({{"m", i}}, true);
+            if (wait)
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        send_reply({{"m", count}}, false);
+    };
+    auto empty_callback = [] varlink_callback { send_reply({}, false); };
+    env->add_interface(
+        testif,
+        callback_map{
+            {"P", ping_callback}, {"M", more_callback}, {"E", empty_callback}});
+    env->add_interface(
+        "interface org.err\nmethod E() -> ()\n",
+        callback_map{{"E", [] varlink_callback { throw std::exception{}; }}});
+    return env;
 }
 
 #define REQUIRE_VARLINK_ERROR(statement, error, parameter, value) \
@@ -52,7 +79,8 @@ TEST_CASE("Testing server with client")
         REQUIRE(resp["description"].get<string>() ==
                 "interface org.test\n\n"
                 "method P(p: string) -> (q: string)\n\n"
-                "method M(n: int, t: ?bool) -> (m: int)\n");
+                "method M(n: int, t: ?bool) -> (m: int)\n\n"
+                "method E() -> ()\n");
         REQUIRE_VARLINK_ERROR(
             client.call(
                 "org.varlink.service.GetInterfaceDescription",
@@ -117,6 +145,13 @@ TEST_CASE("Testing server with client")
         REQUIRE(more() == nullptr);
     }
 
+    SECTION("Call method with empty response")
+    {
+        auto resp = client.call("org.test.E", json::object())();
+        REQUIRE(resp.is_object());
+        REQUIRE(resp.empty());
+    }
+
     SECTION("Call method and don't read")
     {
         client.call("org.test.P", {{"p", "test"}});
@@ -134,6 +169,15 @@ TEST_CASE("Testing server with client")
     {
         auto null = client.call("org.test.P", {{"p", "test"}}, callmode::oneway);
         REQUIRE(null() == nullptr);
+    }
+
+    SECTION("Call a oneway method and then a regular one")
+    {
+        auto null = client.call("org.test.P", {{"p", "test"}}, callmode::oneway);
+        REQUIRE(null() == nullptr);
+        auto resp = client.call("org.test.E", json::object())();
+        REQUIRE(resp.is_object());
+        REQUIRE(resp.empty());
     }
 
     SECTION("Call with upgrade flag")
@@ -200,7 +244,7 @@ TEST_CASE("Testing server with client")
         REQUIRE(more() == nullptr);
         auto latency = done - begin;
         auto latency2 = done2 - begin2;
-        REQUIRE(latency2 < latency);
+        REQUIRE(latency2 < latency * 0.8);
     }
 
     SECTION("Noop connections")
@@ -252,7 +296,8 @@ TEST_CASE("Testing server with raw socket data")
         socket.send(net::buffer(data.data(), data.size() + 1));
         data.resize(100);
         socket.receive(net::buffer(data.data(), data.size()));
-        std::string exp = R"({"error":"org.varlink.service.MethodNotFound","parameters":{"method":"org.varlink.service.GetInf"}})";
+        std::string exp =
+            R"({"error":"org.varlink.service.MethodNotFound","parameters":{"method":"org.varlink.service.GetInf"}})";
         exp += '\0';
         REQUIRE(exp == data);
     }

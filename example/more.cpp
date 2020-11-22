@@ -12,42 +12,56 @@
 using namespace varlink;
 
 class example_more_server {
-   private:
+  private:
     threaded_server _server;
 
-   public:
+  public:
     explicit example_more_server(const std::string& uri)
-        : _server(uri, varlink_service::description{"Varlink", "More example", "1", "https://varlink.org"}) {
-        auto ping = [] varlink_callback { return {{"pong", parameters["ping"]}}; };
+        : _server(
+            uri,
+            varlink_service::description{
+                "Varlink",
+                "More example",
+                "1",
+                "https://varlink.org"})
+    {
+        auto ping = [] varlink_callback {
+            send_reply({{"pong", parameters["ping"]}}, false);
+        };
 
         auto more = [] varlink_callback {
-            if (sendmore) {
+            if (wants_more) {
                 nlohmann::json state = {{"start", true}};
-                sendmore({{"state", state}});
+                send_reply({{"state", state}}, true);
                 state.erase("start");
                 auto n = parameters["n"].get<size_t>();
                 for (size_t i = 0; i < n; i++) {
                     state["progress"] = (100 / n) * i;
-                    sendmore({{"state", state}});
+                    send_reply({{"state", state}}, true);
                     std::this_thread::sleep_for(std::chrono::seconds(1));
                 }
                 state["progress"] = 100;
-                sendmore({{"state", state}});
+                send_reply({{"state", state}}, true);
                 state.erase("progress");
                 state["end"] = true;
-                return {{"state", state}};
-            } else {
-                throw varlink::varlink_error("org.varlink.service.InvalidParameter", {{"parameter", "more"}});
+                send_reply({{"state", state}}, false);
+            }
+            else {
+                throw varlink::varlink_error(
+                    "org.varlink.service.InvalidParameter",
+                    {{"parameter", "more"}});
             }
         };
 
         auto stop = [&] varlink_callback {
             _server.stop();
-            return {};
+            send_reply({}, false);
         };
 
-        _server.add_interface(varlink::org_example_more_varlink,
-                              callback_map{{"Ping", ping}, {"TestMore", more}, {"StopServing", stop}});
+        _server.add_interface(
+            varlink::org_example_more_varlink,
+            callback_map{
+                {"Ping", ping}, {"TestMore", more}, {"StopServing", stop}});
     }
 
     void join() { _server.join(); }
@@ -55,21 +69,25 @@ class example_more_server {
 
 std::unique_ptr<example_more_server> service;
 
-void signalHandler(int32_t) {
+void signalHandler(int32_t)
+{
     service.reset(nullptr);
     exit(0);
 }
 
-int main() {
+int main()
+{
     using namespace varlink;
     signal(SIGTERM, signalHandler);
     signal(SIGINT, signalHandler);
     signal(SIGPIPE, SIG_IGN);
     try {
-        service = std::make_unique<example_more_server>("unix:/tmp/test.socket");
+        service = std::make_unique<example_more_server>(
+            "unix:/tmp/test.socket");
         service->join();
         return 0;
-    } catch (std::exception& e) {
+    }
+    catch (std::exception& e) {
         std::cerr << "Couldn't start service: " << e.what() << "\n";
         return 1;
     }

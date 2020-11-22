@@ -1,12 +1,8 @@
 #define CATCH_CONFIG_RUNNER
+#include "test_env.hpp"
 #include <catch2/catch.hpp>
 
-class Environment {
-  public:
-    virtual ~Environment() = default;
-};
-
-extern std::unique_ptr<Environment> getEnvironment();
+extern std::unique_ptr<BaseEnvironment> getEnvironment();
 
 int main(int argc, char** argv)
 {

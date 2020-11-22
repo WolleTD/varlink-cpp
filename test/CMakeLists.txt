@@ -33,14 +33,21 @@ varlink_test(unittests
 varlink_test(self_errors self_errors.cpp unit_main.cpp)
 
 add_library(catch_main test_main.cpp)
-target_link_libraries(catch_main PUBLIC Catch2::Catch2)
+target_link_libraries(catch_main PUBLIC Catch2::Catch2 varlink++)
 
-varlink_test(self_unix self_test_impl.cpp)
+varlink_test(self_unix self_test_threaded.cpp)
 target_link_libraries(test_self_unix PRIVATE catch_main)
 target_compile_definitions(test_self_unix PRIVATE VARLINK_TEST_UNIX)
-varlink_test(self_tcp self_test_impl.cpp)
+varlink_test(self_tcp self_test_threaded.cpp)
 target_link_libraries(test_self_tcp PRIVATE catch_main)
 target_compile_definitions(test_self_tcp PRIVATE VARLINK_TEST_TCP)
+
+varlink_test(self_unix_async self_test_async.cpp)
+target_link_libraries(test_self_unix_async PRIVATE catch_main)
+target_compile_definitions(test_self_unix_async PRIVATE VARLINK_TEST_UNIX VARLINK_TEST_ASYNC)
+varlink_test(self_tcp_async self_test_async.cpp)
+target_link_libraries(test_self_tcp_async PRIVATE catch_main)
+target_compile_definitions(test_self_tcp_async PRIVATE VARLINK_TEST_TCP VARLINK_TEST_ASYNC)
 
 add_executable(cert_client cert_client.cpp)
 target_link_libraries(cert_client PRIVATE varlink++)

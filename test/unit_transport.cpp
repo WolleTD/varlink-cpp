@@ -97,7 +97,9 @@ TEST_CASE("JSON transport async read")
         };
         auto test = testers.begin();
         conn->async_receive([&test](auto ec, const json& r) {
-            REQUIRE(not ec);
+            if (ec) {
+                REQUIRE(ec == net::error::try_again);
+            }
             (*test++)(r);
         });
         REQUIRE(test == testers.begin());
@@ -112,8 +114,8 @@ TEST_CASE("JSON transport async read")
         bool flag{false};
         conn->async_receive([&](auto ec, const json& r) {
             REQUIRE(not ec);
-            flag = true;
             REQUIRE(r["object"].get<bool>() == true);
+            flag = true;
         });
         REQUIRE(ctx.run() > 0);
         REQUIRE(flag);
@@ -122,24 +124,37 @@ TEST_CASE("JSON transport async read")
     SECTION("Throw on partial json")
     {
         setup_test(R"({"object":)");
-        conn->async_receive(
-            [](auto ec, auto) { REQUIRE(ec == net::error::invalid_argument); });
+        bool flag{false};
+        conn->async_receive([&](auto ec, auto) {
+            REQUIRE(ec == net::error::invalid_argument);
+            flag = true;
+        });
         REQUIRE(ctx.run() > 0);
+        REQUIRE(flag);
     }
 
     SECTION("Throw on trailing bytes")
     {
         setup_test(R"({"object":true}trailing)");
-        conn->async_receive(
-            [](auto ec, auto) { REQUIRE(ec == net::error::invalid_argument); });
+        bool flag{false};
+        conn->async_receive([&](auto ec, auto) {
+            REQUIRE(ec == net::error::invalid_argument);
+            flag = true;
+        });
         REQUIRE(ctx.run() > 0);
+        REQUIRE(flag);
     }
 
     SECTION("Throw on immediate end of file")
     {
         setup_test();
-        conn->async_receive([](auto ec, auto) { REQUIRE(ec == net::error::eof); });
+        bool flag{false};
+        conn->async_receive([&](auto ec, auto) {
+            REQUIRE(ec == net::error::eof);
+            flag = true;
+        });
         REQUIRE(ctx.run() > 0);
+        REQUIRE(flag);
     }
 
     SECTION("Throw on end of file after data")
@@ -250,10 +265,14 @@ TEST_CASE("JSON transport async write")
     SECTION("Write to broken pipe")
     {
         setup_test();
+        bool flag{false};
         conn->socket().error_on_write = true;
         auto msg = R"({"object":true,"toolong":true})"_json;
-        conn->async_send(
-            msg, [](auto ec) { REQUIRE(ec == net::error::broken_pipe); });
+        conn->async_send(msg, [&](auto ec) {
+            REQUIRE(ec == net::error::broken_pipe);
+            flag = true;
+        });
         REQUIRE(ctx.run() > 0);
+        REQUIRE(flag);
     }
 }

@@ -1,57 +1,43 @@
 #pragma once
-#include <varlink/client.hpp>
-#include <varlink/server.hpp>
-
-using namespace varlink;
-using std::string;
-
-class BaseEnvironment {
-  public:
-    virtual ~BaseEnvironment() = default;
-};
+#include "test_env.hpp"
 
 class UnixEnvironment : public BaseEnvironment {
   public:
     using protocol = net::local::stream_protocol;
-    static constexpr const std::string_view varlink_uri{"unix:test-integration.socket"};
-    static protocol::endpoint get_endpoint() {
-        return protocol::endpoint("test-integration.socket");
+    static constexpr const std::string_view varlink_uri{
+#ifdef VARLINK_TEST_ASYNC
+        "unix:test-integration-async.socket"
+#else
+        "unix:test-integration.socket"
+#endif
+    };
+    static protocol::endpoint get_endpoint()
+    {
+        return protocol::endpoint(
+#ifdef VARLINK_TEST_ASYNC
+            "test-integration-async.socket"
+#else
+            "test-integration.socket"
+#endif
+        );
     }
+
   private:
     const varlink_service::description description{
         "varlink",
         "test",
         "1",
         "test.org"};
-    std::unique_ptr<threaded_server> server;
 
   public:
     UnixEnvironment() : BaseEnvironment()
     {
-        const auto testif =
-            "interface org.test\nmethod P(p:string) -> (q:string)\n"
-            "method M(n:int,t:?bool)->(m:int)\n";
-        std::filesystem::remove("test-integration.socket");
-        server = std::make_unique<threaded_server>(varlink_uri, description);
-        auto ping_callback = [] varlink_callback {
-            return {{"q", parameters["p"].get<string>()}};
-        };
-        auto more_callback = [] varlink_callback {
-            const auto count = parameters["n"].get<int>();
-            const bool wait = parameters.contains("t")
-                              && parameters["t"].get<bool>();
-            for (auto i = 0; i < count; i++) {
-                sendmore({{"m", i}});
-                if (wait)
-                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            }
-            return {{"m", count}};
-        };
-        server->add_interface(
-            testif, callback_map{{"P", ping_callback}, {"M", more_callback}});
-        server->add_interface(
-            "interface org.err\nmethod E() -> ()\n",
-            callback_map{{"E", [] varlink_callback { throw std::exception{}; }}});
+        std::filesystem::remove(get_endpoint().path());
+        server = std::make_unique<test_server>(varlink_uri, description);
+#ifdef VARLINK_TEST_ASYNC
+        timer = std::make_unique<net::steady_timer>(server->get_executor());
+        worker = std::thread([&]() { server->run(); });
+#endif
     }
 };
 
