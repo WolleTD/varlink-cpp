@@ -30,9 +30,6 @@ class varlink_server {
         const varlink_service::description& description)
         : service(description), server(make_async_server(ctx, uri))
     {
-        std::visit(
-            [&](auto&& s) { net::post(ctx, [&]() { s.async_serve_forever(); }); },
-            server);
     }
 
     varlink_server(
@@ -47,6 +44,11 @@ class varlink_server {
     varlink_server& operator=(const varlink_server&) = delete;
     varlink_server(varlink_server&& src) noexcept = delete;
     varlink_server& operator=(varlink_server&& src) noexcept = delete;
+
+    void async_serve_forever()
+    {
+        std::visit([&](auto&& s) { s.async_serve_forever(); }, server);
+    }
 
     template <typename... Args>
     void add_interface(Args&&... args)

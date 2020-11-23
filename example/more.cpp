@@ -76,7 +76,11 @@ class example_more_server {
                 {"Ping", ping}, {"TestMore", more}, {"StopServing", stop}});
     }
 
-    void run() { ctx.run(); }
+    void run()
+    {
+        _server.async_serve_forever();
+        ctx.run();
+    }
 };
 
 std::unique_ptr<example_more_server> service;

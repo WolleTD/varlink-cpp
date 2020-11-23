@@ -38,6 +38,7 @@ varlink_srv.add_interface(org_example_more_varlink, varlink::callback_map{
     {"Ping", [] varlink_callback { send_reply({{"pong", parameters["ping"]}}, /* continues = */ false); }}
 });
 
+varlink_srv.async_serve_forever();
 ctx.run();
 }
 ```
