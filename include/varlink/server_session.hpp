@@ -40,7 +40,7 @@ class server_session : public std::enable_shared_from_this<server_session<Socket
         connection.async_receive([self = shared_from_this()](auto ec, auto&& j) {
             if (ec) return;
             try {
-                const varlink_message message{j};
+                const basic_varlink_message message{j};
                 self->service_.message_call(message, [self, ec](const json& reply, bool continues) {
                     if (reply.is_object()) {
                         auto m = std::make_unique<json>(reply);

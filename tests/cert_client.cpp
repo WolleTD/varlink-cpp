@@ -2,7 +2,8 @@
 #include <string>
 #include <varlink/client.hpp>
 
-int main(int argc, char* argv[]) {
+int main(int argc, char* argv[])
+{
     if (argc < 2) {
         std::cerr << "Error: varlink socket path required\n";
         return 1;
@@ -11,19 +12,27 @@ int main(int argc, char* argv[]) {
     auto client = varlink::varlink_client(ctx, argv[1]);
 
     try {
-        auto resp = client.call("org.varlink.certification.Start", {})();
+        auto resp = client.call("org.varlink.certification.Start", varlink::json{});
         std::cout << "Start: " << resp.dump() << std::endl;
         auto client_id = resp["client_id"].get<std::string>();
 
-        std::vector<std::string> regular_tests = {"Test01", "Test02", "Test03", "Test04", "Test05",
-                                                  "Test06", "Test07", "Test08", "Test09"};
+        std::vector<std::string> regular_tests = {
+            "Test01",
+            "Test02",
+            "Test03",
+            "Test04",
+            "Test05",
+            "Test06",
+            "Test07",
+            "Test08",
+            "Test09"};
         for (const auto& method : regular_tests) {
-            resp = client.call("org.varlink.certification." + method, resp)();
+            resp = client.call("org.varlink.certification." + method, resp);
             std::cout << method << ": " << resp.dump() << std::endl;
             resp["client_id"] = client_id;
         }
 
-        auto more = client.call("org.varlink.certification.Test10", resp, varlink::callmode::more);
+        auto more = client.call_more("org.varlink.certification.Test10", resp);
         varlink::json call11 = {{"client_id", client_id}};
         call11["last_more_replies"] = varlink::json::array();
         resp = more();
@@ -33,13 +42,14 @@ int main(int argc, char* argv[]) {
             resp = more();
         }
 
-        resp = client.call("org.varlink.certification.Test11", call11, varlink::callmode::oneway)();
-        std::cout << "Test11: " << resp.dump() << std::endl;
+        client.call_oneway("org.varlink.certification.Test11", call11);
+        std::cout << "Test11" << std::endl;
 
-        resp = client.call("org.varlink.certification.End", varlink::json{{"client_id", client_id}})();
+        resp = client.call("org.varlink.certification.End", varlink::json{{"client_id", client_id}});
         std::cout << "End: " << resp.dump() << std::endl;
         return (resp["all_ok"].get<bool>()) ? 0 : 1;
-    } catch (varlink::varlink_error& e) {
+    }
+    catch (varlink::varlink_error& e) {
         std::cout << "Failed: " << e.what() << " parameters: " << e.args().dump() << std::endl;
         return 1;
     }

@@ -40,42 +40,53 @@ class certification_client {
     void call_method(size_t method_idx, const varlink::json& params)
     {
         const auto& method_name = test_methods.at(method_idx);
-        auto mode = (method_idx == 10)   ? callmode::more
-                    : (method_idx == 11) ? callmode::oneway
-                                         : callmode::basic;
-        auto message = varlink_message(
-            "org.varlink.certification." + method_name, params, mode);
         client_.async_call(
-            message,
-            [this, method_idx, &method_name](
-                auto ec, varlink::json resp, bool continues) {
+            "org.varlink.certification." + method_name,
+            params,
+            [this, method_idx, &method_name](auto ec, varlink::json resp) {
                 std::cout << method_name << ": " << resp << std::endl;
-                if (ec) {
-                    throw varlink_error(
-                        resp["error"].get<string>(), resp["parameters"]);
-                }
-                if (method_idx == 0) {
-                    client_id = resp["client_id"].get<string>();
-                }
+                if (ec) { throw varlink_error(resp["error"].get<string>(), resp["parameters"]); }
+                if (method_idx == 0) { client_id = resp["client_id"].get<string>(); }
                 else {
                     resp["client_id"] = client_id;
                 }
-                if (method_idx == 10) {
-                    more_replies.push_back(resp["string"].get<string>());
-                    if (not continues) {
-                        resp["last_more_replies"] = more_replies;
-                    }
-                }
-                if (method_idx == 11) {
-                    resp = json{{"client_id", client_id}};
-                }
-                if ((method_idx + 1) < test_methods.size()) {
-                    if (not continues)
-                        call_method(method_idx + 1, resp);
+                if (method_idx == 11) { resp = json{{"client_id", client_id}}; }
+                if (method_idx == 9) { call_method_more(method_idx + 1, resp); }
+                else if ((method_idx + 1) < test_methods.size()) {
+                    call_method(method_idx + 1, resp);
                 }
                 else {
                     all_ok = resp["all_ok"].get<bool>();
                 }
+            });
+    }
+
+    void call_method_more(size_t method_idx, const varlink::json& params)
+    {
+        const auto& method_name = test_methods.at(method_idx);
+        client_.async_call_more(
+            "org.varlink.certification." + method_name,
+            params,
+            [this, &method_name](auto ec, varlink::json resp, bool continues) {
+                std::cout << method_name << ": " << resp << std::endl;
+                if (ec) { throw varlink_error(resp["error"].get<string>(), resp["parameters"]); }
+                resp["client_id"] = client_id;
+                more_replies.push_back(resp["string"].get<string>());
+                if (not continues) {
+                    resp["last_more_replies"] = more_replies;
+                    call_method_oneway(11, resp);
+                }
+            });
+    }
+
+    void call_method_oneway(size_t method_idx, const varlink::json& params)
+    {
+        const auto& method_name = test_methods.at(method_idx);
+        client_.async_call_oneway(
+            "org.varlink.certification." + method_name, params, [this, &method_name](auto ec) {
+                std::cout << method_name << std::endl;
+                if (ec) { throw std::system_error(ec); }
+                call_method(12, json{{"client_id", client_id}});
             });
     }
 };
@@ -94,7 +105,6 @@ int main(int argc, char* argv[])
         return client.exit_code();
     }
     catch (varlink_error& e) {
-        std::cout << "Failed: " << e.what()
-                  << " parameters: " << e.args().dump() << "\n";
+        std::cout << "Failed: " << e.what() << " parameters: " << e.args().dump() << "\n";
     }
 }

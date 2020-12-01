@@ -68,7 +68,7 @@ class varlink_service {
     varlink_service& operator=(varlink_service&&) = delete;
 
     template <typename ReplyHandler>
-    void message_call(const varlink_message& message, ReplyHandler&& replySender) noexcept
+    void message_call(const basic_varlink_message& message, ReplyHandler&& replySender) noexcept
     {
         const auto error = [&](const std::string& what, const json& params) {
             assert(params.is_object());

@@ -28,16 +28,13 @@ std::unique_ptr<BaseEnvironment> getEnvironment()
         const bool wait = parameters.contains("t") && parameters["t"].get<bool>();
         for (auto i = 0; i < count; i++) {
             send_reply({{"m", i}}, true);
-            if (wait)
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            if (wait) std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
         send_reply({{"m", count}}, false);
     };
     auto empty_callback = [] varlink_callback { send_reply({}, false); };
     env->add_interface(
-        testif,
-        callback_map{
-            {"P", ping_callback}, {"M", more_callback}, {"E", empty_callback}});
+        testif, callback_map{{"P", ping_callback}, {"M", more_callback}, {"E", empty_callback}});
     env->add_interface(
         "interface org.err\nmethod E() -> ()\n",
         callback_map{{"E", [] varlink_callback { throw std::exception{}; }}});
@@ -61,7 +58,7 @@ TEST_CASE("Testing server with client")
 
     SECTION("Call method GetInfo")
     {
-        auto resp = client.call("org.varlink.service.GetInfo", {})();
+        auto resp = client.call("org.varlink.service.GetInfo", json{});
         REQUIRE(resp["vendor"].get<string>() == "varlink");
         REQUIRE(resp["product"].get<string>() == "test");
         REQUIRE(resp["version"].get<string>() == "1");
@@ -75,8 +72,7 @@ TEST_CASE("Testing server with client")
     SECTION("Call method GetInterfaceDescription")
     {
         auto resp = client.call(
-            "org.varlink.service.GetInterfaceDescription",
-            {{"interface", "org.test"}})();
+            "org.varlink.service.GetInterfaceDescription", json{{"interface", "org.test"}});
         REQUIRE(resp["description"].get<string>() ==
                 "interface org.test\n\n"
                 "method P(p: string) -> (q: string)\n\n"
@@ -84,13 +80,12 @@ TEST_CASE("Testing server with client")
                 "method E() -> ()\n");
         REQUIRE_VARLINK_ERROR(
             client.call(
-                "org.varlink.service.GetInterfaceDescription",
-                {{"interface", "org.notfound"}})(),
+                "org.varlink.service.GetInterfaceDescription", json{{"interface", "org.notfound"}}),
             "org.varlink.service.InterfaceNotFound",
             "interface",
             "org.notfound");
         REQUIRE_VARLINK_ERROR(
-            client.call("org.varlink.service.GetInterfaceDescription", {})(),
+            client.call("org.varlink.service.GetInterfaceDescription", json{}),
             "org.varlink.service.InvalidParameter",
             "parameter",
             "interface");
@@ -98,15 +93,15 @@ TEST_CASE("Testing server with client")
 
     SECTION("Call method org.test.Ping")
     {
-        auto resp = client.call("org.test.P", {{"p", "test"}})();
+        auto resp = client.call("org.test.P", json{{"p", "test"}});
         REQUIRE(resp["q"].get<string>() == "test");
         REQUIRE_VARLINK_ERROR(
-            client.call("org.test.P", {{"q", "invalid"}})(),
+            client.call("org.test.P", json{{"q", "invalid"}}),
             "org.varlink.service.InvalidParameter",
             "parameter",
             "p");
         REQUIRE_VARLINK_ERROR(
-            client.call("org.test.P", {{"p", 20}})(),
+            client.call("org.test.P", json{{"p", 20}}),
             "org.varlink.service.InvalidParameter",
             "parameter",
             "p");
@@ -115,7 +110,7 @@ TEST_CASE("Testing server with client")
     SECTION("Call method org.test.More without more flag")
     {
         REQUIRE_VARLINK_ERROR(
-            client.call("org.test.M", {{"n", 5}}, callmode::basic)(),
+            client.call("org.test.M", json{{"n", 5}}),
             "org.varlink.service.MethodNotImplemented",
             "method",
             "org.test.M");
@@ -123,7 +118,7 @@ TEST_CASE("Testing server with client")
 
     SECTION("Call method org.test.More wtih more flag")
     {
-        auto more = client.call("org.test.M", {{"n", 5}}, callmode::more);
+        auto more = client.call_more("org.test.M", json{{"n", 5}});
         REQUIRE(more()["m"].get<int>() == 0);
         REQUIRE(more()["m"].get<int>() == 1);
         REQUIRE(more()["m"].get<int>() == 2);
@@ -133,84 +128,57 @@ TEST_CASE("Testing server with client")
         REQUIRE(more() == nullptr);
     }
 
-    SECTION("Don't multiplex responses")
-    {
-        using namespace std::chrono;
-        using namespace std::chrono_literals;
-        auto more = client.call(
-            "org.test.M", {{"n", 1}, {"t", true}}, callmode::more);
-        REQUIRE(more()["m"].get<int>() == 0);
-        auto resp = client.call("org.test.P", {{"p", "test"}});
-        REQUIRE(more()["m"].get<int>() == 1);
-        REQUIRE(resp()["q"].get<string>() == "test");
-        REQUIRE(more() == nullptr);
-    }
-
     SECTION("Call method with empty response")
     {
-        auto resp = client.call("org.test.E", json::object())();
+        auto resp = client.call("org.test.E", json::object());
         REQUIRE(resp.is_object());
         REQUIRE(resp.empty());
     }
 
-    SECTION("Call method and don't read")
-    {
-        client.call("org.test.P", {{"p", "test"}});
-    }
+    SECTION("Call method and don't read") { client.call("org.test.P", json{{"p", "test"}}); }
 
     SECTION("Call method org.test.More and don't read all responses")
     {
-        auto more = client.call("org.test.M", {{"n", 5}}, callmode::more);
+        auto more = client.call_more("org.test.M", json{{"n", 5}});
         REQUIRE(more()["m"].get<int>() == 0);
         REQUIRE(more()["m"].get<int>() == 1);
         REQUIRE(more()["m"].get<int>() == 2);
     }
 
-    SECTION("Call a oneway method")
-    {
-        auto null = client.call("org.test.P", {{"p", "test"}}, callmode::oneway);
-        REQUIRE(null() == nullptr);
-    }
-
     SECTION("Call a oneway method and then a regular one")
     {
-        auto null = client.call("org.test.P", {{"p", "test"}}, callmode::oneway);
-        REQUIRE(null() == nullptr);
-        auto resp = client.call("org.test.E", json::object())();
+        client.call_oneway("org.test.P", json{{"p", "test"}});
+        auto resp = client.call("org.test.E", json::object());
         REQUIRE(resp.is_object());
         REQUIRE(resp.empty());
     }
 
     SECTION("Call with upgrade flag")
     {
-        auto resp = client.call(
-            "org.test.P", {{"p", "test"}}, callmode::upgrade)();
+        auto resp = client.call_upgrade("org.test.P", json{{"p", "test"}});
         REQUIRE(resp["q"].get<string>() == "test");
     }
 
     SECTION("Call a method on a non-existent interface")
     {
         REQUIRE_VARLINK_ERROR(
-            client.call("org.notfound.NonExistent", {})(),
+            client.call("org.notfound.NonExistent", json{}),
             "org.varlink.service.InterfaceNotFound",
             "interface",
             "org.notfound");
         REQUIRE_VARLINK_ERROR(
-            client.call("org.notfound", {})(),
+            client.call("org.notfound", json{}),
             "org.varlink.service.InterfaceNotFound",
             "interface",
             "org");
         REQUIRE_VARLINK_ERROR(
-            client.call("org", {})(),
-            "org.varlink.service.InterfaceNotFound",
-            "interface",
-            "org");
+            client.call("org", json{}), "org.varlink.service.InterfaceNotFound", "interface", "org");
     }
 
     SECTION("Call a non-existing method")
     {
         REQUIRE_VARLINK_ERROR(
-            client.call("org.test.NonExistent", {})(),
+            client.call("org.test.NonExistent", json{}),
             "org.varlink.service.MethodNotFound",
             "method",
             "org.test.NonExistent");
@@ -219,11 +187,10 @@ TEST_CASE("Testing server with client")
     SECTION("Call a method that generates an internal exception")
     {
         try {
-            client.call("org.err.E", {})();
+            client.call("org.err.E", json{});
         }
         catch (varlink_error& e) {
-            REQUIRE(
-                std::string(e.what()) == "org.varlink.service.InternalError");
+            REQUIRE(std::string(e.what()) == "org.varlink.service.InternalError");
         }
     }
 
@@ -233,11 +200,10 @@ TEST_CASE("Testing server with client")
         using namespace std::chrono_literals;
         auto client2 = varlink_client(ctx, Environment::varlink_uri);
         auto begin = steady_clock::now();
-        auto more = client.call(
-            "org.test.M", {{"n", 1}, {"t", true}}, callmode::more);
+        auto more = client.call_more("org.test.M", json{{"n", 1}, {"t", true}});
         REQUIRE(more()["m"].get<int>() == 0);
         auto begin2 = steady_clock::now();
-        auto resp = client2.call("org.test.P", {{"p", "test"}})();
+        auto resp = client2.call("org.test.P", json{{"p", "test"}});
         auto done2 = steady_clock::now();
         REQUIRE(resp["q"].get<string>() == "test");
         REQUIRE(more()["m"].get<int>() == 1);
@@ -317,6 +283,22 @@ TEST_CASE("Testing server with raw socket data")
         exp += '\0';
         exp += R"({"error":"org.varlink.service.InterfaceNotFound","parameters":{"interface":"org.not"}})";
         exp += '\0';
+        REQUIRE(exp == data);
+    }
+
+    SECTION("Don't multiplex responses")
+    {
+        std::string data = R"({"method":"org.test.M","parameters":{"n":1,"t":true},"more":true})";
+        data += '\0';
+        data += R"({"method":"org.test.P","parameters":{"p":"test"}})";
+        socket.send(net::buffer(data.data(), data.size() + 1));
+        std::string exp = R"({"continues":true,"parameters":{"m":0}})";
+        exp += '\0';
+        exp += R"({"continues":false,"parameters":{"m":1}})";
+        exp += '\0';
+        exp += R"({"parameters":{"q":"test"}})";
+        data.resize(exp.size());
+        net::read(socket, net::buffer(data.data(), data.size()));
         REQUIRE(exp == data);
     }
 }
