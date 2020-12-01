@@ -1,5 +1,5 @@
 #include <iostream>
-#include <varlink/threaded_server.hpp>
+#include <varlink/server.hpp>
 
 #include "org.varlink.certification.varlink.hpp"
 
@@ -238,11 +238,11 @@ class varlink_certification {
 #define varlink_callback_forward(callback) \
     [&] varlink_callback { return callback(parameters, wants_more, send_reply); }
 
-std::unique_ptr<varlink::threaded_server> server;
+std::unique_ptr<varlink::net::io_context> ctx;
 
 void stop_server(int)
 {
-    server.reset(nullptr);
+    ctx->stop();
     exit(0);
 }
 
@@ -254,10 +254,11 @@ int main(int argc, char* argv[])
         std::cerr << "Error: varlink socket path required\n";
         return 1;
     }
-    server = std::make_unique<varlink::threaded_server>(
+    ctx = std::make_unique<varlink::net::io_context>();
+    auto server = varlink::varlink_server(*ctx,
         argv[1], varlink::varlink_service::description{});
     auto cert = varlink_certification{};
-    server->add_interface(
+    server.add_interface(
         varlink::org_varlink_certification_varlink,
         varlink::callback_map{
             {"Start", varlink_callback_forward(cert.Start)},
@@ -274,5 +275,7 @@ int main(int argc, char* argv[])
             {"Test11", varlink_callback_forward(cert.Test11)},
             {"End", varlink_callback_forward(cert.End)},
         });
-    server->join();
+    server.async_serve_forever();
+    ctx->run();
+    return 0;
 }
