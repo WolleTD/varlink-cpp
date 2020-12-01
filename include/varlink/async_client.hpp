@@ -72,10 +72,9 @@ class async_client {
             const auto continues =
                 (wants_more and reply.contains("continues") and reply["continues"].get<bool>());
             if (reply.contains("error")) { ec = net::error::no_data; }
-            if (not ec and continues) { async_read_reply(wants_more, handler); }
-            if (ec == net::error::try_again) { ec = std::error_code{}; }
-            else if (not continues) {
-                call_strand.next();
+            if (not continues) { call_strand.next(); }
+            else if (not ec and not connection.data_available()) {
+                async_read_reply(wants_more, handler);
             }
             handler(ec, reply["parameters"], continues);
         });

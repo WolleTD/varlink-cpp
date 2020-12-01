@@ -38,7 +38,7 @@ class server_session : public std::enable_shared_from_this<server_session<Socket
     void start()
     {
         connection.async_receive([self = shared_from_this()](auto ec, auto&& j) {
-            if (ec and ec != net::error::try_again) return;
+            if (ec) return;
             try {
                 const varlink_message message{j};
                 self->service_.message_call(message, [self, ec](const json& reply, bool continues) {
@@ -46,7 +46,7 @@ class server_session : public std::enable_shared_from_this<server_session<Socket
                         auto m = std::make_unique<json>(reply);
                         self->async_send_reply(std::move(m));
                     }
-                    if (not continues and (ec != net::error::try_again)) { self->start(); }
+                    if (not continues) { self->start(); }
                 });
             }
             catch (...) {

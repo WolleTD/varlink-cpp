@@ -2,6 +2,7 @@
 #ifndef LIBVARLINK_VARLINK_TRANSPORT_HPP
 #define LIBVARLINK_VARLINK_TRANSPORT_HPP
 
+#include <optional>
 #include <varlink/detail/config.hpp>
 #include <varlink/detail/manual_strand.hpp>
 #include <varlink/detail/nl_json.hpp>
@@ -20,6 +21,8 @@ class json_connection {
     const socket_type& socket() const { return stream; }
 
     executor_type get_executor() { return stream.get_executor(); }
+
+    [[nodiscard]] bool data_available() const { return (read_end != readbuf.begin()); }
 
   private:
     using byte_buffer = std::vector<char>;
@@ -75,40 +78,34 @@ class json_connection {
     [[nodiscard]] json receive()
     {
         std::error_code ec{};
-        json j = read_next_message(ec);
-        while (ec == net::error::in_progress) {
+        std::optional<json> j = read_next_message(ec);
+        while (not j and not ec) {
             const auto bytes_read = stream.receive(
                 net::buffer(&(*read_end), static_cast<size_t>(readbuf.end() - read_end)));
             read_end += static_cast<ptrdiff_t>(bytes_read);
             j = read_next_message(ec);
         }
-        if (ec and ec != net::error::try_again) {
-            throw std::invalid_argument(std::string(readbuf.begin(), read_end));
-        }
+        if (ec) { throw std::invalid_argument(std::string(readbuf.begin(), read_end)); }
         else {
-            return j;
+            return j.value();
         }
     }
 
   private:
-    json read_next_message(std::error_code& ec)
+    std::optional<json> read_next_message(std::error_code& ec)
     {
         ec = std::error_code{};
         const auto next_message_end = std::find(readbuf.begin(), read_end, '\0');
-        if (next_message_end == read_end) {
-            ec = net::error::in_progress;
-            return {};
-        }
+        if (next_message_end == read_end) { return std::nullopt; }
         const auto message = std::string(readbuf.begin(), next_message_end);
         read_end = std::copy(next_message_end + 1, read_end, readbuf.begin());
-        if (read_end != readbuf.begin()) { ec = net::error::try_again; }
 
         try {
             return json::parse(message);
         }
         catch (json::parse_error& e) {
             ec = net::error::invalid_argument;
-            return {};
+            return json{};
         }
     };
 
@@ -132,12 +129,11 @@ class json_connection {
                         if (ec) { handler(ec, json{}); }
                         else {
                             self->read_end += static_cast<ptrdiff_t>(n);
-                            while (not ec or ec == net::error::try_again) {
-                                auto message = self->read_next_message(ec);
-                                if (ec != net::error::in_progress) { handler(ec, message); }
-                                else if (self->read_end != self->readbuf.begin()) {
-                                    self->async_receive(handler);
-                                }
+                            while (auto message = self->read_next_message(ec)) {
+                                handler(ec, message.value());
+                            }
+                            if (self->read_end != self->readbuf.begin()) {
+                                self->async_receive(handler);
                             }
                         }
                     }));

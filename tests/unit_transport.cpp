@@ -97,9 +97,7 @@ TEST_CASE("JSON transport async read")
         };
         auto test = testers.begin();
         conn->async_receive([&test](auto ec, const json& r) {
-            if (ec) {
-                REQUIRE(ec == net::error::try_again);
-            }
+            REQUIRE(not ec);
             (*test++)(r);
         });
         REQUIRE(test == testers.begin());
