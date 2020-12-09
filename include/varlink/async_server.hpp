@@ -1,8 +1,8 @@
 #ifndef LIBVARLINK_ASYNC_SERVER_HPP
 #define LIBVARLINK_ASYNC_SERVER_HPP
 
-#include <filesystem>
 #include <variant>
+#include <experimental/filesystem>
 #include <varlink/server_session.hpp>
 
 namespace varlink {
@@ -59,9 +59,10 @@ class async_server : public std::enable_shared_from_this<async_server<Acceptor>>
 
     ~async_server()
     {
+        using namespace std::experimental::filesystem;
         if constexpr (std::is_same_v<protocol_type, net::local::stream_protocol>) {
             if (acceptor_.is_open()) {
-                std::filesystem::remove(acceptor_.local_endpoint().path());
+                remove(acceptor_.local_endpoint().path());
             }
         }
     }
