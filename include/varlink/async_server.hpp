@@ -45,9 +45,7 @@ class async_server : public std::enable_shared_from_this<async_server<Acceptor>>
     void async_serve_forever()
     {
         async_accept([this](auto ec, auto session) {
-            if (ec) {
-                return;
-            }
+            if (ec) { return; }
             session->start();
             async_serve_forever();
         });
@@ -57,9 +55,7 @@ class async_server : public std::enable_shared_from_this<async_server<Acceptor>>
     {
         using namespace std::experimental::filesystem;
         if constexpr (std::is_same_v<protocol_type, net::local::stream_protocol>) {
-            if (acceptor_.is_open()) {
-                remove(acceptor_.local_endpoint().path());
-            }
+            if (acceptor_.is_open()) { remove(acceptor_.local_endpoint().path()); }
         }
     }
 
@@ -69,22 +65,17 @@ class async_server : public std::enable_shared_from_this<async_server<Acceptor>>
         async_server<Acceptor>* self_;
 
       public:
-        explicit async_accept_initiator(async_server<Acceptor>* self)
-            : self_(self)
-        {
-        }
+        explicit async_accept_initiator(async_server<Acceptor>* self) : self_(self) {}
 
         template <typename ConnectionHandler>
         void operator()(ConnectionHandler&& handler)
         {
             self_->acceptor_.async_accept(
-                [self = self_,
-                 handler_ = std::forward<ConnectionHandler>(handler)](
+                [self = self_, handler_ = std::forward<ConnectionHandler>(handler)](
                     std::error_code ec, socket_type socket) mutable {
                     std::shared_ptr<session_type> session{};
                     if (!ec) {
-                        session = std::make_shared<session_type>(
-                            std::move(socket), self->service_);
+                        session = std::make_shared<session_type>(std::move(socket), self->service_);
                     }
                     handler_(ec, std::move(session));
                 });

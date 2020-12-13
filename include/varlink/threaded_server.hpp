@@ -16,22 +16,17 @@ class threaded_server {
     {
         return std::visit(
             [&](auto&& sockaddr) -> async_server_variant {
-                using Acceptor =
-                    typename std::decay_t<decltype(sockaddr)>::protocol_type::acceptor;
+                using Acceptor = typename std::decay_t<decltype(sockaddr)>::protocol_type::acceptor;
                 return async_server(Acceptor{ctx, sockaddr}, service);
             },
             endpoint_from_uri(uri));
     }
 
   public:
-    threaded_server(
-        const varlink_uri& uri,
-        const varlink_service::description& description)
+    threaded_server(const varlink_uri& uri, const varlink_service::description& description)
         : ctx(4), service(description), server(make_async_server(uri))
     {
-        std::visit(
-            [&](auto&& s) { net::post(ctx, [&]() { s.async_serve_forever(); }); },
-            server);
+        std::visit([&](auto&& s) { net::post(ctx, [&]() { s.async_serve_forever(); }); }, server);
     }
 
     threaded_server(std::string_view uri, const varlink_service::description& description)

@@ -31,9 +31,7 @@ class unique_function : public std::function<T> {
     template <typename Fn>
     struct wrapper<
         Fn,
-        std::enable_if_t<
-            !std::is_copy_constructible<Fn>::value
-            && std::is_move_constructible<Fn>::value>> {
+        std::enable_if_t<!std::is_copy_constructible<Fn>::value && std::is_move_constructible<Fn>::value>> {
         Fn fn_;
 
         explicit wrapper(Fn&& fn) : fn_(std::forward<Fn>(fn)) {}
@@ -45,10 +43,7 @@ class unique_function : public std::function<T> {
         // and are never called
         // the const_cast initialization is required for
         // non-DefaultContructible types to compile
-        wrapper(const wrapper& rhs) : fn_(const_cast<Fn&&>(rhs.fn_))
-        {
-            std::abort();
-        }
+        wrapper(const wrapper& rhs) : fn_(const_cast<Fn&&>(rhs.fn_)) { std::abort(); }
         wrapper& operator=(const wrapper&) { std::abort(); }
 
         template <typename... Args>

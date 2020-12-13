@@ -24,15 +24,13 @@ class varlink_service {
     auto find_interface(const std::string& ifname)
     {
         auto lock = std::lock_guard(interfaces_mut);
-        return std::find_if(
-            interfaces.cbegin(), interfaces.cend(), [&ifname](auto& i) {
-                return (ifname == i.name());
-            });
+        return std::find_if(interfaces.cbegin(), interfaces.cend(), [&ifname](auto& i) {
+            return (ifname == i.name());
+        });
     }
 
   public:
-    explicit varlink_service(description Description)
-        : desc(std::move(Description))
+    explicit varlink_service(description Description) : desc(std::move(Description))
     {
         auto getInfo = [this] varlink_callback {
             json::object_t info = {
@@ -50,22 +48,18 @@ class varlink_service {
         auto getInterfaceDescription = [this] varlink_callback {
             const auto& ifname = parameters["interface"].get<std::string>();
 
-            if (const auto interface = find_interface(ifname);
-                interface != interfaces.cend()) {
+            if (const auto interface = find_interface(ifname); interface != interfaces.cend()) {
                 std::stringstream ss;
                 ss << *interface;
                 send_reply({{"description", ss.str()}}, false);
             }
             else {
-                throw varlink_error(
-                    "org.varlink.service.InterfaceNotFound",
-                    {{"interface", ifname}});
+                throw varlink_error("org.varlink.service.InterfaceNotFound", {{"interface", ifname}});
             }
         };
         add_interface(
             org_varlink_service_varlink,
-            {{"GetInfo", getInfo},
-             {"GetInterfaceDescription", getInterfaceDescription}});
+            {{"GetInfo", getInfo}, {"GetInterfaceDescription", getInterfaceDescription}});
     }
 
     varlink_service(const varlink_service& src) = delete;
@@ -83,8 +77,7 @@ class varlink_service {
         const auto [ifname, methodname] = message.interface_and_method();
         const auto interface = find_interface(ifname);
         if (interface == interfaces.cend()) {
-            error(
-                "org.varlink.service.InterfaceNotFound", {{"interface", ifname}});
+            error("org.varlink.service.InterfaceNotFound", {{"interface", ifname}});
             return;
         }
 
@@ -106,13 +99,9 @@ class varlink_service {
                     const json::object_t& params, bool continues) mutable {
                     interface.validate(params, method.return_value);
 
-                    if (oneway) {
-                        replySender(nullptr, false);
-                    }
+                    if (oneway) { replySender(nullptr, false); }
                     else if (more) {
-                        replySender(
-                            {{"parameters", params}, {"continues", continues}},
-                            continues);
+                        replySender({{"parameters", params}, {"continues", continues}}, continues);
                     }
                     else if (continues) { // and not more
                         throw std::bad_function_call{};
@@ -123,14 +112,10 @@ class varlink_service {
                 });
         }
         catch (std::out_of_range& e) {
-            error(
-                "org.varlink.service.MethodNotFound",
-                {{"method", ifname + '.' + methodname}});
+            error("org.varlink.service.MethodNotFound", {{"method", ifname + '.' + methodname}});
         }
         catch (std::bad_function_call& e) {
-            error(
-                "org.varlink.service.MethodNotImplemented",
-                {{"method", ifname + '.' + methodname}});
+            error("org.varlink.service.MethodNotImplemented", {{"method", ifname + '.' + methodname}});
         }
         catch (varlink_error& e) {
             error(e.what(), e.args());

@@ -15,8 +15,7 @@ class varlink_client {
     {
         return std::visit(
             [&](auto&& sockaddr) -> varlink_client_variant {
-                using Socket =
-                    typename std::decay_t<decltype(sockaddr)>::protocol_type::socket;
+                using Socket = typename std::decay_t<decltype(sockaddr)>::protocol_type::socket;
                 auto socket = Socket{ctx, sockaddr.protocol()};
                 socket.connect(sockaddr);
                 return async_client(std::move(socket));
@@ -33,11 +32,8 @@ class varlink_client {
         : varlink_client(ctx, varlink_uri(uri))
     {
     }
-    template <
-        typename Socket,
-        typename = std::enable_if_t<std::is_base_of_v<net::socket_base, Socket>>>
-    explicit varlink_client(Socket&& socket)
-        : client(async_client(std::forward<Socket>(socket)))
+    template <typename Socket, typename = std::enable_if_t<std::is_base_of_v<net::socket_base, Socket>>>
+    explicit varlink_client(Socket&& socket) : client(async_client(std::forward<Socket>(socket)))
     {
     }
 
@@ -50,8 +46,7 @@ class varlink_client {
     auto async_call(Args&&... args)
     {
         return std::visit(
-            [&](auto&& c) { return c.async_call(std::forward<Args>(args)...); },
-            client);
+            [&](auto&& c) { return c.async_call(std::forward<Args>(args)...); }, client);
     }
 
     std::function<json()> call(const varlink_message& message)

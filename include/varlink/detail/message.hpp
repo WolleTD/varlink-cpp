@@ -22,17 +22,14 @@ class varlink_message {
     varlink_message() = default;
     explicit varlink_message(const json& msg) : _json(msg)
     {
-        if (!_json.is_object() or !_json.contains("method")
-            or !_json["method"].is_string()
+        if (!_json.is_object() or !_json.contains("method") or !_json["method"].is_string()
             or (_json.contains("parameters") && !_json["parameters"].is_object())) {
             throw std::invalid_argument("Not a varlink message: " + msg.dump());
         }
-        _mode = (msg.contains("more") && msg["more"].get<bool>()) ? callmode::more
-                : (msg.contains("oneway") && msg["oneway"].get<bool>())
-                    ? callmode::oneway
-                : (msg.contains("upgrade") && msg["upgrade"].get<bool>())
-                    ? callmode::upgrade
-                    : callmode::basic;
+        _mode = (msg.contains("more") && msg["more"].get<bool>())       ? callmode::more
+              : (msg.contains("oneway") && msg["oneway"].get<bool>())   ? callmode::oneway
+              : (msg.contains("upgrade") && msg["upgrade"].get<bool>()) ? callmode::upgrade
+                                                                        : callmode::basic;
     }
     varlink_message(
         const std::string_view method,
@@ -46,9 +43,7 @@ class varlink_message {
         else if (not parameters.empty()) {
             _json["parameters"] = parameters;
         }
-        if (_mode == callmode::oneway) {
-            _json["oneway"] = true;
-        }
+        if (_mode == callmode::oneway) { _json["oneway"] = true; }
         else if (_mode == callmode::more) {
             _json["more"] = true;
         }
@@ -62,8 +57,7 @@ class varlink_message {
 
     [[nodiscard]] json parameters() const
     {
-        return _json.contains("parameters") ? _json["parameters"]
-                                            : json::object();
+        return _json.contains("parameters") ? _json["parameters"] : json::object();
     }
     [[nodiscard]] const json& json_data() const { return _json; }
 
@@ -76,9 +70,7 @@ class varlink_message {
         return {fqmethod.substr(0, dot), fqmethod.substr(dot + 1)};
     }
 
-    friend bool operator==(
-        const varlink_message& lhs,
-        const varlink_message& rhs) noexcept;
+    friend bool operator==(const varlink_message& lhs, const varlink_message& rhs) noexcept;
 };
 
 inline bool operator==(const varlink_message& lhs, const varlink_message& rhs) noexcept
