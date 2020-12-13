@@ -46,20 +46,19 @@ class json_connection {
     json_connection(json_connection&&) noexcept = default;
     json_connection& operator=(json_connection&&) noexcept = default;
 
-    template <ASIO_COMPLETION_TOKEN_FOR(void(std::error_code))
-                  CompletionHandler ASIO_DEFAULT_COMPLETION_TOKEN_TYPE(executor_type)>
+    template <VARLINK_COMPLETION_TOKEN_FOR(void(std::error_code))
+                  CompletionHandler VARLINK_DEFAULT_COMPLETION_TOKEN_TYPE(executor_type)>
     auto async_send(
         const json& message,
-        CompletionHandler&& handler ASIO_DEFAULT_COMPLETION_TOKEN(executor_type))
+        CompletionHandler&& handler VARLINK_DEFAULT_COMPLETION_TOKEN(executor_type))
     {
         return net::async_initiate<CompletionHandler, void(std::error_code)>(
             initiate_async_send(this), handler, message);
     }
 
-    template <ASIO_COMPLETION_TOKEN_FOR(void(std::error_code, json message))
-                  CompletionHandler ASIO_DEFAULT_COMPLETION_TOKEN_TYPE(executor_type)>
-    auto async_receive(
-        CompletionHandler&& handler ASIO_DEFAULT_COMPLETION_TOKEN(executor_type))
+    template <VARLINK_COMPLETION_TOKEN_FOR(void(std::error_code, json message))
+                  CompletionHandler VARLINK_DEFAULT_COMPLETION_TOKEN_TYPE(executor_type)>
+    auto async_receive(CompletionHandler&& handler VARLINK_DEFAULT_COMPLETION_TOKEN(executor_type))
     {
         return net::async_initiate<CompletionHandler, void(std::error_code, json)>(
             initiate_async_receive(this), handler);

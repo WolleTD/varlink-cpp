@@ -39,12 +39,11 @@ class async_client {
     {
     }
 
-    template <ASIO_COMPLETION_TOKEN_FOR(
-        void(std::error_code, std::shared_ptr<connection_type>))
-    ReplyHandler ASIO_DEFAULT_COMPLETION_TOKEN_TYPE(executor_type)>
+    template <VARLINK_COMPLETION_TOKEN_FOR(void(std::error_code, std::shared_ptr<connection_type>))
+                  ReplyHandler VARLINK_DEFAULT_COMPLETION_TOKEN_TYPE(executor_type)>
     auto async_call(
         const varlink_message& message,
-        ReplyHandler&& handler ASIO_DEFAULT_COMPLETION_TOKEN(executor_type))
+        ReplyHandler&& handler VARLINK_DEFAULT_COMPLETION_TOKEN(executor_type))
     {
         call_strand.push([this,
                              message,

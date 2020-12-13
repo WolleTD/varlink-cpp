@@ -34,15 +34,11 @@ class async_server : public std::enable_shared_from_this<async_server<Acceptor>>
     async_server(async_server&& src) noexcept = default;
     async_server& operator=(async_server&& src) noexcept = default;
 
-    template <ASIO_COMPLETION_TOKEN_FOR(
-        void(std::error_code, std::shared_ptr<connection_type>))
-                  ConnectionHandler ASIO_DEFAULT_COMPLETION_TOKEN_TYPE(executor_type)>
-    auto async_accept(
-        ConnectionHandler&& handler ASIO_DEFAULT_COMPLETION_TOKEN(executor_type))
+    template <VARLINK_COMPLETION_TOKEN_FOR(void(std::error_code, std::shared_ptr<connection_type>))
+                  ConnectionHandler VARLINK_DEFAULT_COMPLETION_TOKEN_TYPE(executor_type)>
+    auto async_accept(ConnectionHandler&& handler VARLINK_DEFAULT_COMPLETION_TOKEN(executor_type))
     {
-        return net::async_initiate<
-            ConnectionHandler,
-            void(std::error_code, std::shared_ptr<session_type>)>(
+        return net::async_initiate<ConnectionHandler, void(std::error_code, std::shared_ptr<session_type>)>(
             async_accept_initiator(this), handler);
     }
 
