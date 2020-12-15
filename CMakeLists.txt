@@ -65,7 +65,7 @@ if(NOT TARGET asio)
         endif()
     endif()
     target_compile_definitions(asio INTERFACE ASIO_STANDALONE ASIO_NO_DEPRECATED)
-    target_link_libraries(asio INTERFACE pthread stdc++fs)
+    target_link_libraries(asio INTERFACE pthread)
 endif()
 
 
@@ -80,7 +80,7 @@ target_include_directories(varlink++ PUBLIC
         ${PROJECT_BINARY_DIR}/include
         )
 
-target_link_libraries(varlink++ INTERFACE nlohmann_json::nlohmann_json taocpp::pegtl asio)
+target_link_libraries(varlink++ INTERFACE nlohmann_json::nlohmann_json taocpp::pegtl asio stdc++fs)
 
 # command line tool and more example
 
