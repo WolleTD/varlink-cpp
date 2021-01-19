@@ -7,6 +7,7 @@ include(CMakeDependentOption)
 option(VARLINK_NO_DOWNLOADS "Don't use CPM, provide all dependencies externally" OFF)
 option(VARLINK_USE_BOOST "Use boost/asio instead of standalone" OFF)
 option(VARLINK_BUILD_TESTS "Build tests" ON)
+option(VARLINK_BUILD_EXAMPLES "Build examples" OFF)
 cmake_dependent_option(VARLINK_USE_EXTERNAL_JSON "Use external nlohmann/json.hpp" OFF "NOT VARLINK_NO_DOWNLOADS" ON)
 cmake_dependent_option(VARLINK_USE_EXTERNAL_PEGTL "Use external taocpp/pegtl" OFF "NOT VARLINK_NO_DOWNLOADS" ON)
 cmake_dependent_option(VARLINK_USE_EXTERNAL_CATCH2 "Use external catch2" OFF "NOT VARLINK_NO_DOWNLOADS" ON)
@@ -85,7 +86,9 @@ target_link_libraries(varlink++ INTERFACE nlohmann_json::nlohmann_json taocpp::p
 # command line tool and more example
 
 #add_subdirectory(tool)
-add_subdirectory(example)
+if(VARLINK_BUILD_EXAMPLES)
+    add_subdirectory(example)
+endif()
 
 # testing
 
