@@ -145,7 +145,11 @@ class varlink_interface {
 
     void validate(const json& data, const json& typespec) const
     {
-        if (not data.is_object()) {
+        if (typespec.is_array() and data.is_string()
+            and (std::find(typespec.begin(), typespec.end(), data.get<std::string>()) != typespec.end())) {
+            return;
+        }
+        else if (not data.is_object()) {
             throw varlink_error("org.varlink.service.InvalidParameter", {{"parameter", data.dump()}});
         }
         for (const auto& param : typespec.items()) {
