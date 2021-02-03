@@ -11,13 +11,13 @@
 #include <queue>
 #include <asio/strand.hpp>
 #include <varlink/detail/config.hpp>
-#include <varlink/detail/unique_function.hpp>
+#include <varlink/detail/movable_function.hpp>
 
 namespace varlink::detail {
 template <typename Executor>
 class manual_strand {
   public:
-    using function_type = unique_function<void()>;
+    using function_type = movable_function<void()>;
     template <typename T>
     using queue = std::queue<T, std::list<T>>;
 
