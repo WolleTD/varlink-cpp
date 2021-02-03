@@ -133,7 +133,7 @@ class json_connection {
                                 handler(ec, message.value());
                             }
                             if (self->read_end != self->readbuf.begin()) {
-                                self->async_receive(handler);
+                                self->async_receive(std::forward<CompletionHandler>(handler));
                             }
                         }
                     }));

@@ -166,7 +166,7 @@ class async_client {
                     (not ec and reply.contains("continues") and reply["continues"].get<bool>());
                 if (not continues) { call_strand.next(); }
                 else if (not connection.data_available()) {
-                    async_read_reply<CallMode>(handler);
+                    async_read_reply<CallMode>(std::forward<ReplyHandler>(handler));
                 }
                 if constexpr (CallMode == callmode::more) {
                     handler(ec, reply["parameters"], continues);
