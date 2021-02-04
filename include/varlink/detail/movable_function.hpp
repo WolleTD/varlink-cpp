@@ -38,8 +38,8 @@ class movable_function : public std::function<T> {
 
         explicit wrapper(Fn&& fn) : fn(std::forward<Fn>(fn)) {}
 
-        wrapper(wrapper&&) noexcept = default;
-        wrapper& operator=(wrapper&&) noexcept = default;
+        wrapper(wrapper&&) = default;
+        wrapper& operator=(wrapper&&) = default;
 
         // these two functions are instantiated by std::function and are never called
         wrapper(const wrapper& rhs) : fn(const_cast<Fn&&>(rhs.fn))
