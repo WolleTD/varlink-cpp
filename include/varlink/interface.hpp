@@ -30,6 +30,11 @@ struct method_callback {
 };
 using callback_map = std::vector<method_callback>;
 
+inline method_callback operator>>(std::string_view method, const callback_function& callback)
+{
+    return method_callback(method, callback);
+}
+
 namespace interface {
 struct type {
     const std::string name;
@@ -124,7 +129,7 @@ class varlink_interface {
     {
         pegtl::string_input parser_in{description, __FUNCTION__};
         try {
-            grammar::parser_state state(make_callback_map(detail::make_tuples<2>(args...)));
+            grammar::parser_state state(callback_map{args...});
             pegtl::parse<grammar::interface, grammar::inserter>(parser_in, *this, state);
             if (!state.global.callbacks.empty()) {
                 throw std::invalid_argument(

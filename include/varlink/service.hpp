@@ -59,10 +59,8 @@ class varlink_service {
         };
         add_interface(
             org_varlink_service_varlink,
-            "GetInfo",
-            getInfo,
-            "GetInterfaceDescription",
-            getInterfaceDescription);
+            "GetInfo" >> getInfo,
+            "GetInterfaceDescription" >> getInterfaceDescription);
     }
 
     varlink_service(const varlink_service& src) = delete;

@@ -46,8 +46,8 @@ std::unique_ptr<BaseEnvironment> getEnvironment()
         }
     };
     auto empty_callback = [] varlink_callback { send_reply({}, false); };
-    env->add_interface(testif, "P", ping_callback, "M", more_callback, "E", empty_callback);
-    env->add_interface("interface org.err\nmethod E() -> ()\n", "E", [] varlink_callback {
+    env->add_interface(testif, "P" >> ping_callback, "M" >> more_callback, "E" >> empty_callback);
+    env->add_interface("interface org.err\nmethod E() -> ()\n", "E" >> [] varlink_callback {
         throw std::exception{};
     });
     return env;

@@ -62,7 +62,7 @@ class example_more_server {
         };
 
         _server.add_interface(
-            varlink::org_example_more_varlink, "Ping", ping, "TestMore", more, "StopServing", stop);
+            varlink::org_example_more_varlink, "Ping" >> ping, "TestMore" >> more, "StopServing" >> stop);
     }
 
     void run()
