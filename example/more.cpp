@@ -19,9 +19,7 @@ class example_more_server {
                 json state = json::object();
                 state["progress"] = (100 / count) * i;
                 send_reply({{"state", state}}, true);
-                if (i < count) {
-                    start_timer(i + 1, count, send_reply);
-                }
+                if (i < count) { start_timer(i + 1, count, send_reply); }
                 else {
                     state.erase("progress");
                     state["end"] = true;
@@ -37,16 +35,10 @@ class example_more_server {
           _server(
               ctx,
               uri,
-              varlink_service::description{
-                  "Varlink",
-                  "More example",
-                  "1",
-                  "https://varlink.org"}),
+              varlink_service::description{"Varlink", "More example", "1", "https://varlink.org"}),
           timer(ctx)
     {
-        auto ping = [] varlink_callback {
-            send_reply({{"pong", parameters["ping"]}}, false);
-        };
+        auto ping = [] varlink_callback { send_reply({{"pong", parameters["ping"]}}, false); };
 
         auto more = [this] varlink_callback {
             if (wants_more) {
@@ -60,8 +52,7 @@ class example_more_server {
             }
             else {
                 throw varlink::varlink_error(
-                    "org.varlink.service.InvalidParameter",
-                    {{"parameter", "more"}});
+                    "org.varlink.service.InvalidParameter", {{"parameter", "more"}});
             }
         };
 
@@ -96,8 +87,7 @@ int main()
     signal(SIGINT, signalHandler);
     signal(SIGPIPE, SIG_IGN);
     try {
-        service = std::make_unique<example_more_server>(
-            "unix:/tmp/test.socket");
+        service = std::make_unique<example_more_server>("unix:/tmp/test.socket");
         service->run();
         return 0;
     }

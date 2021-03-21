@@ -79,9 +79,7 @@ method Exception() -> ()
         std::string resp = R"({"continues":true,"parameters":{"pong":"123"}})";
         resp += '\0';
         resp += R"({"continues":false,"parameters":{"pong":"123"}})";
-        setup_test(
-            R"({"method":"org.test.Test","parameters":{"ping":"123"},"more":true})",
-            resp);
+        setup_test(R"({"method":"org.test.Test","parameters":{"ping":"123"},"more":true})", resp);
         conn->start();
         REQUIRE(ctx.run() > 0);
         conn->socket().validate_write();
@@ -99,8 +97,7 @@ method Exception() -> ()
 
     SECTION("Oneway call and regular call")
     {
-        std::string req =
-            R"({"method":"org.test.Test","parameters":{"ping":"123"},"oneway":true})";
+        std::string req = R"({"method":"org.test.Test","parameters":{"ping":"123"},"oneway":true})";
         req += '\0';
         req += R"({"method":"org.test.Test","parameters":{"ping":"123"}})";
         setup_test(req, R"({"parameters":{"pong":"123"}})");
@@ -132,8 +129,7 @@ method Exception() -> ()
     SECTION("Method throws varlink_error")
     {
         setup_test(
-            R"({"method":"org.test.VarlinkError"})",
-            R"({"error":"org.test.Error","parameters":{}})");
+            R"({"method":"org.test.VarlinkError"})", R"({"error":"org.test.Error","parameters":{}})");
         conn->start();
         REQUIRE(ctx.run() > 0);
         conn->socket().validate_write();

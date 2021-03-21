@@ -28,18 +28,11 @@ class varlink_certification {
                 }
             })json"_json;
 
-    std::string generate_client_id()
-    {
-        return "deadbeef" + std::to_string(clients++);
-    }
+    std::string generate_client_id() { return "deadbeef" + std::to_string(clients++); }
 
-    static varlink::varlink_error certification_error(
-        const std::string& want,
-        const std::string& got)
+    static varlink::varlink_error certification_error(const std::string& want, const std::string& got)
     {
-        return {
-            "org.varlink.certification.CertificationError",
-            {{"want", want}, {"got", got}}};
+        return {"org.varlink.certification.CertificationError", {{"want", want}, {"got", got}}};
     }
 
     std::string check_client_id(const varlink::json& parameters)
@@ -47,8 +40,7 @@ class varlink_certification {
         auto client_id = parameters["client_id"].get<std::string>();
         auto lk = std::lock_guard(start_mut);
         if (status.find(client_id) == status.cend()) {
-            throw varlink::varlink_error(
-                "org.varlink.certification.ClientIdError", {});
+            throw varlink::varlink_error("org.varlink.certification.ClientIdError", {});
         }
         else {
             return client_id;
@@ -61,9 +53,7 @@ class varlink_certification {
         const std::string& next_method)
     {
         auto lk = std::lock_guard(start_mut);
-        if (status[client_id] == called_method) {
-            status[client_id] = next_method;
-        }
+        if (status[client_id] == called_method) { status[client_id] = next_method; }
         else {
             throw certification_error(status[client_id], called_method);
         }
@@ -75,9 +65,7 @@ class varlink_certification {
         const varlink::json& expected)
     {
         auto value = parameters[param];
-        if (value != expected) {
-            throw certification_error(expected.dump(), value.dump());
-        }
+        if (value != expected) { throw certification_error(expected.dump(), value.dump()); }
     }
 
   public:
@@ -126,11 +114,7 @@ class varlink_certification {
         assert_method(client_id, "Test05", "Test06");
         assert_parameter(parameters, "string", "ping");
         send_reply(
-            {{"bool", false},
-             {"int", 2},
-             {"float", 3.14},
-             {"string", "a lot of string"}},
-            false);
+            {{"bool", false}, {"int", 2}, {"float", 3.14}, {"string", "a lot of string"}}, false);
     };
 
     auto Test06 varlink_callback
@@ -143,10 +127,7 @@ class varlink_certification {
         assert_parameter(parameters, "string", "a lot of string");
         send_reply(
             {{"struct",
-              {{"bool", false},
-               {"int", 2},
-               {"float", 3.14},
-               {"string", "a lot of string"}}}},
+              {{"bool", false}, {"int", 2}, {"float", 3.14}, {"string", "a lot of string"}}}},
             false);
     };
 
@@ -195,8 +176,7 @@ class varlink_certification {
         auto client_id = check_client_id(parameters);
         assert_method(client_id, "Test10", "Test11");
         if (parameters["mytype"] != my_object) {
-            throw certification_error(
-                my_object.dump(), parameters["mytype"].dump());
+            throw certification_error(my_object.dump(), parameters["mytype"].dump());
         }
         for (int i = 1; i < 10; i++) {
             send_reply({{"string", "Reply number " + std::to_string(i)}}, true);
@@ -255,8 +235,7 @@ int main(int argc, char* argv[])
         return 1;
     }
     ctx = std::make_unique<varlink::net::io_context>();
-    auto server = varlink::varlink_server(*ctx,
-        argv[1], varlink::varlink_service::description{});
+    auto server = varlink::varlink_server(*ctx, argv[1], varlink::varlink_service::description{});
     auto cert = varlink_certification{};
     server.add_interface(
         varlink::org_varlink_certification_varlink,
