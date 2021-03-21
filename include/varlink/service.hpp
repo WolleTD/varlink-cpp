@@ -59,7 +59,10 @@ class varlink_service {
         };
         add_interface(
             org_varlink_service_varlink,
-            {{"GetInfo", getInfo}, {"GetInterfaceDescription", getInterfaceDescription}});
+            "GetInfo",
+            getInfo,
+            "GetInterfaceDescription",
+            getInterfaceDescription);
     }
 
     varlink_service(const varlink_service& src) = delete;
@@ -136,9 +139,10 @@ class varlink_service {
         }
     }
 
-    void add_interface(std::string_view definition, const callback_map& callbacks)
+    template <typename... Args>
+    void add_interface(std::string_view definition, Args&&... args)
     {
-        add_interface(varlink_interface(definition, callbacks));
+        add_interface(varlink_interface(definition, std::forward<Args>(args)...));
     }
 };
 } // namespace varlink

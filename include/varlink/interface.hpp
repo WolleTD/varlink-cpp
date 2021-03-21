@@ -1,7 +1,9 @@
 #ifndef LIBVARLINK_INTERFACE_HPP
 #define LIBVARLINK_INTERFACE_HPP
 
+#include <utility>
 #include <varlink/detail/peg.hpp>
+#include <varlink/detail/utils.hpp>
 #include <varlink/detail/varlink_error.hpp>
 
 namespace grammar {
@@ -19,6 +21,10 @@ using reply_function = std::function<void(json::object_t, bool)>;
 using callback_function = std::function<void(const json&, bool, const reply_function&)>;
 
 struct method_callback {
+    method_callback(std::string_view method_name, callback_function callback_)
+        : method(method_name), callback(std::move(callback_))
+    {
+    }
     std::string_view method;
     callback_function callback;
 };
@@ -96,13 +102,29 @@ class varlink_interface {
         return std::any_of(list.begin(), list.end(), [&name](const T& e) { return e.name == name; });
     }
 
+    template <typename Tuple, std::size_t... Idx>
+    callback_map make_callback_map(Tuple&& tuple, std::index_sequence<Idx...>)
+    {
+        return callback_map{std::make_from_tuple<method_callback>(std::get<Idx>(tuple))...};
+    }
+
+    template <typename... Callbacks>
+    callback_map make_callback_map(const std::tuple<Callbacks...>& callbacks)
+    {
+        static_assert(
+            (detail::is_tuple_constructible_v<method_callback, Callbacks> && ...),
+            "Invalid arguments");
+        return make_callback_map(callbacks, std::index_sequence_for<Callbacks...>{});
+    }
+
   public:
-    explicit varlink_interface(std::string_view fromDescription, const callback_map& callbacks = {})
+    template <typename... Args>
+    explicit varlink_interface(std::string_view fromDescription, Args&&... args)
         : description(fromDescription)
     {
         pegtl::string_input parser_in{description, __FUNCTION__};
         try {
-            grammar::parser_state state(callbacks);
+            grammar::parser_state state(make_callback_map(detail::make_tuples<2>(args...)));
             pegtl::parse<grammar::interface, grammar::inserter>(parser_in, *this, state);
             if (!state.global.callbacks.empty()) {
                 throw std::invalid_argument(
