@@ -7,16 +7,19 @@
 #ifndef LIBVARLINK_MANUAL_STRAND_H
 #define LIBVARLINK_MANUAL_STRAND_H
 
+#include <list>
 #include <queue>
 #include <asio/strand.hpp>
 #include <varlink/detail/config.hpp>
-#include <varlink/detail/unique_function.hpp>
+#include <varlink/detail/movable_function.hpp>
 
 namespace varlink::detail {
 template <typename Executor>
 class manual_strand {
   public:
-    using function_type = unique_function<void()>;
+    using function_type = movable_function<void()>;
+    template <typename T>
+    using queue = std::queue<T, std::list<T>>;
 
     explicit manual_strand(const Executor& executor) : strand_{executor} {}
 
@@ -51,7 +54,7 @@ class manual_strand {
     }
 
     net::strand<Executor> strand_;
-    std::queue<function_type> queue_;
+    queue<function_type> queue_;
     bool executing_{false};
 };
 } // namespace varlink::detail

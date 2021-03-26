@@ -13,21 +13,15 @@
 using namespace varlink;
 using std::string;
 
-void start_timer(
-    net::steady_timer& timer,
-    int i,
-    int count,
-    const reply_function& send_reply)
+void start_timer(net::steady_timer& timer, int i, int count, const reply_function& send_reply)
 {
     timer.expires_after(std::chrono::milliseconds(10));
-    timer.async_wait(
-        [&timer, i, continues = (i < count), count, send_reply](auto ec) mutable {
-            if (not ec) {
-                send_reply({{"m", i}}, continues);
-                if (continues)
-                    start_timer(timer, i + 1, count, send_reply);
-            }
-        });
+    timer.async_wait([&timer, i, continues = (i < count), count, send_reply](auto ec) mutable {
+        if (not ec) {
+            send_reply({{"m", i}}, continues);
+            if (continues) start_timer(timer, i + 1, count, send_reply);
+        }
+    });
 }
 
 std::unique_ptr<BaseEnvironment> getEnvironment()
@@ -44,9 +38,7 @@ std::unique_ptr<BaseEnvironment> getEnvironment()
         const auto count = parameters["n"].get<int>();
         const bool wait = parameters.contains("t") && parameters["t"].get<bool>();
         send_reply({{"m", 0}}, true);
-        if (wait) {
-            start_timer(timer, 1, count, send_reply);
-        }
+        if (wait) { start_timer(timer, 1, count, send_reply); }
         else {
             for (auto i = 1; i <= count; i++) {
                 send_reply({{"m", i}}, (i < count));
@@ -55,9 +47,7 @@ std::unique_ptr<BaseEnvironment> getEnvironment()
     };
     auto empty_callback = [] varlink_callback { send_reply({}, false); };
     env->add_interface(
-        testif,
-        callback_map{
-            {"P", ping_callback}, {"M", more_callback}, {"E", empty_callback}});
+        testif, callback_map{{"P", ping_callback}, {"M", more_callback}, {"E", empty_callback}});
     env->add_interface(
         "interface org.err\nmethod E() -> ()\n",
         callback_map{{"E", [] varlink_callback { throw std::exception{}; }}});
@@ -86,9 +76,8 @@ TEST_CASE("Testing server with client")
     {
         bool flag{false};
         auto msg = varlink_message("org.varlink.service.GetInfo", {});
-        client.async_call(msg, [&](auto ec, const json& resp, bool c) {
+        client.async_call(msg, [&](auto ec, const json& resp) {
             REQUIRE(not ec);
-            REQUIRE(not c);
             REQUIRE(resp["vendor"].get<string>() == "varlink");
             REQUIRE(resp["product"].get<string>() == "test");
             REQUIRE(resp["version"].get<string>() == "1");
@@ -107,11 +96,9 @@ TEST_CASE("Testing server with client")
     {
         bool flag{false};
         auto msg = varlink_message(
-            "org.varlink.service.GetInterfaceDescription",
-            {{"interface", "org.test"}});
-        client.async_call(msg, [&](auto ec, const json& resp, bool c) {
+            "org.varlink.service.GetInterfaceDescription", {{"interface", "org.test"}});
+        client.async_call(msg, [&](auto ec, const json& resp) {
             REQUIRE(not ec);
-            REQUIRE(not c);
             REQUIRE(resp["description"].get<string>() ==
                 "interface org.test\n\n"
                 "method P(p: string) -> (q: string)\n\n"
@@ -127,12 +114,10 @@ TEST_CASE("Testing server with client")
     {
         bool flag{false};
         auto msg = varlink_message(
-            "org.varlink.service.GetInterfaceDescription",
-            {{"interface", "org.notfound"}});
-        client.async_call(msg, [&](auto ec, const json& resp, bool c) {
-            // TODO: Forward error type, obviously
-            REQUIRE(ec == net::error::no_data);
-            REQUIRE(not c);
+            "org.varlink.service.GetInterfaceDescription", {{"interface", "org.notfound"}});
+        client.async_call(msg, [&](auto ec, const json& resp) {
+            REQUIRE(ec.category() == varlink_category());
+            REQUIRE(ec.message() == "org.varlink.service.InterfaceNotFound");
             REQUIRE(resp["interface"].get<std::string>() == "org.notfound");
             flag = true;
         });
@@ -143,11 +128,10 @@ TEST_CASE("Testing server with client")
     SECTION("Call method GetInterfaceDescription without paramter")
     {
         bool flag{false};
-        auto msg = varlink_message(
-            "org.varlink.service.GetInterfaceDescription", {});
-        client.async_call(msg, [&](auto ec, const json& resp, bool c) {
-            REQUIRE(ec == net::error::no_data);
-            REQUIRE(not c);
+        auto msg = varlink_message("org.varlink.service.GetInterfaceDescription", {});
+        client.async_call(msg, [&](auto ec, const json& resp) {
+            REQUIRE(ec.category() == varlink_category());
+            REQUIRE(ec.message() == "org.varlink.service.InvalidParameter");
             REQUIRE(resp["parameter"].get<std::string>() == "interface");
             flag = true;
         });
@@ -159,9 +143,8 @@ TEST_CASE("Testing server with client")
     {
         bool flag{false};
         auto msg = varlink_message("org.test.P", {{"p", "test"}});
-        client.async_call(msg, [&](auto ec, const json& resp, bool c) {
+        client.async_call(msg, [&](auto ec, const json& resp) {
             REQUIRE(not ec);
-            REQUIRE(not c);
             REQUIRE(resp["q"].get<string>() == "test");
             flag = true;
         });
@@ -173,9 +156,9 @@ TEST_CASE("Testing server with client")
     {
         bool flag{false};
         auto msg = varlink_message("org.test.P", {{"q", "invalid"}});
-        client.async_call(msg, [&](auto ec, const json& resp, bool c) {
-            REQUIRE(ec == net::error::no_data);
-            REQUIRE(not c);
+        client.async_call(msg, [&](auto ec, const json& resp) {
+            REQUIRE(ec.category() == varlink_category());
+            REQUIRE(ec.message() == "org.varlink.service.InvalidParameter");
             REQUIRE(resp["parameter"].get<std::string>() == "p");
             flag = true;
         });
@@ -186,10 +169,10 @@ TEST_CASE("Testing server with client")
     SECTION("Call method org.test.More without more flag")
     {
         bool flag{false};
-        auto msg = varlink_message("org.test.M", {{"n", 5}}, callmode::basic);
-        client.async_call(msg, [&](auto ec, const json& resp, bool c) {
-            REQUIRE(ec == net::error::no_data);
-            REQUIRE(not c);
+        auto msg = varlink_message("org.test.M", {{"n", 5}});
+        client.async_call(msg, [&](auto ec, const json& resp) {
+            REQUIRE(ec.category() == varlink_category());
+            REQUIRE(ec.message() == "org.varlink.service.MethodNotImplemented");
             REQUIRE(resp["method"].get<std::string>() == "org.test.M");
             flag = true;
         });
@@ -200,8 +183,8 @@ TEST_CASE("Testing server with client")
     SECTION("Call method org.test.More wtih more flag")
     {
         int flag{0};
-        auto msg = varlink_message("org.test.M", {{"n", 5}}, callmode::more);
-        client.async_call(msg, [&](auto ec, const json& resp, bool c) {
+        auto msg = varlink_message_more("org.test.M", {{"n", 5}});
+        client.async_call_more(msg, [&](auto ec, const json& resp, bool c) {
             REQUIRE(not ec);
             REQUIRE(c == (flag < 5));
             REQUIRE(flag++ == resp["m"].get<int>());
@@ -217,20 +200,16 @@ TEST_CASE("Testing server with client")
         int flag{0};
         steady_clock::time_point more_done{};
         steady_clock::time_point ping_done{};
-        auto msg1 = varlink_message(
-            "org.test.M", {{"n", 5}, {"t", true}}, callmode::more);
-        client.async_call(msg1, [&](auto ec, const json& resp, bool c) {
+        auto msg1 = varlink_message_more("org.test.M", {{"n", 5}, {"t", true}});
+        client.async_call_more(msg1, [&](auto ec, const json& resp, bool c) {
             REQUIRE(not ec);
             REQUIRE(c == (flag < 5));
             REQUIRE(flag++ == resp["m"].get<int>());
-            if (not c) {
-                more_done = steady_clock::now();
-            }
+            if (not c) { more_done = steady_clock::now(); }
         });
         auto msg2 = varlink_message("org.test.P", {{"p", "test"}});
-        client.async_call(msg2, [&](auto ec, const json& resp, bool c) {
+        client.async_call(msg2, [&](auto ec, const json& resp) {
             REQUIRE(not ec);
-            REQUIRE(not c);
             REQUIRE(resp["q"].get<string>() == "test");
             ping_done = steady_clock::now();
         });
@@ -243,9 +222,8 @@ TEST_CASE("Testing server with client")
     {
         bool flag{false};
         auto msg = varlink_message("org.test.E", json::object());
-        client.async_call(msg, [&](auto ec, const json& resp, bool c) {
+        client.async_call(msg, [&](auto ec, const json& resp) {
             REQUIRE(not ec);
-            REQUIRE(not c);
             REQUIRE(resp.is_object());
             REQUIRE(resp.empty());
             flag = true;
@@ -257,12 +235,9 @@ TEST_CASE("Testing server with client")
     SECTION("Call a oneway method")
     {
         bool flag{false};
-        auto msg = varlink_message(
-            "org.test.P", {{"p", "test"}}, callmode::oneway);
-        client.async_call(msg, [&](auto ec, const json& resp, bool c) {
+        auto msg = varlink_message_oneway("org.test.P", {{"p", "test"}});
+        client.async_call_oneway(msg, [&](auto ec) {
             REQUIRE(not ec);
-            REQUIRE(not c);
-            REQUIRE(resp.is_null());
             flag = true;
         });
         REQUIRE(ctx.run() > 0);
@@ -273,18 +248,14 @@ TEST_CASE("Testing server with client")
     {
         bool flag1{false};
         bool flag2{false};
-        auto msg1 = varlink_message(
-            "org.test.P", {{"p", "test"}}, callmode::oneway);
-        client.async_call(msg1, [&](auto ec, const json& resp, bool c) {
+        auto msg1 = varlink_message_oneway("org.test.P", {{"p", "test"}});
+        client.async_call_oneway(msg1, [&](auto ec) {
             REQUIRE(not ec);
-            REQUIRE(not c);
-            REQUIRE(resp.is_null());
             flag1 = true;
         });
         auto msg2 = varlink_message("org.test.P", {{"p", "test"}});
-        client.async_call(msg2, [&](auto ec, const json& resp, bool c) {
+        client.async_call(msg2, [&](auto ec, const json& resp) {
             REQUIRE(not ec);
-            REQUIRE(not c);
             REQUIRE(resp["q"].get<std::string>() == "test");
             flag2 = true;
         });
@@ -296,11 +267,9 @@ TEST_CASE("Testing server with client")
     SECTION("Call with upgrade flag")
     {
         bool flag{false};
-        auto msg = varlink_message(
-            "org.test.P", {{"p", "test"}}, callmode::upgrade);
-        client.async_call(msg, [&](auto ec, const json& resp, bool c) {
+        auto msg = varlink_message_upgrade("org.test.P", {{"p", "test"}});
+        client.async_call_upgrade(msg, [&](auto ec, const json& resp) {
             REQUIRE(not ec);
-            REQUIRE(not c);
             REQUIRE(resp["q"].get<string>() == "test");
             flag = true;
         });
@@ -312,9 +281,9 @@ TEST_CASE("Testing server with client")
     {
         bool flag{false};
         auto msg = varlink_message("org.notfound.NonExistent", {});
-        client.async_call(msg, [&](auto ec, const json& resp, bool c) {
-            REQUIRE(ec == net::error::no_data);
-            REQUIRE(not c);
+        client.async_call(msg, [&](auto ec, const json& resp) {
+            REQUIRE(ec.category() == varlink_category());
+            REQUIRE(ec.message() == "org.varlink.service.InterfaceNotFound");
             REQUIRE(resp["interface"].get<std::string>() == "org.notfound");
             flag = true;
         });
@@ -326,9 +295,9 @@ TEST_CASE("Testing server with client")
     {
         bool flag{false};
         auto msg = varlink_message("org.test.NonExistent", {});
-        client.async_call(msg, [&](auto ec, const json& resp, bool c) {
-            REQUIRE(ec == net::error::no_data);
-            REQUIRE(not c);
+        client.async_call(msg, [&](auto ec, const json& resp) {
+            REQUIRE(ec.category() == varlink_category());
+            REQUIRE(ec.message() == "org.varlink.service.MethodNotFound");
             REQUIRE(resp["method"].get<std::string>() == "org.test.NonExistent");
             flag = true;
         });
@@ -361,18 +330,15 @@ TEST_CASE("Testing server with client")
         steady_clock::duration ping_duration{};
         bool flag{false};
         int more_cnt = 0;
-        auto more = varlink_message(
-            "org.test.M", {{"n", 1}, {"t", true}}, callmode::more);
-        client.async_call(more, [&](auto ec, const json& resp, bool c) {
+        auto more = varlink_message_more("org.test.M", {{"n", 1}, {"t", true}});
+        client.async_call_more(more, [&](auto ec, const json& resp, bool c) {
             REQUIRE(not ec);
             REQUIRE(resp["m"].get<int>() == more_cnt++);
-            if (not c)
-                more_duration = steady_clock::now() - begin;
+            if (not c) more_duration = steady_clock::now() - begin;
         });
         auto ping = varlink_message("org.test.P", {{"p", "test"}});
-        client2.async_call(ping, [&](auto ec, const json& resp, bool c) {
+        client2.async_call(ping, [&](auto ec, const json& resp) {
             REQUIRE(not ec);
-            REQUIRE(not c);
             REQUIRE(resp["q"].get<string>() == "test");
             ping_duration = steady_clock::now() - begin;
             flag = true;

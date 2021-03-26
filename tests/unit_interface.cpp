@@ -360,6 +360,22 @@ TEST_CASE("Varlink interface types")
             varlink_interface("interface org.test\ntype I (b: [ 1 1 ]bool)"));
     }
 
+    SECTION("Test enum")
+    {
+        varlink_interface interface("interface org.test\ntype E(A,B,C)");
+        struct Testdata {
+            json data;
+            json type;
+        };
+        std::vector<Testdata> testdata{
+            {R"({"a":"A"})"_json, R"({"a":{"type":"E"}})"_json},
+            {R"({"a":"B"})"_json, R"({"a":{"type":"E"}})"_json},
+        };
+        for (const auto& test : testdata) {
+            REQUIRE_NOTHROW(interface.validate(test.data, test.type));
+        }
+    }
+
     SECTION("Test valid json objects against varlink typespecs")
     {
         varlink_interface interface("interface org.test\ntype T(n: ?int)");

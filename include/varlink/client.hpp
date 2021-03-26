@@ -15,8 +15,7 @@ class varlink_client {
     {
         return std::visit(
             [&](auto&& sockaddr) -> varlink_client_variant {
-                using Socket =
-                    typename std::decay_t<decltype(sockaddr)>::protocol_type::socket;
+                using Socket = typename std::decay_t<decltype(sockaddr)>::protocol_type::socket;
                 auto socket = Socket{ctx, sockaddr.protocol()};
                 socket.connect(sockaddr);
                 return async_client(std::move(socket));
@@ -33,11 +32,8 @@ class varlink_client {
         : varlink_client(ctx, varlink_uri(uri))
     {
     }
-    template <
-        typename Socket,
-        typename = std::enable_if_t<std::is_base_of_v<net::socket_base, Socket>>>
-    explicit varlink_client(Socket&& socket)
-        : client(async_client(std::forward<Socket>(socket)))
+    template <typename Socket, typename = std::enable_if_t<std::is_base_of_v<net::socket_base, Socket>>>
+    explicit varlink_client(Socket&& socket) : client(async_client(std::forward<Socket>(socket)))
     {
     }
 
@@ -50,20 +46,54 @@ class varlink_client {
     auto async_call(Args&&... args)
     {
         return std::visit(
-            [&](auto&& c) { return c.async_call(std::forward<Args>(args)...); },
-            client);
+            [&](auto&& c) { return c.async_call(std::forward<Args>(args)...); }, client);
     }
 
-    std::function<json()> call(const varlink_message& message)
+    template <typename... Args>
+    auto async_call_more(Args&&... args)
     {
-        return std::visit([&](auto&& c) { return c.call(message); }, client);
+        return std::visit(
+            [&](auto&& c) { return c.async_call_more(std::forward<Args>(args)...); }, client);
     }
-    std::function<json()> call(
-        const std::string& method,
-        const json& parameters,
-        callmode mode = callmode::basic)
+
+    template <typename... Args>
+    auto async_call_oneway(Args&&... args)
     {
-        return call(varlink_message(method, parameters, mode));
+        return std::visit(
+            [&](auto&& c) { return c.async_call_oneway(std::forward<Args>(args)...); }, client);
+    }
+
+    template <typename... Args>
+    auto async_call_upgrade(Args&&... args)
+    {
+        return std::visit(
+            [&](auto&& c) { return c.async_call_upgrade(std::forward<Args>(args)...); }, client);
+    }
+
+    template <typename... Args>
+    json call(Args&&... args)
+    {
+        return std::visit([&](auto&& c) { return c.call(std::forward<Args>(args)...); }, client);
+    }
+
+    template <typename... Args>
+    std::function<json()> call_more(Args&&... args)
+    {
+        return std::visit([&](auto&& c) { return c.call_more(std::forward<Args>(args)...); }, client);
+    }
+
+    template <typename... Args>
+    void call_oneway(Args&&... args)
+    {
+        return std::visit(
+            [&](auto&& c) { return c.call_oneway(std::forward<Args>(args)...); }, client);
+    }
+
+    template <typename... Args>
+    json call_upgrade(Args&&... args)
+    {
+        return std::visit(
+            [&](auto&& c) { return c.call_upgrade(std::forward<Args>(args)...); }, client);
     }
 };
 } // namespace varlink

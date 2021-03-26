@@ -1,8 +1,8 @@
 #ifndef LIBVARLINK_ASYNC_SERVER_HPP
 #define LIBVARLINK_ASYNC_SERVER_HPP
 
-#include <filesystem>
 #include <variant>
+#include <experimental/filesystem>
 #include <varlink/server_session.hpp>
 
 namespace varlink {
@@ -34,24 +34,18 @@ class async_server : public std::enable_shared_from_this<async_server<Acceptor>>
     async_server(async_server&& src) noexcept = default;
     async_server& operator=(async_server&& src) noexcept = default;
 
-    template <ASIO_COMPLETION_TOKEN_FOR(
-        void(std::error_code, std::shared_ptr<connection_type>))
-                  ConnectionHandler ASIO_DEFAULT_COMPLETION_TOKEN_TYPE(executor_type)>
-    auto async_accept(
-        ConnectionHandler&& handler ASIO_DEFAULT_COMPLETION_TOKEN(executor_type))
+    template <VARLINK_COMPLETION_TOKEN_FOR(void(std::error_code, std::shared_ptr<connection_type>))
+                  ConnectionHandler VARLINK_DEFAULT_COMPLETION_TOKEN_TYPE(executor_type)>
+    auto async_accept(ConnectionHandler&& handler VARLINK_DEFAULT_COMPLETION_TOKEN(executor_type))
     {
-        return net::async_initiate<
-            ConnectionHandler,
-            void(std::error_code, std::shared_ptr<session_type>)>(
+        return net::async_initiate<ConnectionHandler, void(std::error_code, std::shared_ptr<session_type>)>(
             async_accept_initiator(this), handler);
     }
 
     void async_serve_forever()
     {
         async_accept([this](auto ec, auto session) {
-            if (ec) {
-                return;
-            }
+            if (ec) { return; }
             session->start();
             async_serve_forever();
         });
@@ -59,10 +53,9 @@ class async_server : public std::enable_shared_from_this<async_server<Acceptor>>
 
     ~async_server()
     {
+        using namespace std::experimental::filesystem;
         if constexpr (std::is_same_v<protocol_type, net::local::stream_protocol>) {
-            if (acceptor_.is_open()) {
-                std::filesystem::remove(acceptor_.local_endpoint().path());
-            }
+            if (acceptor_.is_open()) { remove(acceptor_.local_endpoint().path()); }
         }
     }
 
@@ -72,22 +65,17 @@ class async_server : public std::enable_shared_from_this<async_server<Acceptor>>
         async_server<Acceptor>* self_;
 
       public:
-        explicit async_accept_initiator(async_server<Acceptor>* self)
-            : self_(self)
-        {
-        }
+        explicit async_accept_initiator(async_server<Acceptor>* self) : self_(self) {}
 
         template <typename ConnectionHandler>
         void operator()(ConnectionHandler&& handler)
         {
             self_->acceptor_.async_accept(
-                [self = self_,
-                 handler_ = std::forward<ConnectionHandler>(handler)](
+                [self = self_, handler_ = std::forward<ConnectionHandler>(handler)](
                     std::error_code ec, socket_type socket) mutable {
                     std::shared_ptr<session_type> session{};
                     if (!ec) {
-                        session = std::make_shared<session_type>(
-                            std::move(socket), self->service_);
+                        session = std::make_shared<session_type>(std::move(socket), self->service_);
                     }
                     handler_(ec, std::move(session));
                 });

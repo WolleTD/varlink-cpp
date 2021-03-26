@@ -1,6 +1,5 @@
 #ifndef LIBVARLINK_URI_HPP
 #define LIBVARLINK_URI_HPP
-#include <charconv>
 #include <variant>
 #include <varlink/detail/config.hpp>
 #undef unix
@@ -41,9 +40,7 @@ struct varlink_uri {
             type = type::tcp;
             path = path.substr(4);
             const auto colon = path.find(':');
-            if (colon == std::string_view::npos) {
-                throw std::invalid_argument("Missing port");
-            }
+            if (colon == std::string_view::npos) { throw std::invalid_argument("Missing port"); }
             host = path.substr(0, colon);
             port = path.substr(colon + 1);
         }
@@ -53,8 +50,7 @@ struct varlink_uri {
     }
 };
 
-using endpoint_variant =
-    std::variant<net::local::stream_protocol::endpoint, net::ip::tcp::endpoint>;
+using endpoint_variant = std::variant<net::local::stream_protocol::endpoint, net::ip::tcp::endpoint>;
 
 inline endpoint_variant endpoint_from_uri(const varlink_uri& uri)
 {
@@ -62,11 +58,7 @@ inline endpoint_variant endpoint_from_uri(const varlink_uri& uri)
         return net::local::stream_protocol::endpoint{uri.path};
     }
     else if (uri.type == varlink_uri::type::tcp) {
-        uint16_t port{0};
-        if (auto r = std::from_chars(uri.port.begin(), uri.port.end(), port);
-            r.ptr != uri.port.end()) {
-            throw std::invalid_argument("Invalid port");
-        }
+        uint16_t port = static_cast<uint16_t>(std::stoi(std::string(uri.port)));
         return net::ip::tcp::endpoint(net::ip::make_address_v4(uri.host), port);
     }
     else {

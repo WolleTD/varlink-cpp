@@ -38,6 +38,7 @@ varlink_srv.add_interface(org_example_more_varlink, varlink::callback_map{
     {"Ping", [] varlink_callback { send_reply({{"pong", parameters["ping"]}}, /* continues = */ false); }}
 });
 
+varlink_srv.async_serve_forever();
 ctx.run();
 }
 ```
@@ -54,19 +55,15 @@ ctx.run();
 varlink::net::io_context ctx{};
 auto client = varlink::varlink_client{ctx, "unix:/tmp/example.varlink"};
 
-// .call returns a callable object which will retrieve the result
-auto read_reply = client.call("org.example.more.Ping", R"({"ping":"Test"})"_json);
-
-// either returns parameters only or throws varlink::varlink_error on error
-auto reply = read_reply();
-
-// parameter contents and types of the reply are validated by the service as well
+// .call returns a json object of the result ["parameters"]
+auto reply = client.call("org.example.more.Ping", R"({"ping":"Test"})"_json);
+// all parameters are validated by the server
 assert(reply["pong"].get<std::string>() == "Test");
 
-// subsequent calls to read_reply() will return more replies if a "more" call continues
-// or nullptr if no more replies are available (immediately on "oneway" calls)
-assert(read_reply() == nullptr);
-} // dtor closes connection
+// .call_more returns a callable object
+auto more = client.call_more("org.example.more.TestMore", json{{"n","1"}});
+reply = more();
+}
 ```
 
 ## Client (async):
@@ -84,7 +81,7 @@ auto client = varlink::varlink_client{ctx, "unix:/tmp/example.varlink"};
 json reply{};
 // async_call (currently) captures the message by value
 client.async_call(varlink::varlink_message("org.example.more.Ping", R"({"ping":"Test"})"_json),
-                  [](auto ec, const json& rep, bool continues){
+                  [&](auto ec, const json& rep){
     reply = rep;
 });
 

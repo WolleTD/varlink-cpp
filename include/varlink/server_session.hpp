@@ -6,8 +6,7 @@
 
 namespace varlink {
 template <typename Socket>
-class server_session
-    : public std::enable_shared_from_this<server_session<Socket>> {
+class server_session : public std::enable_shared_from_this<server_session<Socket>> {
   public:
     using socket_type = Socket;
     using protocol_type = typename socket_type::protocol_type;
@@ -17,10 +16,7 @@ class server_session
     using std::enable_shared_from_this<server_session<Socket>>::shared_from_this;
 
     socket_type& socket() { return connection.socket(); }
-    [[nodiscard]] const socket_type& socket() const
-    {
-        return connection.socket();
-    }
+    [[nodiscard]] const socket_type& socket() const { return connection.socket(); }
 
     executor_type get_executor() { return socket().get_executor(); }
 
@@ -42,20 +38,16 @@ class server_session
     void start()
     {
         connection.async_receive([self = shared_from_this()](auto ec, auto&& j) {
-            if (ec and ec != net::error::try_again)
-                return;
+            if (ec) return;
             try {
-                const varlink_message message{j};
-                self->service_.message_call(
-                    message, [self, ec](const json& reply, bool continues) {
-                        if (reply.is_object()) {
-                            auto m = std::make_unique<json>(reply);
-                            self->async_send_reply(std::move(m));
-                        }
-                        if (not continues and (ec != net::error::try_again)) {
-                            self->start();
-                        }
-                    });
+                const basic_varlink_message message{j};
+                self->service_.message_call(message, [self, ec](const json& reply, bool continues) {
+                    if (reply.is_object()) {
+                        auto m = std::make_unique<json>(reply);
+                        self->async_send_reply(std::move(m));
+                    }
+                    if (not continues) { self->start(); }
+                });
             }
             catch (...) {
             }
@@ -66,12 +58,9 @@ class server_session
     void async_send_reply(std::unique_ptr<json> message)
     {
         auto& data = *message;
-        connection.async_send(
-            data, [m = std::move(message), self = shared_from_this()](auto ec) {
-                if (ec) {
-                    self->connection.socket().cancel();
-                }
-            });
+        connection.async_send(data, [m = std::move(message), self = shared_from_this()](auto ec) {
+            if (ec) { self->connection.socket().cancel(); }
+        });
     }
 };
 

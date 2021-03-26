@@ -4,7 +4,7 @@
 #include <varlink/threaded_server.hpp>
 
 using namespace varlink;
-namespace fs = std::filesystem;
+namespace fs = std::experimental::filesystem;
 
 TEST_CASE("VarlinkAPI, UnsupportedProtocol")
 {

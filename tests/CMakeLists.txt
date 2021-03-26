@@ -9,9 +9,11 @@ include(CodeCoverage)
 append_coverage_compiler_flags()
 endif ()
 
+link_libraries(varlink++)
+
 function(varlink_test NAME)
     add_executable(test_${NAME} ${ARGN})
-    target_link_libraries(test_${NAME} PRIVATE Catch2::Catch2 varlink++)
+    target_link_libraries(test_${NAME} PRIVATE Catch2::Catch2)
     add_test(${NAME} test_${NAME})
 endfunction()
 
@@ -33,7 +35,7 @@ varlink_test(unittests
 varlink_test(self_errors self_errors.cpp unit_main.cpp)
 
 add_library(catch_main test_main.cpp)
-target_link_libraries(catch_main PUBLIC Catch2::Catch2 varlink++)
+target_link_libraries(catch_main PUBLIC Catch2::Catch2)
 
 varlink_test(self_unix self_test_threaded.cpp)
 target_link_libraries(test_self_unix PRIVATE catch_main)
@@ -50,12 +52,11 @@ target_link_libraries(test_self_tcp_async PRIVATE catch_main)
 target_compile_definitions(test_self_tcp_async PRIVATE VARLINK_TEST_TCP VARLINK_TEST_ASYNC)
 
 add_executable(cert_client cert_client.cpp)
-target_link_libraries(cert_client PRIVATE varlink++)
+add_executable(cert_client_async cert_client_async.cpp)
 
 varlink_wrapper(org.varlink.certification.varlink)
 add_executable(cert_server cert_server.cpp org.varlink.certification.varlink.hpp)
 target_include_directories(cert_server PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
-target_link_libraries(cert_server PRIVATE varlink++)
 
 bash_test(certification self_cert.sh)
 

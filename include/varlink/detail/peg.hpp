@@ -27,10 +27,7 @@ struct name : seq<range<'A', 'Z'>, star<alnum>> {
 struct interface_name
     : seq<range<'a', 'z'>,
           star<star<one<'-'>>, ranges<'a', 'z', '0', '9'>>,
-          plus<
-              one<'.'>,
-              ranges<'a', 'z', '0', '9'>,
-              star<star<one<'-'>>, ranges<'a', 'z', '0', '9'>>>> {
+          plus<one<'.'>, ranges<'a', 'z', '0', '9'>, star<star<one<'-'>>, ranges<'a', 'z', '0', '9'>>>> {
 };
 struct array : string<'[', ']'> {
 };
@@ -61,13 +58,10 @@ struct object_start : one<'('> {
 };
 struct object_end : one<')'> {
 };
-struct venum : seq<object_start,
-                   opt<list<seq<star<wce>, field_name, star<wce>>, one<','>>>,
-                   star<wce>,
-                   object_end> {
+struct venum
+    : seq<object_start, opt<list<seq<star<wce>, field_name, star<wce>>, one<','>>>, star<wce>, object_end> {
 };
-struct argument
-    : seq<star<wce>, field_name, star<wce>, one<':'>, star<wce>, type> {
+struct argument : seq<star<wce>, field_name, star<wce>, one<':'>, star<wce>, type> {
 };
 struct vstruct
     : seq<object_start, opt<list<seq<argument, star<wce>>, one<','>>>, star<wce>, object_end> {
@@ -88,19 +82,11 @@ struct kwarrow : string<'-', '>'> {
 struct method
     : seq<kwmethod, plus<wce>, name, star<wce>, vstruct, star<wce>, kwarrow, star<wce>, vstruct> {
 };
-struct member
-    : sor<seq<star<wce>, method>, seq<star<wce>, vtypedef>, seq<star<wce>, error>> {
+struct member : sor<seq<star<wce>, method>, seq<star<wce>, vtypedef>, seq<star<wce>, error>> {
 };
 struct kwinterface : string<'i', 'n', 't', 'e', 'r', 'f', 'a', 'c', 'e'> {
 };
-struct interface : must<
-                       star<wce>,
-                       kwinterface,
-                       plus<wce>,
-                       interface_name,
-                       eol,
-                       list<member, eol>,
-                       star<wce>> {
+struct interface : must<star<wce>, kwinterface, plus<wce>, interface_name, eol, list<member, eol>, star<wce>> {
 };
 
 template <typename Rule>
@@ -151,9 +137,7 @@ struct parser_state {
 
 INSERTER(grammar::wce)
 {
-    if (*input.begin() == '#') {
-        pstate.global.moving_docstring += input.string();
-    }
+    if (*input.begin() == '#') { pstate.global.moving_docstring += input.string(); }
     else if (*input.begin() == '\n') {
         pstate.global.moving_docstring.clear();
     }
@@ -201,8 +185,7 @@ INSERTER(grammar::trivial_element_type)
 
 INSERTER(grammar::name)
 {
-    if (pstate.stack.size() == 1)
-        pstate.global.name = input.string();
+    if (pstate.stack.size() == 1) pstate.global.name = input.string();
 }
 
 INSERTER(grammar::venum)
@@ -291,8 +274,7 @@ INSERTER(grammar::error)
 {
     for (const auto& m : interface.errors) {
         if (m.name == pstate.global.name)
-            throw std::invalid_argument(
-                "Multiple definition of error " + pstate.global.name);
+            throw std::invalid_argument("Multiple definition of error " + pstate.global.name);
     }
     auto& state = pstate.stack.back();
     interface.errors.emplace_back(
@@ -306,8 +288,7 @@ INSERTER(grammar::method)
             interface.methods.cend(),
             [name = pstate.global.name](auto& m) { return (m.name == name); })
         != interface.methods.cend()) {
-        throw std::invalid_argument(
-            "Multiple definition of method " + pstate.global.name);
+        throw std::invalid_argument("Multiple definition of method " + pstate.global.name);
     }
     auto& state = pstate.stack.back();
     using MethodCallback = decltype(CallbackMap::value_type::callback);
@@ -332,8 +313,7 @@ INSERTER(grammar::vtypedef)
 {
     for (const auto& m : interface.types) {
         if (m.name == pstate.global.name)
-            throw std::invalid_argument(
-                "Multiple definition of type " + pstate.global.name);
+            throw std::invalid_argument("Multiple definition of type " + pstate.global.name);
     }
     auto& state = pstate.stack.back();
     interface.types.emplace_back(

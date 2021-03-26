@@ -1,7 +1,6 @@
 #pragma once
-#include <asio.hpp>
-
-namespace net = ::asio;
+#include <varlink/detail/config.hpp>
+using namespace varlink;
 
 class FakeSocket : public net::socket_base {
   public:
