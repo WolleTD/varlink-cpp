@@ -36,7 +36,7 @@ class movable_function : public std::function<T> {
         std::enable_if_t<!std::is_copy_constructible<Fn>::value && std::is_move_constructible<Fn>::value>> {
         Fn fn;
 
-        explicit wrapper(Fn&& fn) : fn(std::forward<Fn>(fn)) {}
+        explicit wrapper(Fn&& _fn) : fn(std::forward<Fn>(_fn)) {}
 
         wrapper(wrapper&&) = default;
         wrapper& operator=(wrapper&&) = default;
