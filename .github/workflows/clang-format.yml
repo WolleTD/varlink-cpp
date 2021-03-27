@@ -1,0 +1,15 @@
+name: Run clang-format
+
+on:
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check format
+      uses: wolletd/clang-format-checker@master
+      with:
+        source-ref: ${{ github.event.pull_request.head.sha }}
+        target-ref: master
