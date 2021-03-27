@@ -1,0 +1,35 @@
+name: CMake
+
+on:
+  pull_request:
+    branches: [ master ]
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Check format
+      uses: wolletd/clang-format-checker@master
+      with:
+        source-ref: ${{ github.event.pull_request.head.sha }}
+        target-ref: master
+
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Configure CMake
+      run: cmake -S. -Bbuild -DCMAKE_BUILD_TYPE=$BUILD_TYPE
+
+    - name: Build
+      run: cmake --build build -j `nproc`
+
+    - name: Test
+      working-directory: ${{github.workspace}}/build
+      run: ctest
