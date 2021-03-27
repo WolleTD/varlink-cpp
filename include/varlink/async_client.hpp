@@ -23,13 +23,9 @@ class async_client {
     executor_type get_executor() { return socket().get_executor(); }
 
     explicit async_client(Socket socket)
-        : connection(std::move(socket)), call_strand(get_executor())
-    {
-    }
+        : connection(std::move(socket)), call_strand(get_executor()) { }
     explicit async_client(Connection&& existing_connection)
-        : connection(std::move(existing_connection)), call_strand(get_executor())
-    {
-    }
+        : connection(std::move(existing_connection)), call_strand(get_executor()) { }
 
     template <VARLINK_COMPLETION_TOKEN_FOR(void(std::error_code, std::shared_ptr<connection_type>))
                   ReplyHandler VARLINK_DEFAULT_COMPLETION_TOKEN_TYPE(executor_type)>
@@ -41,10 +37,15 @@ class async_client {
             initiate_async_call<callmode::basic>(this), handler, message);
     }
 
+
+
+
     template <typename ReplyHandler>
     auto async_call(std::string_view method, const json& parameters, ReplyHandler&& handler)
     {
-        auto message = varlink_message(method, parameters);
+        auto message =
+            varlink_message(method, parameters);
+
         return async_call(message, std::forward<ReplyHandler>(handler));
     }
 
