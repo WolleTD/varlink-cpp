@@ -13,7 +13,7 @@ jobs:
 
     steps:
     - name: Check format
-      uses: wolletd/clang-format-checker@master
+      uses: wolletd/clang-format-checker@v1
       with:
         source-ref: ${{ github.event.pull_request.head.sha }}
         target-ref: master
