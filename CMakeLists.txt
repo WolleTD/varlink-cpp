@@ -28,24 +28,19 @@ if(NOT VARLINK_USE_EXTERNAL_JSON)
         VERSION 3.9.1
     )
     if (nlohmann_json_ADDED)
-        add_library(nlohmann_json::nlohmann_json INTERFACE IMPORTED)
-        target_include_directories(nlohmann_json::nlohmann_json INTERFACE ${nlohmann_json_SOURCE_DIR}/include)
+        add_library(nlohmann_json INTERFACE IMPORTED)
+        target_include_directories(nlohmann_json INTERFACE ${nlohmann_json_SOURCE_DIR}/include)
     endif()
 else()
-    if (NOT TARGET nlohmann_json::nlohmann_json)
+    if (NOT TARGET nlohmann_json)
         find_package(nlohmann_json REQUIRED)
     endif()
 endif()
 
 if(NOT VARLINK_USE_EXTERNAL_PEGTL)
-    CPMAddPackage(
-            NAME pegtl
-            GITHUB_REPOSITORY taocpp/pegtl
-            GIT_TAG 2.8.3
-            OPTIONS
-            "PEGTL_BUILD_TESTS OFF"
-            "PEGTL_BUILD_EXAMPLES OFF"
-    )
+    set(PEGTL_BUILD_TESTS OFF)
+    set(PEGTL_BUILD_EXAMPLES OFF)
+    CPMAddPackage("gh:taocpp/pegtl@2.8.3#2.8.3")
 else()
     find_package(pegtl REQUIRED)
 endif()
@@ -81,7 +76,7 @@ target_include_directories(varlink++ PUBLIC
         ${PROJECT_BINARY_DIR}/include
         )
 
-target_link_libraries(varlink++ INTERFACE nlohmann_json::nlohmann_json taocpp::pegtl asio stdc++fs)
+target_link_libraries(varlink++ INTERFACE nlohmann_json taocpp::pegtl asio stdc++fs)
 
 # command line tool and more example
 
@@ -94,11 +89,7 @@ endif()
 
 if(VARLINK_BUILD_TESTS)
     if(NOT VARLINK_USE_EXTERNAL_CATCH2)
-        CPMAddPackage(
-                NAME Catch2
-                GITHUB_REPOSITORY catchorg/Catch2
-                VERSION 2.13.2
-        )
+        CPMAddPackage("gh:catchorg/Catch2@2.13.2")
     else()
         find_package(Catch2 REQUIRED)
     endif()
