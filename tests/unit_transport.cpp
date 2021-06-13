@@ -2,6 +2,7 @@
 #include <varlink/json_connection.hpp>
 
 #include "fake_socket.hpp"
+#include <asio/yield.hpp>
 
 using namespace varlink;
 using test_connection = json_connection<FakeSocket>;
@@ -89,9 +90,7 @@ TEST_CASE("JSON transport async read")
             [](const json& r) { REQUIRE(r["object"].get<bool>() == true); },
             [](const json& r) { REQUIRE(r.get<std::string>() == "string"); },
             [](const json& r) { REQUIRE(r["int"].get<int>() == 42); },
-            [](const json& r) {
-                REQUIRE(r["float"].get<double>() == Approx(3.14));
-            },
+            [](const json& r) { REQUIRE(r["float"].get<double>() == Approx(3.14)); },
             [](const json& r) { REQUIRE(r[0].get<std::string>() == "array"); },
             [](const json& r) { REQUIRE(r.is_null() == true); },
         };
@@ -188,8 +187,7 @@ TEST_CASE("JSON transport sync write")
 
     SECTION("Write basic json")
     {
-        setup_test(
-            "{\"object\":true}", "\"string\"", "{\"float\":3.14}", "null");
+        setup_test("{\"object\":true}", "\"string\"", "{\"float\":3.14}", "null");
         conn->send(R"({"object":true})"_json);
         conn->send(R"("string")"_json);
         conn->send(R"({"float":3.14})"_json);
@@ -199,8 +197,7 @@ TEST_CASE("JSON transport sync write")
 
     SECTION("Write partial")
     {
-        setup_test(
-            R"({"s":1})", R"({"object":true,"toolong":true})", R"({"last":true})");
+        setup_test(R"({"s":1})", R"({"object":true,"toolong":true})", R"({"last":true})");
         conn->socket().write_max = 10;
         conn->send(R"({"s":1})"_json);
         conn->send(R"({"object":true,"toolong":true})"_json);
@@ -228,8 +225,7 @@ TEST_CASE("JSON transport async write")
 
     SECTION("Write basic json")
     {
-        setup_test(
-            "{\"object\":true}", "\"string\"", "{\"float\":3.14}", "null");
+        setup_test("{\"object\":true}", "\"string\"", "{\"float\":3.14}", "null");
         std::vector<json> tests = {
             R"({"object":true})"_json,
             R"("string")"_json,
@@ -245,17 +241,23 @@ TEST_CASE("JSON transport async write")
 
     SECTION("Write partial")
     {
-        setup_test(
-            R"({"s":1})", R"({"object":true,"toolong":true})", R"({"last":true})");
+        setup_test(R"({"s":1})", R"({"object":true,"toolong":true})", R"({"last":true})");
         conn->socket().write_max = 10;
-        std::vector<json> tests = {
-            R"({"s":1})"_json,
-            R"({"object":true,"toolong":true})"_json,
-            R"({"last":true})"_json,
+        struct test : asio::coroutine {
+            void operator()(std::error_code ec = {})
+            {
+                REQUIRE(not ec);
+                reenter(*this)
+                {
+                    yield conn.async_send(R"({"s":1})"_json, *this);
+                    yield conn.async_send(R"({"object":true,"toolong":true})"_json, *this);
+                    yield conn.async_send(R"({"last":true})"_json, *this);
+                }
+            }
+
+            json_connection<FakeSocket>& conn;
         };
-        for (const auto& t : tests) {
-            conn->async_send(t, [](auto ec) { REQUIRE(not ec); });
-        }
+        test{{}, *conn}();
         REQUIRE(ctx.run() > 0);
         conn->socket().validate_write();
     }

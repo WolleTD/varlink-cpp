@@ -4,7 +4,6 @@
 
 #include <optional>
 #include <varlink/detail/config.hpp>
-#include <varlink/detail/manual_strand.hpp>
 #include <varlink/detail/nl_json.hpp>
 
 namespace varlink {
@@ -29,16 +28,10 @@ class json_connection {
     byte_buffer readbuf;
     byte_buffer::iterator read_end;
     socket_type stream;
-    net::strand<executor_type> read_strand;
-    detail::manual_strand<executor_type> write_strand;
 
   public:
     explicit json_connection(socket_type socket)
-        : readbuf(BUFSIZ),
-          read_end(readbuf.begin()),
-          stream(std::move(socket)),
-          read_strand(stream.get_executor()),
-          write_strand(stream.get_executor())
+        : readbuf(BUFSIZ), read_end(readbuf.begin()), stream(std::move(socket))
     {
     }
 
@@ -122,21 +115,19 @@ class json_connection {
             self_->stream.async_receive(
                 net::buffer(
                     &(*self_->read_end), static_cast<size_t>(self_->readbuf.end() - self_->read_end)),
-                net::bind_executor(
-                    self_->read_strand,
-                    [self = self_, handler = std::forward<CompletionHandler>(handler)](
-                        std::error_code ec, size_t n) mutable {
-                        if (ec) { handler(ec, json{}); }
-                        else {
-                            self->read_end += static_cast<ptrdiff_t>(n);
-                            while (auto message = self->read_next_message(ec)) {
-                                handler(ec, message.value());
-                            }
-                            if (self->read_end != self->readbuf.begin()) {
-                                self->async_receive(std::forward<CompletionHandler>(handler));
-                            }
+                [self = self_, handler = std::forward<CompletionHandler>(handler)](
+                    std::error_code ec, size_t n) mutable {
+                    if (ec) { handler(ec, json{}); }
+                    else {
+                        self->read_end += static_cast<ptrdiff_t>(n);
+                        while (auto message = self->read_next_message(ec)) {
+                            handler(ec, message.value());
                         }
-                    }));
+                        if (self->read_end != self->readbuf.begin()) {
+                            self->async_receive(std::forward<CompletionHandler>(handler));
+                        }
+                    }
+                });
         }
     };
     class initiate_async_send {
@@ -149,19 +140,13 @@ class json_connection {
         template <typename CompletionHandler>
         void operator()(CompletionHandler&& handler, const json& message)
         {
-            self_->write_strand.push(
-                [self = self_, &message, handler = std::forward<CompletionHandler>(handler)]() mutable {
-                    auto m = std::make_unique<std::string>(message.dump());
-                    auto buffer = net::buffer(m->data(), m->size() + 1);
-                    net::async_write(
-                        self->stream,
-                        buffer,
-                        [handler = std::forward<CompletionHandler>(handler), self, m = std::move(m)](
-                            std::error_code ec, size_t) mutable {
-                            self->write_strand.next();
-                            handler(ec);
-                        });
-                });
+            auto m = std::make_unique<std::string>(message.dump());
+            auto buffer = net::buffer(m->data(), m->size() + 1);
+            net::async_write(
+                self_->stream,
+                buffer,
+                [handler = std::forward<CompletionHandler>(handler), self = self_, m = std::move(m)](
+                    std::error_code ec, size_t) mutable { handler(ec); });
         }
     };
 };

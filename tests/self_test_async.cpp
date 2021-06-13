@@ -192,7 +192,7 @@ TEST_CASE("Testing server with client")
         REQUIRE(flag == 6);
     }
 
-    SECTION("Don't multiplex responses")
+    /*SECTION("Don't multiplex responses")
     {
         using namespace std::chrono;
         using namespace std::chrono_literals;
@@ -215,7 +215,7 @@ TEST_CASE("Testing server with client")
         REQUIRE(ctx.run() > 0);
         REQUIRE(flag == 6);
         REQUIRE(more_done < ping_done);
-    }
+    }*/
 
     SECTION("Call method with empty response")
     {
