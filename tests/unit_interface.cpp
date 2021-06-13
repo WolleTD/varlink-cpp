@@ -305,6 +305,7 @@ TEST_CASE("Varlink interface types")
         REQUIRE_NOTHROW(varlink_interface("interface org.test\ntype I (f: float)"));
         REQUIRE_NOTHROW(varlink_interface("interface org.test\ntype I (b: []bool)"));
         REQUIRE_NOTHROW(varlink_interface("interface org.test\ntype I (i: ?int)"));
+        REQUIRE_NOTHROW(varlink_interface("interface org.test\ntype E (A, B, C)\ntype I (e: E)"));
     }
 
     SECTION("Parse invalid type specifications")

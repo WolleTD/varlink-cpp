@@ -28,6 +28,19 @@ TEST_CASE("Client sync call processing")
         REQUIRE(resp["pong"].get<std::string>() == "123");
     }
 
+    SECTION("Two calls")
+    {
+        setup_test(
+            R"({"method":"org.test.Test","parameters":{"ping":"123"}})",
+            R"({"parameters":{"pong":"123"}})");
+        std::string calls = R"({"method":"org.test.Test","parameters":{"ping":"123"}})";
+        calls += '\0';
+        calls += R"({"method":"org.test.Test","parameters":{"ping":"123"}})";
+        auto resp = client->call("org.test.Test", {{"ping", "123"}});
+        client->socket().validate_write();
+        REQUIRE(resp["pong"].get<std::string>() == "123");
+    }
+
     SECTION("Oneway call")
     {
         setup_test(

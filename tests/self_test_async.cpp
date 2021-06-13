@@ -231,6 +231,20 @@ TEST_CASE("Testing server with client")
         REQUIRE(flag);
     }
 
+    SECTION("Call method with empty response")
+    {
+        bool flag{false};
+        auto msg = varlink_message("org.test.E", json::object());
+        client.async_call(msg, [&](auto ec, const json& resp) {
+            REQUIRE(not ec);
+            REQUIRE(resp.is_object());
+            REQUIRE(resp.empty());
+            flag = true;
+        });
+        REQUIRE(ctx.run() > 0);
+        REQUIRE(flag);
+    }
+
     SECTION("Call a oneway method")
     {
         bool flag{false};
