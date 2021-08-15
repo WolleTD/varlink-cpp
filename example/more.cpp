@@ -19,9 +19,7 @@ class example_more_server {
                 json state = json::object();
                 state["progress"] = (100 / count) * i;
                 send_reply({{"state", state}}, true);
-                if (i < count) {
-                    start_timer(i + 1, count, send_reply);
-                }
+                if (i < count) { start_timer(i + 1, count, send_reply); }
                 else {
                     state.erase("progress");
                     state["end"] = true;

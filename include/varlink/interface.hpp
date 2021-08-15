@@ -1,146 +1,151 @@
 #ifndef LIBVARLINK_INTERFACE_HPP
 #define LIBVARLINK_INTERFACE_HPP
 
-#include <varlink/detail/peg.hpp>
+#include <varlink/detail/message.hpp>
+#include <varlink/detail/scanner.hpp>
 #include <varlink/detail/varlink_error.hpp>
-
-namespace grammar {
-template <typename Rule>
-struct inserter;
-}
 
 #define varlink_callback                               \
     ([[maybe_unused]] const varlink::json& parameters, \
      [[maybe_unused]] bool wants_more,                 \
-     [[maybe_unused]] const varlink::reply_function& send_reply)
+     [[maybe_unused]] const varlink::detail::reply_function& send_reply)
 
 namespace varlink {
-using reply_function = std::function<void(json::object_t, bool)>;
-using callback_function = std::function<void(const json&, bool, const reply_function&)>;
+using detail::callback_function;
+using detail::reply_function;
 
-struct method_callback {
-    std::string_view method;
+struct user_callback {
+    std::string_view name;
     callback_function callback;
 };
-using callback_map = std::vector<method_callback>;
-
-namespace interface {
-struct type {
-    const std::string name;
-    const std::string description;
-    const json data;
-
-    type(std::string Name, std::string Description, json Data)
-        : name(std::move(Name)), description(std::move(Description)), data(std::move(Data))
-    {
-    }
-    friend std::ostream& operator<<(std::ostream& os, const type& type);
-};
-
-struct error : type {
-    error(const std::string& Name, const std::string& Description, const json& Data)
-        : type(Name, Description, Data)
-    {
-    }
-    friend std::ostream& operator<<(std::ostream& os, const error& error);
-};
-
-struct method {
-    const std::string name;
-    const std::string description;
-    const json parameters;
-    const json return_value;
-    const callback_function callback;
-
-    method(
-        std::string Name,
-        std::string Description,
-        json parameterType,
-        json returnType,
-        callback_function Callback)
-        : name(std::move(Name)),
-          description(std::move(Description)),
-          parameters(std::move(parameterType)),
-          return_value(std::move(returnType)),
-          callback(std::move(Callback))
-    {
-    }
-    friend std::ostream& operator<<(std::ostream& os, const method& method);
-};
-} // namespace interface
+using callback_map = std::vector<user_callback>;
 
 class varlink_interface {
   private:
+    struct method_callback {
+        method_callback(std::string method_, callback_function callback_)
+            : method(std::move(method_)), callback(std::move(callback_))
+        {
+        }
+
+        std::string method;
+        callback_function callback;
+    };
     std::string ifname{};
     std::string documentation{};
     std::string_view description{};
 
-    std::vector<interface::type> types{};
-    std::vector<interface::method> methods{};
-    std::vector<interface::error> errors{};
+    std::vector<detail::member> members{};
+    std::vector<method_callback> methods{};
 
-    template <typename Rule>
-    friend struct grammar::inserter;
-
-    template <typename T>
-    [[nodiscard]] inline const T& find_member(const std::vector<T>& list, const std::string& name) const
+    [[nodiscard]] const detail::member& find_member(const std::string& name, detail::MemberKind kind) const
     {
-        auto i = std::find_if(list.begin(), list.end(), [&](const T& e) { return e.name == name; });
-        if (i == list.end()) throw std::out_of_range(name);
+        auto i = std::find_if(members.begin(), members.end(), [&](const auto& e) {
+            return e.name == name && (e.kind == kind || kind == detail::MemberKind::Undefined);
+        });
+        if (i == members.end()) throw std::out_of_range(name);
         return *i;
     }
 
-    template <typename T>
-    [[nodiscard]] inline bool has_member(const std::vector<T>& list, const std::string& name) const
+    [[nodiscard]] bool has_member(const std::string& name, detail::MemberKind kind) const
     {
-        return std::any_of(list.begin(), list.end(), [&name](const T& e) { return e.name == name; });
+        return std::any_of(members.begin(), members.end(), [&](const auto& e) {
+            return e.name == name && (e.kind == kind || kind == detail::MemberKind::Undefined);
+        });
     }
 
   public:
-    explicit varlink_interface(std::string_view fromDescription, const callback_map& callbacks = {})
+    explicit varlink_interface(std::string_view fromDescription, callback_map callbacks = {})
         : description(fromDescription)
     {
-        pegtl::string_input parser_in{description, __FUNCTION__};
-        try {
-            grammar::parser_state state(callbacks);
-            pegtl::parse<grammar::interface, grammar::inserter>(parser_in, *this, state);
-            if (!state.global.callbacks.empty()) {
-                throw std::invalid_argument(
-                    "Unknown method " + std::string(state.global.callbacks[0].method));
+        auto scanner = detail::scanner(std::string(description));
+        ifname = scanner.read_interface_name();
+        documentation = scanner.get_docstring();
+        while (auto member = scanner.read_member()) {
+            if (std::any_of(members.begin(), members.end(), [&member](auto& m) {
+                    return m.name == member.name;
+                })) {
+                throw std::invalid_argument("Member names must be unique");
             }
+            if (member.kind == detail::MemberKind::Method) {
+                auto i = std::find_if(callbacks.begin(), callbacks.end(), [&](const auto& cb) {
+                    return cb.name == member.name;
+                });
+                if (i != callbacks.end()) {
+                    methods.emplace_back(member.name, i->callback);
+                    callbacks.erase(i);
+                }
+            }
+            members.push_back(std::move(member));
         }
-        catch (const pegtl::parse_error& e) {
-            throw std::invalid_argument(e.what());
-        }
+        if (members.empty()) throw std::invalid_argument("At least one member is required");
+        if (not callbacks.empty()) throw std::invalid_argument("Callback for unknown method");
+    }
+
+    template <typename ReplyHandler>
+    void call(const basic_varlink_message& message, ReplyHandler&& replySender) const
+    {
+        const auto name = message.interface_and_method().second;
+        const auto& m = method(name);
+        validate(message.parameters(), m.data["parameters"]);
+        const auto it = std::find_if(
+            methods.begin(), methods.end(), [&name](auto& e) { return e.method == name; });
+        if (it == methods.end()) throw std::bad_function_call{};
+
+        it->callback(
+            message.parameters(),
+            message.more(),
+            // This is not an asynchronous callback and exceptions
+            // will propagate up to the outer try-catch in this fn.
+            // TODO: This isn't true if the callback dispatches async ops
+            [this,
+             oneway = message.oneway(),
+             more = message.more(),
+             &return_type = m.data["return_value"],
+             replySender = std::forward<ReplyHandler>(replySender)](
+                const json::object_t& params, bool continues) mutable {
+                validate(params, return_type);
+
+                if (oneway) { replySender(nullptr, false); }
+                else if (more) {
+                    replySender({{"parameters", params}, {"continues", continues}}, continues);
+                }
+                else if (continues) { // and not more
+                    throw std::bad_function_call{};
+                }
+                else {
+                    replySender({{"parameters", params}}, false);
+                }
+            });
     }
 
     [[nodiscard]] const std::string& name() const noexcept { return ifname; }
     [[nodiscard]] const std::string& doc() const noexcept { return documentation; }
 
-    [[nodiscard]] const interface::method& method(const std::string& name) const
+    [[nodiscard]] const detail::member& method(const std::string& name) const
     {
-        return find_member(methods, name);
+        return find_member(name, detail::MemberKind::Method);
     }
-    [[nodiscard]] const interface::type& type(const std::string& name) const
+    [[nodiscard]] const detail::member& type(const std::string& name) const
     {
-        return find_member(types, name);
+        return find_member(name, detail::MemberKind::Type);
     }
-    [[nodiscard]] const interface::error& error(const std::string& name) const
+    [[nodiscard]] const detail::member& error(const std::string& name) const
     {
-        return find_member(errors, name);
+        return find_member(name, detail::MemberKind::Error);
     }
 
     [[nodiscard]] bool has_method(const std::string& name) const noexcept
     {
-        return has_member(methods, name);
+        return has_member(name, detail::MemberKind::Method);
     }
     [[nodiscard]] bool has_type(const std::string& name) const noexcept
     {
-        return has_member(types, name);
+        return has_member(name, detail::MemberKind::Type);
     }
     [[nodiscard]] bool has_error(const std::string& name) const noexcept
     {
-        return has_member(errors, name);
+        return has_member(name, detail::MemberKind::Error);
     }
 
     void validate(const json& data, const json& typespec) const
@@ -217,92 +222,11 @@ class varlink_interface {
     friend std::ostream& operator<<(std::ostream& os, const varlink_interface& interface);
 };
 
-namespace interface {
-inline std::string element_to_string(const json& elem, int indent = 4, size_t depth = 0)
-{
-    if (elem.is_string()) { return elem.get<std::string>(); }
-    else {
-        const auto is_multiline = [&]() -> bool {
-            if (indent < 0) return false;
-            if (elem.is_null() || elem.empty()) return false;
-            if (elem.is_object()) {
-                if (elem["_order"].size() > 2) return true;
-                for (const auto& member_name : elem["_order"]) {
-                    auto& member = elem[member_name.get<std::string>()];
-                    if (member.contains("array_type") && member["array_type"].get<bool>())
-                        return true;
-                    if (member["type"].is_object()) return true;
-                }
-            }
-            if (element_to_string(elem, -1, depth).size() > 40) return true;
-            return false;
-        };
-        const bool multiline{is_multiline()};
-        const std::string spaces = multiline
-                                     ? std::string(static_cast<size_t>(indent) * (depth + 1), ' ')
-                                     : "";
-        const std::string sep = multiline ? ",\n" : ", ";
-        std::string s = multiline ? "(\n" : "(";
-        bool first = true;
-        if (elem.is_array()) {
-            for (const auto& member : elem) {
-                if (first)
-                    first = false;
-                else
-                    s += sep;
-                s += spaces + member.get<std::string>();
-            }
-        }
-        else {
-            for (const auto& member : elem["_order"]) {
-                if (first)
-                    first = false;
-                else
-                    s += sep;
-                s += spaces + member.get<std::string>() + ": ";
-                auto type = elem[member.get<std::string>()];
-                if (type.contains("maybe_type") && type["maybe_type"].get<bool>()) s += "?";
-                if (type.contains("array_type") && type["array_type"].get<bool>()) s += "[]";
-                if (type.contains("dict_type") && type["dict_type"].get<bool>()) s += "[string]";
-                s += element_to_string(type["type"], indent, depth + 1);
-            }
-        }
-        s += multiline ? "\n" + std::string(static_cast<size_t>(indent) * depth, ' ') + ")" : ")";
-        return s;
-    }
-}
-
-inline std::ostream& operator<<(std::ostream& os, const varlink::interface::type& type)
-{
-    return os << type.description << "type " << type.name << " " << element_to_string(type.data)
-              << "\n";
-}
-
-inline std::ostream& operator<<(std::ostream& os, const varlink::interface::error& error)
-{
-    return os << error.description << "error " << error.name << " "
-              << element_to_string(error.data, -1) << "\n";
-}
-
-inline std::ostream& operator<<(std::ostream& os, const varlink::interface::method& method)
-{
-    return os << method.description << "method " << method.name
-              << element_to_string(method.parameters, -1) << " -> "
-              << element_to_string(method.return_value) << "\n";
-}
-} // namespace interface
-
 inline std::ostream& operator<<(std::ostream& os, const varlink::varlink_interface& interface)
 {
     os << interface.documentation << "interface " << interface.ifname << "\n";
-    for (const auto& type : interface.types) {
-        os << "\n" << type;
-    }
-    for (const auto& method : interface.methods) {
-        os << "\n" << method;
-    }
-    for (const auto& error : interface.errors) {
-        os << "\n" << error;
+    for (const auto& member : interface.members) {
+        os << "\n" << member;
     }
     return os;
 }

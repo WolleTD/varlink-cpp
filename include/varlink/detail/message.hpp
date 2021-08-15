@@ -1,7 +1,6 @@
 #ifndef LIBVARLINK_MESSAGE_HPP
 #define LIBVARLINK_MESSAGE_HPP
 
-#include <iostream>
 #include <varlink/detail/nl_json.hpp>
 
 namespace varlink {

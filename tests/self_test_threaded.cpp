@@ -1,4 +1,5 @@
 #include <filesystem>
+#include <thread>
 #include <catch2/catch.hpp>
 #include <varlink/client.hpp>
 

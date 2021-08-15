@@ -82,34 +82,7 @@ class varlink_service {
         }
 
         try {
-            const auto& method = interface->method(methodname);
-            interface->validate(message.parameters(), method.parameters);
-
-            method.callback(
-                message.parameters(),
-                message.more(),
-                // This is not an asynchronous callback and exceptions
-                // will propagate up to the outer try-catch in this fn.
-                // TODO: This isn't true if the callback dispatches async ops
-                [oneway = message.oneway(),
-                 more = message.more(),
-                 &interface = *interface,
-                 &method,
-                 replySender = std::forward<ReplyHandler>(replySender)](
-                    const json::object_t& params, bool continues) mutable {
-                    interface.validate(params, method.return_value);
-
-                    if (oneway) { replySender(nullptr, false); }
-                    else if (more) {
-                        replySender({{"parameters", params}, {"continues", continues}}, continues);
-                    }
-                    else if (continues) { // and not more
-                        throw std::bad_function_call{};
-                    }
-                    else {
-                        replySender({{"parameters", params}}, false);
-                    }
-                });
+            interface->call(message, std::forward<ReplyHandler>(replySender));
         }
         catch (std::out_of_range& e) {
             error("org.varlink.service.MethodNotFound", {{"method", ifname + '.' + methodname}});

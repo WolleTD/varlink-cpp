@@ -3,7 +3,7 @@
 #include <varlink/interface.hpp>
 
 using namespace varlink;
-using namespace varlink::interface;
+using namespace varlink::detail;
 
 TEST_CASE("Varlink interface complete")
 {
@@ -249,7 +249,7 @@ TEST_CASE("Varlink interface header")
 
 TEST_CASE("Varlink interface methods")
 {
-    SECTION("At least one method is required")
+    SECTION("At least one member is required")
     {
         REQUIRE_THROWS(varlink_interface("interface org.test\n"));
     }

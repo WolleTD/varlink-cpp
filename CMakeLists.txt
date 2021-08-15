@@ -9,7 +9,6 @@ option(VARLINK_USE_BOOST "Use boost/asio instead of standalone" OFF)
 option(VARLINK_BUILD_TESTS "Build tests" ON)
 option(VARLINK_BUILD_EXAMPLES "Build examples" OFF)
 cmake_dependent_option(VARLINK_USE_EXTERNAL_JSON "Use external nlohmann/json.hpp" OFF "NOT VARLINK_NO_DOWNLOADS" ON)
-cmake_dependent_option(VARLINK_USE_EXTERNAL_PEGTL "Use external taocpp/pegtl" OFF "NOT VARLINK_NO_DOWNLOADS" ON)
 cmake_dependent_option(VARLINK_USE_EXTERNAL_CATCH2 "Use external catch2" OFF "NOT VARLINK_NO_DOWNLOADS" ON)
 cmake_dependent_option(VARLINK_USE_EXTERNAL_ASIO "Use external asio" OFF "NOT VARLINK_NO_DOWNLOADS;NOT VARLINK_USE_BOOST" ON)
 
@@ -35,14 +34,6 @@ else()
     if (NOT TARGET nlohmann_json)
         find_package(nlohmann_json REQUIRED)
     endif()
-endif()
-
-if(NOT VARLINK_USE_EXTERNAL_PEGTL)
-    set(PEGTL_BUILD_TESTS OFF)
-    set(PEGTL_BUILD_EXAMPLES OFF)
-    CPMAddPackage("gh:taocpp/pegtl@2.8.3#2.8.3")
-else()
-    find_package(pegtl REQUIRED)
 endif()
 
 if(NOT TARGET asio)
@@ -76,7 +67,7 @@ target_include_directories(varlink++ PUBLIC
         ${PROJECT_BINARY_DIR}/include
         )
 
-target_link_libraries(varlink++ INTERFACE nlohmann_json taocpp::pegtl asio stdc++fs)
+target_link_libraries(varlink++ INTERFACE nlohmann_json asio stdc++fs)
 
 # command line tool and more example
 
