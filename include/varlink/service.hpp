@@ -2,6 +2,7 @@
 #define LIBVARLINK_SERVICE_HPP
 
 #include <mutex>
+#include <sstream>
 #include <varlink/detail/message.hpp>
 #include <varlink/detail/org.varlink.service.varlink.hpp>
 #include <varlink/interface.hpp>

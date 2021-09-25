@@ -4,15 +4,33 @@
 #include <functional>
 #include <optional>
 #include <ostream>
-#include <regex>
 #include <string>
 #include <utility>
 #include <variant>
 #include <varlink/detail/nl_json.hpp>
 
+#ifdef VARLINK_DISABLE_CTRE
+#include <regex>
+#else
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wold-style-cast"
+#pragma GCC diagnostic ignored "-Wshadow"
+#pragma GCC diagnostic ignored "-Wsign-conversion"
+#include <ctre.hpp>
+#pragma GCC diagnostic pop
+#endif
+
 namespace varlink::detail {
 using reply_function = std::function<void(json::object_t, bool)>;
 using callback_function = std::function<void(const json&, bool, const reply_function&)>;
+
+#ifdef VARLINK_DISABLE_CTRE
+#define REGEX std::regex
+#define expect(...) expect_re(__VA_ARGS__)
+#else
+#define REGEX static constexpr ctll::fixed_string
+#define expect(...) expect_re<__VA_ARGS__>()
+#endif
 
 enum class MemberKind { Undefined, Type, Error, Method };
 struct member {
@@ -90,7 +108,7 @@ class scanner {
         std::optional<bool> isEnum = std::nullopt;
         std::string keyword;
         try {
-            keyword = expect(std::regex("\\)"));
+            keyword = expect(closing_bracket);
         }
         catch (...) {
         }
@@ -149,8 +167,9 @@ class scanner {
         }
     }
 
+#ifdef VARLINK_DISABLE_CTRE
     template <typename... Regex>
-    std::string expect(const Regex&... rex)
+    std::string expect_re(const Regex&... rex)
     {
         static_assert((std::is_same_v<std::regex, Regex> && ...));
         if (std::smatch m;
@@ -179,18 +198,54 @@ class scanner {
             throw std::runtime_error("interface error" + _m.str() + " | " + _m.prefix().str());
         }
     }
+#else
+    template <CTRE_REGEX_INPUT_TYPE Regex>
+    auto match_one(std::string_view& out)
+    {
+        if (auto m = ctre::starts_with<Regex>(pos_, desc_.end()); m && out.empty()) {
+            out = m.to_view();
+        }
+    }
+
+    template <CTRE_REGEX_INPUT_TYPE... Regex>
+    std::string expect_re()
+    {
+        if (auto m = ctre::starts_with<whitespace>(pos_, desc_.end()); m) {
+            auto s = m.to_view();
+            auto doc = ctre::search<docstring>(s);
+            while (doc) {
+                current_doc_ += doc.to_string();
+                s.remove_prefix(doc.size());
+                doc = ctre::search<docstring>(s);
+            }
+            pos_ += static_cast<ptrdiff_t>(m.size());
+        }
+        if (pos_ == desc_.end()) return {};
+        std::string_view match;
+        (match_one<Regex>(match), ...);
+        if (not match.empty()) {
+            pos_ += static_cast<ptrdiff_t>(match.length());
+            return std::string(match);
+        }
+        else {
+            throw std::runtime_error("interface error" + std::string(pos_, pos_ + 20));
+        }
+    }
+#endif
 
     const std::string desc_;
     std::string::const_iterator pos_;
     std::string current_doc_;
-    std::regex whitespace{"([ \t\n]|#.*(\n|$))+"};
-    std::regex docstring{"(?:.*)#(.*)\r?\n"};
-    std::regex method_signature{
-        "([ \t\n]|#.*\n)*(\\([^)]*\\))([ \t\n]|#.*\n)*->([ \t\n]|#.*\n)*(\\([^)]*\\))"};
-    std::regex keyword_pattern{R"(\b[a-z]+\b|[:,(){}]|->|\[\]|\?|\[string\])"};
-    std::regex ifname_pattern{"[a-z](-*[a-z0-9])*(\\.[a-z0-9](-*[a-z0-9])*)+"};
-    std::regex member_pattern{"\\b[A-Z][A-Za-z0-9]*\\b"};
-    std::regex identifier_pattern{"\\b[A-Za-z](_?[A-Za-z0-9])*\\b"};
+
+    REGEX whitespace{"([ \t\n]|#[^\n]*(\n|$))+"};
+    REGEX docstring{"(?:[^\n]*)#([^\n]*)\r?\n"};
+    REGEX method_signature{
+        "([ \t\n]|#[^\n]*\n)*(\\([^)]*\\))([ \t\n]|#[^\n]*\n)*->([ \t\n]|#[^\n]*\n)*(\\([^)]*\\))"};
+    REGEX keyword_pattern{R"(\b[a-z]+\b|[:,(){}]|->|\[\]|\?|\[string\])"};
+    REGEX closing_bracket{"\\)"};
+    REGEX ifname_pattern{"[a-z](-*[a-z0-9])*(\\.[a-z0-9](-*[a-z0-9])*)+"};
+    REGEX member_pattern{"\\b[A-Z][A-Za-z0-9]*\\b"};
+    REGEX identifier_pattern{"\\b[A-Za-z](_?[A-Za-z0-9])*\\b"};
 };
 
 inline std::string element_to_string(const json& elem, int indent = 4, size_t depth = 0)
@@ -272,4 +327,6 @@ inline std::ostream& operator<<(std::ostream& os, const member& mem)
 }
 }
 
+#undef REGEX
+#undef expect
 #endif // LIBVARLINK_SCANNER_HPP
