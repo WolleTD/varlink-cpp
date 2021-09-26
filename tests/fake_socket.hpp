@@ -12,6 +12,7 @@ struct fake_proto {
 class FakeSocket : public net::socket_base {
   public:
     using protocol_type = fake_proto;
+    using endpoint_type = typename protocol_type::endpoint;
     using executor_type = net::any_io_executor;
     bool error_on_write{false};
     bool cancelled{false};

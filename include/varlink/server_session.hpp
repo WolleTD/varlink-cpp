@@ -18,7 +18,7 @@ class server_session : public std::enable_shared_from_this<server_session<Protoc
     socket_type& socket() { return connection.socket(); }
     [[nodiscard]] const socket_type& socket() const { return connection.socket(); }
 
-    executor_type get_executor() { return socket().get_executor(); }
+    executor_type get_executor() { return connection.get_executor(); }
 
   private:
     connection_type connection;
@@ -59,7 +59,7 @@ class server_session : public std::enable_shared_from_this<server_session<Protoc
     {
         auto& data = *message;
         connection.async_send(data, [m = std::move(message), self = shared_from_this()](auto ec) {
-            if (ec) { self->connection.socket().cancel(); }
+            if (ec) { self->connection.cancel(); }
         });
     }
 };

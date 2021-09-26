@@ -348,6 +348,20 @@ TEST_CASE("Testing server with client")
         REQUIRE(flag);
         REQUIRE(ping_duration < more_duration * 0.8);
     }
+
+    SECTION("Move client and call method org.test.Ping")
+    {
+        bool flag{false};
+        auto msg = varlink_message("org.test.P", {{"p", "test"}});
+        auto my_client = std::move(client);
+        my_client.async_call(msg, [&](auto ec, const json& resp) {
+            REQUIRE(not ec);
+            REQUIRE(resp["q"].get<string>() == "test");
+            flag = true;
+        });
+        REQUIRE(ctx.run() > 0);
+        REQUIRE(flag);
+    }
 }
 
 TEST_CASE("Testing server with raw socket data")

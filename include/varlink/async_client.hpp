@@ -14,13 +14,17 @@ class async_client {
   public:
     using protocol_type = Protocol;
     using socket_type = typename protocol_type::socket;
+    using endpoint_type = typename protocol_type::endpoint;
     using executor_type = typename socket_type::executor_type;
     using connection_type = json_connection<protocol_type>;
 
     socket_type& socket() { return connection.socket(); }
     [[nodiscard]] const socket_type& socket() const { return connection.socket(); }
 
-    executor_type get_executor() { return socket().get_executor(); }
+    executor_type get_executor() { return connection.get_executor(); }
+
+    explicit async_client(const asio::any_io_executor& ex) : async_client(socket_type(ex)) {}
+    explicit async_client(asio::io_context& ctx) : async_client(socket_type(ctx)) {}
 
     explicit async_client(socket_type socket)
         : connection(std::move(socket)), call_strand(get_executor())
@@ -30,6 +34,26 @@ class async_client {
         : connection(std::move(existing_connection)), call_strand(get_executor())
     {
     }
+
+    template <typename ConnectHandler>
+    decltype(auto) async_connect(const endpoint_type& endpoint, ConnectHandler&& handler)
+    {
+        return connection.async_connect(endpoint, std::forward<ConnectHandler>(handler));
+    }
+
+    void connect(const endpoint_type& endpoint) { connection.connect(endpoint); }
+    void connect(const endpoint_type& endpoint, std::error_code& ec)
+    {
+        connection.connect(endpoint, ec);
+    }
+
+    void close() { connection.close(); }
+    void close(std::error_code& ec) { connection.close(ec); }
+
+    void cancel() { connection.cancel(); }
+    void cancel(std::error_code& ec) { connection.cancel(ec); }
+
+    bool is_open() { return connection.is_open(); }
 
     template <VARLINK_COMPLETION_TOKEN_FOR(void(std::error_code, std::shared_ptr<connection_type>))
                   ReplyHandler VARLINK_DEFAULT_COMPLETION_TOKEN_TYPE(executor_type)>

@@ -14,6 +14,7 @@ class json_connection {
   public:
     using protocol_type = Protocol;
     using socket_type = typename protocol_type::socket;
+    using endpoint_type = typename protocol_type::endpoint;
     using executor_type = typename socket_type::executor_type;
 
     socket_type& socket() { return stream; }
@@ -32,6 +33,8 @@ class json_connection {
     detail::manual_strand<executor_type> write_strand;
 
   public:
+    explicit json_connection(asio::io_context& ctx) : json_connection(socket_type(ctx)) {}
+
     explicit json_connection(socket_type socket)
         : readbuf(BUFSIZ),
           read_end(readbuf.begin()),
@@ -44,7 +47,28 @@ class json_connection {
     json_connection(const json_connection&) = delete;
     json_connection& operator=(const json_connection&) = delete;
     json_connection(json_connection&&) noexcept = default;
-    json_connection& operator=(json_connection&&) noexcept = default;
+    // NOLINTNEXTLINE(performance-noexcept-move-constructor) stream's operator= isn't noexcept
+    json_connection& operator=(json_connection&&) = default;
+
+    template <typename ConnectHandler>
+    decltype(auto) async_connect(const endpoint_type& endpoint, ConnectHandler&& handler)
+    {
+        return stream.async_connect(endpoint, std::forward<ConnectHandler>(handler));
+    }
+
+    void connect(const endpoint_type& endpoint) { stream.connect(endpoint); }
+    void connect(const endpoint_type& endpoint, std::error_code& ec)
+    {
+        stream.connect(endpoint, ec);
+    }
+
+    void close() { stream.close(); }
+    void close(std::error_code& ec) { stream.close(ec); }
+
+    void cancel() { stream.cancel(); }
+    void cancel(std::error_code& ec) { stream.cancel(ec); }
+
+    bool is_open() { return stream.is_open(); }
 
     template <VARLINK_COMPLETION_TOKEN_FOR(void(std::error_code))
                   CompletionHandler VARLINK_DEFAULT_COMPLETION_TOKEN_TYPE(executor_type)>
