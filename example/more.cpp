@@ -47,7 +47,7 @@ class example_more_server {
         };
 
         auto more = [this] varlink_callback {
-            if (wants_more) {
+            if (mode == callmode::more) {
                 nlohmann::json state = {{"start", true}};
                 send_reply({{"state", state}}, true);
                 state.erase("start");

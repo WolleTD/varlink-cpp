@@ -7,36 +7,27 @@
 
 #define varlink_callback                               \
     ([[maybe_unused]] const varlink::json& parameters, \
-     [[maybe_unused]] bool wants_more,                 \
-     [[maybe_unused]] const varlink::detail::reply_function& send_reply)
+     [[maybe_unused]] varlink::callmode mode,          \
+     [[maybe_unused]] const varlink::reply_function& send_reply)
 
 namespace varlink {
-using detail::callback_function;
-using detail::reply_function;
+using reply_function = std::function<void(json::object_t, bool)>;
+using callback_function = std::function<void(const json&, callmode, const reply_function&)>;
 
 struct user_callback {
-    std::string_view name;
+    std::string name;
     callback_function callback;
 };
-using callback_map = std::vector<user_callback>;
+using callback_map = std::map<std::string, callback_function>;
 
 class varlink_interface {
   private:
-    struct method_callback {
-        method_callback(std::string method_, callback_function callback_)
-            : method(std::move(method_)), callback(std::move(callback_))
-        {
-        }
-
-        std::string method;
-        callback_function callback;
-    };
     std::string ifname{};
     std::string documentation{};
     std::string_view description{};
 
     std::vector<detail::member> members{};
-    std::vector<method_callback> methods{};
+    callback_map methods{};
 
     [[nodiscard]] const detail::member& find_member(std::string_view name, detail::MemberKind kind) const
     {
@@ -61,24 +52,19 @@ class varlink_interface {
         auto scanner = detail::scanner(std::string(description));
         ifname = scanner.read_interface_name();
         documentation = scanner.get_docstring();
-        auto member = scanner.read_member();
-        while (member.kind != detail::MemberKind::Undefined) {
-            if (std::any_of(members.begin(), members.end(), [&member](auto& m) {
-                    return m.name == member.name;
-                })) {
+        for (auto member = scanner.read_member(); member.kind != detail::MemberKind::Undefined;
+             member = scanner.read_member()) {
+            auto names_equal = [&](const auto& v) { return v.name == member.name; };
+            if (std::any_of(members.begin(), members.end(), names_equal)) {
                 throw std::invalid_argument("Member names must be unique");
             }
             if (member.kind == detail::MemberKind::Method) {
-                auto i = std::find_if(callbacks.begin(), callbacks.end(), [&](const auto& cb) {
-                    return cb.name == member.name;
-                });
-                if (i != callbacks.end()) {
-                    methods.emplace_back(member.name, i->callback);
+                if (auto i = callbacks.find(member.name); i != callbacks.end()) {
+                    methods[member.name] = i->second;
                     callbacks.erase(i);
                 }
             }
             members.push_back(std::move(member));
-            member = scanner.read_member();
         }
         if (members.empty()) throw std::invalid_argument("At least one member is required");
         if (not callbacks.empty()) throw std::invalid_argument("Callback for unknown method");
@@ -87,36 +73,33 @@ class varlink_interface {
     template <typename ReplyHandler>
     void call(const basic_varlink_message& message, ReplyHandler&& replySender) const
     {
-        const auto name = message.interface_and_method().second;
-        const auto& m = method(name);
+        const auto& m = method(message.method());
         validate(message.parameters(), m.data.get<detail::vl_struct>()[0].second);
-        const auto it = std::find_if(
-            methods.begin(), methods.end(), [&name](auto& e) { return e.method == name; });
+        const auto it = methods.find(m.name);
         if (it == methods.end()) throw std::bad_function_call{};
 
-        it->callback(
+        it->second(
             message.parameters(),
-            message.more(),
+            message.mode(),
             // This is not an asynchronous callback and exceptions
             // will propagate up to the outer try-catch in this fn.
             // TODO: This isn't true if the callback dispatches async ops
             [this,
-             oneway = message.oneway(),
-             more = message.more(),
+             mode = message.mode(),
              &return_type = m.data.get<detail::vl_struct>()[1].second,
              replySender = std::forward<ReplyHandler>(replySender)](
                 const json::object_t& params, bool continues) mutable {
                 validate(params, return_type);
 
-                if (oneway) { replySender(nullptr, false); }
-                else if (more) {
-                    replySender({{"parameters", params}, {"continues", continues}}, continues);
+                if (mode == callmode::oneway) { replySender(nullptr); }
+                else if (mode == callmode::more) {
+                    replySender({{"parameters", params}, {"continues", continues}});
                 }
                 else if (continues) { // and not more
                     throw std::bad_function_call{};
                 }
                 else {
-                    replySender({{"parameters", params}}, false);
+                    replySender({{"parameters", params}});
                 }
             });
     }
@@ -150,7 +133,7 @@ class varlink_interface {
         return has_member(name, detail::MemberKind::Error);
     }
 
-    void validate(
+    void validate( // NOLINT(misc-no-recursion)
         const json& data,
         const detail::type_spec& typespec,
         std::string_view name = "<root>",
@@ -160,7 +143,7 @@ class varlink_interface {
             return varlink_error(
                 "org.varlink.service.InvalidParameter", {{"parameter", std::string(arg)}});
         };
-        auto check_type = [](const json& object, std::string_view type) {
+        auto is_primitive = [](const json& object, std::string_view type) {
             return (type == "string" && object.is_string())
                 or (type == "int" && object.is_number_integer())
                 or (type == "float" && object.is_number()) or (type == "bool" && object.is_boolean())
@@ -188,7 +171,7 @@ class varlink_interface {
         }
         else if (typespec.is_string() and (collection or not(typespec.array_type or typespec.dict_type))) {
             const auto& valtype = typespec.get<std::string>();
-            if (not check_type(data, valtype)) {
+            if (not is_primitive(data, valtype)) {
                 try {
                     validate(data, type(valtype).data, name);
                 }

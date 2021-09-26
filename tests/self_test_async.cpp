@@ -1,4 +1,3 @@
-#include <filesystem>
 #include <catch2/catch.hpp>
 #include <varlink/client.hpp>
 
@@ -53,16 +52,6 @@ std::unique_ptr<BaseEnvironment> getEnvironment()
         callback_map{{"E", [] varlink_callback { throw std::exception{}; }}});
     return env;
 }
-
-#define REQUIRE_VARLINK_ERROR(statement, error, parameter, value) \
-    try {                                                         \
-        statement;                                                \
-        REQUIRE_THROWS_AS(statement, varlink_error);              \
-    }                                                             \
-    catch (varlink_error & e) {                                   \
-        REQUIRE(std::string(e.what()) == error);                  \
-        REQUIRE(e.args()[parameter].get<string>() == value);      \
-    }
 
 using test_client = async_client<Environment::protocol>;
 using socket_type = typename test_client::socket_type;
@@ -280,18 +269,19 @@ TEST_CASE("Testing server with client")
         REQUIRE(flag);
     }
 
-    /*
     SECTION("Call a method that generates an internal exception")
     {
-        try {
-            client.call("org.err.E", {})();
-        }
-        catch (varlink_error& e) {
-            REQUIRE(
-                std::string(e.what()) == "org.varlink.service.InternalError");
-        }
+        bool flag{false};
+        auto msg = varlink_message("org.err.E", {});
+        client.async_call(msg, [&](auto ec, const json& resp) {
+            REQUIRE(ec.category() == varlink_category());
+            REQUIRE(ec.message() == "org.varlink.service.InternalError");
+            REQUIRE(resp["what"].get<std::string>() == "std::exception");
+            flag = true;
+        });
+        REQUIRE(ctx.run() > 0);
+        REQUIRE(flag);
     }
-     */
 
     SECTION("Concurrent handling of two connections")
     {

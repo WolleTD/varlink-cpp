@@ -42,50 +42,52 @@ TEST_CASE("Varlink message parse")
     SECTION("Test more wire flag")
     {
         auto defaultParams = basic_varlink_message(R"({"method":""})"_json);
-        REQUIRE(defaultParams.more() == false);
+        REQUIRE(defaultParams.mode() != callmode::more);
         auto withMoreTrue = basic_varlink_message(R"({"method":"","more":true})"_json);
-        REQUIRE(withMoreTrue.more() == true);
+        REQUIRE(withMoreTrue.mode() == callmode::more);
         auto withMoreFalse = basic_varlink_message(R"({"method":"","more":false})"_json);
-        REQUIRE(withMoreFalse.more() == false);
+        REQUIRE(withMoreFalse.mode() != callmode::more);
     }
 
     SECTION("Test oneway wire flag")
     {
         auto defaultParams = basic_varlink_message(R"({"method":""})"_json);
-        REQUIRE(defaultParams.oneway() == false);
+        REQUIRE(defaultParams.mode() != callmode::oneway);
         auto withOnewayTrue = basic_varlink_message(R"({"method":"","oneway":true})"_json);
-        REQUIRE(withOnewayTrue.oneway() == true);
+        REQUIRE(withOnewayTrue.mode() == callmode::oneway);
         auto withOnewayFalse = basic_varlink_message(R"({"method":"","oneway":false})"_json);
-        REQUIRE(withOnewayFalse.oneway() == false);
+        REQUIRE(withOnewayFalse.mode() != callmode::oneway);
     }
 
     SECTION("Test upgrade wire flag")
     {
         auto defaultParams = basic_varlink_message(R"({"method":""})"_json);
-        REQUIRE(defaultParams.upgrade() == false);
+        REQUIRE(defaultParams.mode() != callmode::upgrade);
         auto withOnewayTrue = basic_varlink_message(R"({"method":"","upgrade":true})"_json);
-        REQUIRE(withOnewayTrue.upgrade() == true);
+        REQUIRE(withOnewayTrue.mode() == callmode::upgrade);
         auto withOnewayFalse = basic_varlink_message(R"({"method":"","upgrade":false})"_json);
-        REQUIRE(withOnewayFalse.upgrade() == false);
+        REQUIRE(withOnewayFalse.mode() != callmode::upgrade);
     }
 
     SECTION("Message, InterfaceAndMethod")
     {
         struct TestData {
             std::string input;
-            std::pair<std::string, std::string> output;
+            std::string interface;
+            std::string method;
         };
         const std::vector<TestData> testdata{
-            {"", {"", ""}},
-            {"test", {"test", "test"}},
-            {"a.b", {"a", "b"}},
-            {"a.b.c.D", {"a.b.c", "D"}},
-            {"org.varlink.service.GetInfo", {"org.varlink.service", "GetInfo"}},
-            {"a.b.c.", {"a.b.c", ""}},
+            {"", "", ""},
+            {"test", "test", "test"},
+            {"a.b", "a", "b"},
+            {"a.b.c.D", "a.b.c", "D"},
+            {"org.varlink.service.GetInfo", "org.varlink.service", "GetInfo"},
+            {"a.b.c.", "a.b.c", ""},
         };
         for (const auto& test : testdata) {
             auto msg = basic_varlink_message(json{{"method", test.input}});
-            REQUIRE(msg.interface_and_method() == test.output);
+            REQUIRE(msg.interface() == test.interface);
+            REQUIRE(msg.method() == test.method);
         }
     }
 }

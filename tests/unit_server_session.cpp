@@ -27,8 +27,7 @@ method Exception() -> ()
         {
             {"Test",
              [] varlink_callback {
-                 if (wants_more)
-                     send_reply({{"pong", parameters["ping"]}}, true);
+                 if (mode == callmode::more) send_reply({{"pong", parameters["ping"]}}, true);
                  send_reply({{"pong", parameters["ping"]}}, false);
              }},
             {"TestTypes",
@@ -36,9 +35,7 @@ method Exception() -> ()
                  send_reply({{"pong", 123}}, false);
              }},
             {"VarlinkError",
-             [] varlink_callback {
-                 throw varlink_error("org.test.Error", json::object());
-             }},
+             [] varlink_callback { throw varlink_error("org.test.Error", json::object()); }},
             {"Exception", [] varlink_callback { throw std::exception(); }},
         }));
 

@@ -26,13 +26,7 @@ class FakeSocket : public net::socket_base {
 
   public:
     explicit FakeSocket(net::io_context& ctx) : ctx_(&ctx) {}
-    FakeSocket(
-        [[maybe_unused]] net::io_context& ctx,
-        [[maybe_unused]] net::local::stream_protocol p,
-        [[maybe_unused]] int fd)
-        : ctx_(&ctx)
-    {
-    }
+    FakeSocket(net::io_context& ctx, net::local::stream_protocol, int) : ctx_(&ctx) {}
     FakeSocket(FakeSocket&& r) noexcept = default;
     FakeSocket& operator=(FakeSocket&& r) noexcept = default;
 

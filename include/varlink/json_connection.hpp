@@ -61,19 +61,15 @@ class json_connection {
 
     bool is_open() { return stream.is_open(); }
 
-    template <VARLINK_COMPLETION_TOKEN_FOR(void(std::error_code))
-                  CompletionHandler VARLINK_DEFAULT_COMPLETION_TOKEN_TYPE(executor_type)>
-    auto async_send(
-        const json& message,
-        CompletionHandler&& handler VARLINK_DEFAULT_COMPLETION_TOKEN(executor_type))
+    template <typename CompletionHandler>
+    auto async_send(const json& message, CompletionHandler&& handler)
     {
         return net::async_initiate<CompletionHandler, void(std::error_code)>(
             initiate_async_send(this), handler, message);
     }
 
-    template <VARLINK_COMPLETION_TOKEN_FOR(void(std::error_code, json message))
-                  CompletionHandler VARLINK_DEFAULT_COMPLETION_TOKEN_TYPE(executor_type)>
-    auto async_receive(CompletionHandler&& handler VARLINK_DEFAULT_COMPLETION_TOKEN(executor_type))
+    template <typename CompletionHandler>
+    auto async_receive(CompletionHandler&& handler)
     {
         return net::async_initiate<CompletionHandler, void(std::error_code, json)>(
             initiate_async_receive(this), handler);

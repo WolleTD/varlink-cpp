@@ -19,12 +19,10 @@ class varlink_service {
 
   private:
     description desc;
-    std::mutex interfaces_mut;
     std::vector<varlink_interface> interfaces{};
 
-    auto find_interface(const std::string& ifname)
+    [[nodiscard]] auto find_interface(const std::string& ifname) const
     {
-        auto lock = std::lock_guard(interfaces_mut);
         return std::find_if(interfaces.cbegin(), interfaces.cend(), [&ifname](auto& i) {
             return (ifname == i.name());
         });
@@ -40,7 +38,6 @@ class varlink_service {
                 {"version", desc.version},
                 {"url", desc.url}};
             info["interfaces"] = json::array();
-            auto lock = std::lock_guard(interfaces_mut);
             for (const auto& interface : interfaces) {
                 info["interfaces"].push_back(interface.name());
             }
@@ -69,13 +66,13 @@ class varlink_service {
     varlink_service& operator=(varlink_service&&) = delete;
 
     template <typename ReplyHandler>
-    void message_call(const basic_varlink_message& message, ReplyHandler&& replySender) noexcept
+    void message_call(const basic_varlink_message& message, ReplyHandler&& replySender) const noexcept
     {
         const auto error = [&](const std::string& what, const json& params) {
             assert(params.is_object());
-            replySender({{"error", what}, {"parameters", params}}, false);
+            replySender({{"error", what}, {"parameters", params}});
         };
-        const auto [ifname, methodname] = message.interface_and_method();
+        const auto ifname = message.interface(), methodname = message.method();
         const auto interface = find_interface(ifname);
         if (interface == interfaces.cend()) {
             error("org.varlink.service.InterfaceNotFound", {{"interface", ifname}});
@@ -102,7 +99,6 @@ class varlink_service {
     void add_interface(varlink_interface&& interface)
     {
         if (auto pos = find_interface(interface.name()); pos == interfaces.end()) {
-            auto lock = std::lock_guard(interfaces_mut);
             interfaces.push_back(std::move(interface));
         }
         else {

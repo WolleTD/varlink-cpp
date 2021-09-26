@@ -41,12 +41,12 @@ class server_session : public std::enable_shared_from_this<server_session<Protoc
             if (ec) return;
             try {
                 const basic_varlink_message message{j};
-                self->service_.message_call(message, [self, ec](const json& reply, bool continues) {
+                self->service_.message_call(message, [self, ec](const json& reply) {
                     if (reply.is_object()) {
                         auto m = std::make_unique<json>(reply);
                         self->async_send_reply(std::move(m));
                     }
-                    if (not continues) { self->start(); }
+                    if (not reply_continues(reply)) { self->start(); }
                 });
             }
             catch (...) {

@@ -5,15 +5,14 @@
 
 namespace varlink {
 
-class basic_varlink_message {
-  public:
-    enum class callmode {
-        basic,
-        oneway,
-        more,
-        upgrade,
-    };
+enum class callmode {
+    basic,
+    oneway,
+    more,
+    upgrade,
+};
 
+class basic_varlink_message {
   private:
     json _json;
     callmode _mode{callmode::basic};
@@ -55,10 +54,7 @@ class basic_varlink_message {
         }
     }
 
-    [[nodiscard]] bool basic() const { return (_mode == callmode::basic); }
-    [[nodiscard]] bool more() const { return (_mode == callmode::more); }
-    [[nodiscard]] bool oneway() const { return (_mode == callmode::oneway); }
-    [[nodiscard]] bool upgrade() const { return (_mode == callmode::upgrade); }
+    [[nodiscard]] auto mode() const { return _mode; }
 
     [[nodiscard]] json parameters() const
     {
@@ -66,19 +62,22 @@ class basic_varlink_message {
     }
     [[nodiscard]] const json& json_data() const { return _json; }
 
-    [[nodiscard]] std::pair<std::string, std::string> interface_and_method() const
+    [[nodiscard]] std::string interface() const
     {
         const auto& fqmethod = _json["method"].get<std::string>();
-        const auto dot = fqmethod.rfind('.');
-        // When there is no dot at all, both fields contain the same value, but
-        // it's an invalid interface name anyway
-        return {fqmethod.substr(0, dot), fqmethod.substr(dot + 1)};
+        return fqmethod.substr(0, fqmethod.rfind('.'));
+    }
+
+    [[nodiscard]] std::string method() const
+    {
+        const auto& fqmethod = _json["method"].get<std::string>();
+        return fqmethod.substr(fqmethod.rfind('.') + 1);
     }
 
     friend bool operator==(const basic_varlink_message& lhs, const basic_varlink_message& rhs) noexcept;
 };
 
-template <basic_varlink_message::callmode CallMode>
+template <callmode CallMode>
 class typed_varlink_message : public basic_varlink_message {
   public:
     typed_varlink_message(const std::string_view method, const json& parameters)
@@ -87,14 +86,19 @@ class typed_varlink_message : public basic_varlink_message {
     }
 };
 
-using varlink_message = typed_varlink_message<basic_varlink_message::callmode::basic>;
-using varlink_message_more = typed_varlink_message<basic_varlink_message::callmode::more>;
-using varlink_message_oneway = typed_varlink_message<basic_varlink_message::callmode::oneway>;
-using varlink_message_upgrade = typed_varlink_message<basic_varlink_message::callmode::upgrade>;
+using varlink_message = typed_varlink_message<callmode::basic>;
+using varlink_message_more = typed_varlink_message<callmode::more>;
+using varlink_message_oneway = typed_varlink_message<callmode::oneway>;
+using varlink_message_upgrade = typed_varlink_message<callmode::upgrade>;
 
 inline bool operator==(const basic_varlink_message& lhs, const basic_varlink_message& rhs) noexcept
 {
     return (lhs._json == rhs._json);
+}
+
+inline bool reply_continues(const json& reply)
+{
+    return reply.contains("continues") and reply["continues"].get<bool>();
 }
 
 } // namespace varlink
