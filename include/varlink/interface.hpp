@@ -38,16 +38,16 @@ class varlink_interface {
     std::vector<detail::member> members{};
     std::vector<method_callback> methods{};
 
-    [[nodiscard]] const detail::member& find_member(const std::string& name, detail::MemberKind kind) const
+    [[nodiscard]] const detail::member& find_member(std::string_view name, detail::MemberKind kind) const
     {
         auto i = std::find_if(members.begin(), members.end(), [&](const auto& e) {
             return e.name == name && (e.kind == kind || kind == detail::MemberKind::Undefined);
         });
-        if (i == members.end()) throw std::out_of_range(name);
+        if (i == members.end()) throw std::out_of_range(std::string(name));
         return *i;
     }
 
-    [[nodiscard]] bool has_member(const std::string& name, detail::MemberKind kind) const
+    [[nodiscard]] bool has_member(std::string_view name, detail::MemberKind kind) const
     {
         return std::any_of(members.begin(), members.end(), [&](const auto& e) {
             return e.name == name && (e.kind == kind || kind == detail::MemberKind::Undefined);
@@ -61,7 +61,8 @@ class varlink_interface {
         auto scanner = detail::scanner(std::string(description));
         ifname = scanner.read_interface_name();
         documentation = scanner.get_docstring();
-        while (auto member = scanner.read_member()) {
+        auto member = scanner.read_member();
+        while (member.kind != detail::MemberKind::Undefined) {
             if (std::any_of(members.begin(), members.end(), [&member](auto& m) {
                     return m.name == member.name;
                 })) {
@@ -77,6 +78,7 @@ class varlink_interface {
                 }
             }
             members.push_back(std::move(member));
+            member = scanner.read_member();
         }
         if (members.empty()) throw std::invalid_argument("At least one member is required");
         if (not callbacks.empty()) throw std::invalid_argument("Callback for unknown method");
@@ -87,7 +89,7 @@ class varlink_interface {
     {
         const auto name = message.interface_and_method().second;
         const auto& m = method(name);
-        validate(message.parameters(), m.data["parameters"]);
+        validate(message.parameters(), m.data.get<detail::vl_struct>()[0].second);
         const auto it = std::find_if(
             methods.begin(), methods.end(), [&name](auto& e) { return e.method == name; });
         if (it == methods.end()) throw std::bad_function_call{};
@@ -101,7 +103,7 @@ class varlink_interface {
             [this,
              oneway = message.oneway(),
              more = message.more(),
-             &return_type = m.data["return_value"],
+             &return_type = m.data.get<detail::vl_struct>()[1].second,
              replySender = std::forward<ReplyHandler>(replySender)](
                 const json::object_t& params, bool continues) mutable {
                 validate(params, return_type);
@@ -122,100 +124,95 @@ class varlink_interface {
     [[nodiscard]] const std::string& name() const noexcept { return ifname; }
     [[nodiscard]] const std::string& doc() const noexcept { return documentation; }
 
-    [[nodiscard]] const detail::member& method(const std::string& name) const
+    [[nodiscard]] const detail::member& method(std::string_view name) const
     {
         return find_member(name, detail::MemberKind::Method);
     }
-    [[nodiscard]] const detail::member& type(const std::string& name) const
+    [[nodiscard]] const detail::member& type(std::string_view name) const
     {
         return find_member(name, detail::MemberKind::Type);
     }
-    [[nodiscard]] const detail::member& error(const std::string& name) const
+    [[nodiscard]] const detail::member& error(std::string_view name) const
     {
         return find_member(name, detail::MemberKind::Error);
     }
 
-    [[nodiscard]] bool has_method(const std::string& name) const noexcept
+    [[nodiscard]] bool has_method(std::string_view name) const noexcept
     {
         return has_member(name, detail::MemberKind::Method);
     }
-    [[nodiscard]] bool has_type(const std::string& name) const noexcept
+    [[nodiscard]] bool has_type(std::string_view name) const noexcept
     {
         return has_member(name, detail::MemberKind::Type);
     }
-    [[nodiscard]] bool has_error(const std::string& name) const noexcept
+    [[nodiscard]] bool has_error(std::string_view name) const noexcept
     {
         return has_member(name, detail::MemberKind::Error);
     }
 
-    void validate(const json& data, const json& typespec) const
+    void validate(
+        const json& data,
+        const detail::type_spec& typespec,
+        std::string_view name = "<root>",
+        bool collection = false) const
     {
-        if (typespec.is_array() and data.is_string()
-            and (std::find(typespec.begin(), typespec.end(), data.get<std::string>()) != typespec.end())) {
+        auto invalid_parameter = [](std::string_view arg) {
+            return varlink_error(
+                "org.varlink.service.InvalidParameter", {{"parameter", std::string(arg)}});
+        };
+        auto check_type = [](const json& object, std::string_view type) {
+            return (type == "string" && object.is_string())
+                or (type == "int" && object.is_number_integer())
+                or (type == "float" && object.is_number()) or (type == "bool" && object.is_boolean())
+                or (type == "object" && !object.is_null());
+        };
+
+        if (typespec.is_enum() and data.is_string()) {
+            auto& enm = typespec.get<detail::vl_enum>();
+            auto s = data.get<std::string>();
+            auto matcher = [&s](auto& e) { return e == s; };
+            if (not std::any_of(enm.begin(), enm.end(), matcher)) {
+                throw invalid_parameter(data.dump());
+            }
             return;
         }
-        else if (not data.is_object()) {
-            throw varlink_error("org.varlink.service.InvalidParameter", {{"parameter", data.dump()}});
-        }
-        for (const auto& param : typespec.items()) {
-            if (param.key() == "_order") continue;
-            const auto& name = param.key();
-            const auto& spec = param.value();
-            if (!(spec.contains("maybe_type") && spec["maybe_type"].get<bool>())
-                && (!data.contains(name) || data[name].is_null())) {
-                throw varlink_error("org.varlink.service.InvalidParameter", {{"parameter", name}});
+        else if (typespec.dict_type and data.is_object()) {
+            for (const auto& val : data) {
+                validate(val, typespec, name, true);
             }
-            else if (data.contains(name)) {
-                const auto& value = data[name];
-                if (((spec.contains("maybe_type") && spec["maybe_type"].get<bool>())
-                     && value.is_null())
-                    or ((spec.contains("dict_type") && spec["dict_type"].get<bool>())
-                        && value.is_object())) {
-                    continue;
+        }
+        else if (typespec.array_type and data.is_array()) {
+            for (const auto& val : data) {
+                validate(val, typespec, name, true);
+            }
+        }
+        else if (typespec.is_string() and (collection or not(typespec.array_type or typespec.dict_type))) {
+            const auto& valtype = typespec.get<std::string>();
+            if (not check_type(data, valtype)) {
+                try {
+                    validate(data, type(valtype).data, name);
                 }
-                else if (spec.contains("array_type") && spec["array_type"].get<bool>()) {
-                    if (value.is_array()) { continue; }
-                    else {
-                        throw varlink_error(
-                            "org.varlink.service.InvalidParameter", {{"parameter", name}});
-                    }
+                catch (std::out_of_range&) {
+                    throw invalid_parameter(name);
                 }
-                else if (spec["type"].is_array() && value.is_string()) {
-                    if (std::find(spec["type"].cbegin(), spec["type"].cend(), value)
-                        == spec["type"].cend()) {
-                        throw varlink_error(
-                            "org.varlink.service.InvalidParameter", {{"parameter", name}});
-                    }
-                }
-                else if (spec["type"].is_object() && value.is_object()) {
-                    validate(value, spec["type"]);
-                    continue;
-                }
-                else if (spec["type"].is_string()) {
-                    const auto& valtype = spec["type"].get<std::string>();
-                    if ((valtype == "string" && value.is_string())
-                        or (valtype == "int" && value.is_number_integer())
-                        or (valtype == "float" && value.is_number())
-                        or (valtype == "bool" && value.is_boolean())
-                        or (valtype == "object" && !value.is_null())) {
-                        continue;
-                    }
-                    else {
-                        try {
-                            validate(value, type(valtype).data);
-                            continue;
-                        }
-                        catch (std::out_of_range&) {
-                            throw varlink_error(
-                                "org.varlink.service.InvalidParameter", {{"parameter", name}});
-                        }
-                    }
+            }
+        }
+        else if (typespec.is_struct() and data.is_object()) {
+            auto& strct = typespec.get<detail::vl_struct>();
+            for (const auto& param : strct) {
+                name = param.first;
+                auto spec = param.second;
+                if (not data.contains(name) or data[std::string(name)].is_null()) {
+                    if (not spec.maybe_type) throw invalid_parameter(name);
                 }
                 else {
-                    throw varlink_error(
-                        "org.varlink.service.InvalidParameter", {{"parameter", name}});
+                    const auto& value = data[std::string(name)];
+                    validate(value, spec, name); // throws on error
                 }
             }
+        }
+        else {
+            throw invalid_parameter(data.dump());
         }
     }
 

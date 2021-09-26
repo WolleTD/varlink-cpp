@@ -33,14 +33,55 @@ using callback_function = std::function<void(const json&, bool, const reply_func
 #endif
 
 enum class MemberKind { Undefined, Type, Error, Method };
+enum class TypeTrait { None, Maybe, Dict, Array };
+struct type_spec;
+using vl_enum = std::vector<std::string>;
+using vl_struct = std::vector<std::pair<std::string, type_spec>>;
+using type_def = std::variant<std::monostate, std::string, vl_enum, vl_struct>;
+struct type_spec {
+    type_spec() = default;
+    explicit type_spec(type_def type_) : type(std::move(type_)) {}
+    type_spec(type_def type_, bool maybe, bool dict, bool array)
+        : type(std::move(type_)), maybe_type(maybe), dict_type(dict), array_type(array)
+    {
+    }
+    [[nodiscard]] bool is_null() const { return std::holds_alternative<std::monostate>(type); }
+    [[nodiscard]] bool is_string() const { return std::holds_alternative<std::string>(type); }
+    [[nodiscard]] bool is_enum() const { return std::holds_alternative<vl_enum>(type); }
+    [[nodiscard]] bool is_struct() const { return std::holds_alternative<vl_struct>(type); }
+    [[nodiscard]] bool empty() const
+    {
+        return std::visit(
+            [](auto& t) {
+                if constexpr (std::is_same_v<std::decay_t<decltype(t)>, std::monostate>) {
+                    return true;
+                }
+                else {
+                    return t.empty();
+                }
+            },
+            type);
+    }
+
+    template <typename T>
+    [[nodiscard]] const T& get() const
+    {
+        return std::get<T>(type);
+    }
+    type_def type;
+    bool maybe_type{false};
+    bool dict_type{false};
+    bool array_type{false};
+};
+
 struct member {
     MemberKind kind{MemberKind::Undefined};
     std::string name;
     std::string description;
-    json data;
+    type_spec data;
 
     member() = default;
-    member(MemberKind kind_, std::string name_, std::string desc, json data_)
+    member(MemberKind kind_, std::string name_, std::string desc, type_spec data_)
         : kind(kind_), name(std::move(name_)), description(std::move(desc)), data(std::move(data_))
     {
     }
@@ -68,20 +109,22 @@ class scanner {
             m.kind = MemberKind::Type;
             m.name = expect(member_pattern);
             m.description = get_docstring();
-            m.data = read_type_spec()["type"];
+            m.data = read_type_spec();
         }
         else if (keyword == "error") {
             m.kind = MemberKind::Error;
             m.name = expect(member_pattern);
             m.description = get_docstring();
-            m.data = read_type_spec()["type"];
+            m.data = read_type_spec();
         }
         else if (keyword == "method") {
             m.kind = MemberKind::Method;
             m.name = expect(member_pattern);
-            m.data["parameters"] = read_struct();
+            vl_struct method_types;
+            method_types.push_back({"parameters", type_spec{read_struct()}});
             expect_keyword("->");
-            m.data["return_value"] = read_struct();
+            method_types.push_back({"return_value", type_spec{read_struct()}});
+            m.data = type_spec{std::move(method_types)};
             m.description = get_docstring();
         }
         else if (not keyword.empty()) {
@@ -101,14 +144,15 @@ class scanner {
     std::string get_docstring() { return std::exchange(current_doc_, {}); }
 
   private:
-    json read_struct(bool readFirstBracket = true)
+    type_def read_struct(bool readFirstBracket = true)
     {
         if (readFirstBracket) expect_keyword("(");
-        json fields;
+        type_def fields;
         std::optional<bool> isEnum = std::nullopt;
         std::string keyword;
         try {
             keyword = expect(closing_bracket);
+            return vl_struct{};
         }
         catch (...) {
         }
@@ -118,52 +162,52 @@ class scanner {
             if (not isEnum.has_value()) {
                 if (keyword == ":") {
                     isEnum = false;
-                    fields = json::object();
-                    fields["_order"] = json::array();
+                    fields = vl_struct{};
                 }
                 else if (keyword == ",") {
                     isEnum = true;
-                    fields = json::array();
+                    fields = vl_enum{};
                 }
                 else {
                     throw std::runtime_error("Expected : or , got " + keyword);
                 }
             }
             if (not isEnum.value() and keyword == ":") {
-                fields[name] = read_type_spec();
-                fields["_order"].push_back(name);
+                auto& s = std::get<vl_struct>(fields);
+                s.emplace_back(name, read_type_spec());
                 keyword = expect(keyword_pattern);
             }
             else if (isEnum.value() and (keyword == "," or keyword == ")")) {
-                fields.push_back(name);
+                auto& e = std::get<vl_enum>(fields);
+                e.push_back(name);
             }
         }
         return fields;
     }
 
-    json read_type_spec(bool wasMaybe = false)
+    type_spec read_type_spec(bool wasMaybe = false)
     {
         if (auto keyword = expect(keyword_pattern, member_pattern); keyword == "?") {
             if (wasMaybe) throw std::runtime_error("Double '?'");
             auto type = read_type_spec(true);
-            type["maybe_type"] = true;
+            type.maybe_type = true;
             return type;
         }
         else if (keyword == "[string]") {
             auto type = read_type_spec();
-            type["dict_type"] = true;
+            type.dict_type = true;
             return type;
         }
         else if (keyword == "[]") {
             auto type = read_type_spec();
-            type["array_type"] = true;
+            type.array_type = true;
             return type;
         }
         else if (keyword == "(") {
-            return json{{"type", read_struct(false)}};
+            return type_spec{read_struct(false)};
         }
         else {
-            return json{{"type", keyword}};
+            return type_spec{keyword};
         }
     }
 
@@ -248,22 +292,23 @@ class scanner {
     REGEX identifier_pattern{"\\b[A-Za-z](_?[A-Za-z0-9])*\\b"};
 };
 
-inline std::string element_to_string(const json& elem, int indent = 4, size_t depth = 0)
+inline std::string element_to_string(const type_spec& elem, int indent = 4, size_t depth = 0)
 {
-    if (elem.is_string()) { return elem.get<std::string>(); }
+    if (elem.is_string()) { return std::string{elem.get<std::string>()}; }
     else {
         const auto is_multiline = [&]() -> bool {
             if (indent < 0) return false;
             if (elem.is_null() || elem.empty()) return false;
-            if (elem.is_object()) {
-                if (elem["_order"].size() > 2) return true;
-                for (const auto& member_name : elem["_order"]) {
-                    auto& member = elem[member_name.get<std::string>()];
-                    if (member.contains("array_type") && member["array_type"].get<bool>())
-                        return true;
-                    if (member["type"].is_object()) return true;
+            if (elem.is_struct()) {
+                auto& s = elem.get<vl_struct>();
+                if (s.size() > 2) return true;
+                for (const auto& p : s) {
+                    auto& member = p.second;
+                    if (member.array_type) return true;
+                    if (member.is_struct()) return true;
                 }
             }
+            // if (elem.is_string() and elem.get<std::string_view>().length() > 40) return true;
             if (element_to_string(elem, -1, depth).size() > 40) return true;
             return false;
         };
@@ -275,27 +320,29 @@ inline std::string element_to_string(const json& elem, int indent = 4, size_t de
         std::string s = multiline ? "(\n" : "(";
         bool first = true;
         if (elem.is_null()) { return "()"; }
-        else if (elem.is_array()) {
-            for (const auto& member : elem) {
+        else if (elem.is_enum()) {
+            auto& enm = elem.get<vl_enum>();
+            for (const auto& value : enm) {
                 if (first)
                     first = false;
                 else
                     s += sep;
-                s += spaces + member.get<std::string>();
+                s += spaces + std::string(value);
             }
         }
         else {
-            for (const auto& member : elem["_order"]) {
+            auto& strct = elem.get<vl_struct>();
+            for (const auto& member : strct) {
                 if (first)
                     first = false;
                 else
                     s += sep;
-                s += spaces + member.get<std::string>() + ": ";
-                auto type = elem[member.get<std::string>()];
-                if (type.contains("maybe_type") && type["maybe_type"].get<bool>()) s += "?";
-                if (type.contains("array_type") && type["array_type"].get<bool>()) s += "[]";
-                if (type.contains("dict_type") && type["dict_type"].get<bool>()) s += "[string]";
-                s += element_to_string(type["type"], indent, depth + 1);
+                s += spaces + std::string(member.first) + ": ";
+                auto& type = member.second;
+                if (type.maybe_type) s += "?";
+                if (type.array_type) s += "[]";
+                if (type.dict_type) s += "[string]";
+                s += element_to_string(type, indent, depth + 1);
             }
         }
         s += multiline ? "\n" + std::string(static_cast<size_t>(indent) * depth, ' ') + ")" : ")";
@@ -316,8 +363,8 @@ inline std::ostream& operator<<(std::ostream& os, const member& mem)
         }
         else if (mem.kind == MemberKind::Method) {
             os << mem.description << "method " << mem.name
-               << element_to_string(mem.data["parameters"], -1) << " -> "
-               << element_to_string(mem.data["return_value"]) << "\n";
+               << element_to_string(mem.data.get<vl_struct>()[0].second, -1) << " -> "
+               << element_to_string(mem.data.get<vl_struct>()[1].second) << "\n";
         }
     }
     catch (...) {

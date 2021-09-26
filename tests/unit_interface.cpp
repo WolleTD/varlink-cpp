@@ -312,31 +312,27 @@ TEST_CASE("Varlink interface member access")
     }
 }
 
+template <typename... Args>
+type_spec test_spec(Args&&... args)
+{
+    return type_spec{vl_struct{{"a", type_spec{std::forward<Args>(args)...}}}};
+}
+
 TEST_CASE("Varlink interface types")
 {
     SECTION("Parse valid type specifications")
     {
         REQUIRE_NOTHROW(varlink_interface("interface org.test\n type I ()"));
-        REQUIRE_NOTHROW(
-            varlink_interface("interface org.test\n type I (b: bool)"));
-        REQUIRE_NOTHROW(
-            varlink_interface("interface org.test\ntype I (e: (A, B, C))"));
-        REQUIRE_NOTHROW(
-            varlink_interface("interface org.test\ntype I (s: string)"));
-        REQUIRE_NOTHROW(varlink_interface(
-            "interface org.test\ntype I (s: [string]string)"));
-        REQUIRE_NOTHROW(
-            varlink_interface("interface org.test\ntype I (s: [string]())"));
-        REQUIRE_NOTHROW(
-            varlink_interface("interface org.test\ntype I (o: object)"));
-        REQUIRE_NOTHROW(
-            varlink_interface("interface org.test\ntype I (i: int)"));
-        REQUIRE_NOTHROW(
-            varlink_interface("interface org.test\ntype I (f: float)"));
-        REQUIRE_NOTHROW(
-            varlink_interface("interface org.test\ntype I (b: []bool)"));
-        REQUIRE_NOTHROW(
-            varlink_interface("interface org.test\ntype I (i: ?int)"));
+        REQUIRE_NOTHROW(varlink_interface("interface org.test\n type I (b: bool)"));
+        REQUIRE_NOTHROW(varlink_interface("interface org.test\ntype I (e: (A, B, C))"));
+        REQUIRE_NOTHROW(varlink_interface("interface org.test\ntype I (s: string)"));
+        REQUIRE_NOTHROW(varlink_interface("interface org.test\ntype I (s: [string]string)"));
+        REQUIRE_NOTHROW(varlink_interface("interface org.test\ntype I (s: [string]())"));
+        REQUIRE_NOTHROW(varlink_interface("interface org.test\ntype I (o: object)"));
+        REQUIRE_NOTHROW(varlink_interface("interface org.test\ntype I (i: int)"));
+        REQUIRE_NOTHROW(varlink_interface("interface org.test\ntype I (f: float)"));
+        REQUIRE_NOTHROW(varlink_interface("interface org.test\ntype I (b: []bool)"));
+        REQUIRE_NOTHROW(varlink_interface("interface org.test\ntype I (i: ?int)"));
     }
 
     SECTION("Parse invalid type specifications")
@@ -366,11 +362,11 @@ TEST_CASE("Varlink interface types")
         varlink_interface interface("interface org.test\ntype E(A,B,C)");
         struct Testdata {
             json data;
-            json type;
+            type_spec type;
         };
         std::vector<Testdata> testdata{
-            {R"({"a":"A"})"_json, R"({"a":{"type":"E"}})"_json},
-            {R"({"a":"B"})"_json, R"({"a":{"type":"E"}})"_json},
+            {R"({"a":"A"})"_json, test_spec("E")},
+            {R"({"a":"B"})"_json, test_spec("E")},
         };
         for (const auto& test : testdata) {
             REQUIRE_NOTHROW(interface.validate(test.data, test.type));
@@ -382,47 +378,41 @@ TEST_CASE("Varlink interface types")
         varlink_interface interface("interface org.test\ntype T(n: ?int)");
         struct Testdata {
             json data;
-            json type;
+            type_spec type;
         };
         std::vector<Testdata> testdata{
-            {R"({"a":0})"_json, R"({"a":{"type":"int"}})"_json},
-            {R"({"a":1337})"_json, R"({"a":{"type":"int"}})"_json},
-            {R"({"a":-123})"_json, R"({"a":{"type":"int"}})"_json},
-            {R"({"a":"a string"})"_json, R"({"a":{"type":"string"}})"_json},
-            {R"({"a":""})"_json, R"({"a":{"type":"string"}})"_json},
-            {R"({"a":true})"_json, R"({"a":{"type":"bool"}})"_json},
-            {R"({"a":false})"_json, R"({"a":{"type":"bool"}})"_json},
-            {R"({"a":145})"_json, R"({"a":{"type":"float"}})"_json},
-            {R"({"a":10.45})"_json, R"({"a":{"type":"float"}})"_json},
-            {R"({"a":-10.45})"_json, R"({"a":{"type":"float"}})"_json},
-            {R"({"a":"object"})"_json, R"({"a":{"type":"object"}})"_json},
-            {R"({"a":null})"_json,
-             R"({"a":{"type":"int","maybe_type":true}})"_json},
-            {R"({})"_json, R"({"a":{"type":"int","maybe_type":true}})"_json},
-            {R"({"a":[]})"_json, R"({"a":{"type":"int","array_type":true}})"_json},
-            {R"({"a":[1,2,3]})"_json,
-             R"({"a":{"type":"int","array_type":true}})"_json},
-            {R"({"a":null})"_json,
-             R"({"a":{"type":"int","array_type":true,"maybe_type":true}})"_json},
-            {R"({})"_json,
-             R"({"a":{"type":"int","maybe_type":true,"array_type":true}})"_json},
-            {R"({"a":{"key1":"value1"}})"_json,
-             R"({"a":{"type":"string","dict_type":true}})"_json},
-            {R"({"a":{}})"_json, R"({"a":{"type":"int","dict_type":true}})"_json},
+            {R"({"a":0})"_json, test_spec("int")},
+            {R"({"a":1337})"_json, test_spec("int")},
+            {R"({"a":-123})"_json, test_spec("int")},
+            {R"({"a":"a string"})"_json, test_spec("string")},
+            {R"({"a":""})"_json, test_spec("string")},
+            {R"({"a":true})"_json, test_spec("bool")},
+            {R"({"a":false})"_json, test_spec("bool")},
+            {R"({"a":145})"_json, test_spec("float")},
+            {R"({"a":10.45})"_json, test_spec("float")},
+            {R"({"a":-10.45})"_json, test_spec("float")},
+            {R"({"a":"object"})"_json, test_spec("object")},
+            {R"({"a":null})"_json, test_spec("object", true, false, false)},
+            {R"({})"_json, test_spec("int", true, false, false)},
+            {R"({"a":[]})"_json, test_spec("int", false, false, true)},
+            {R"({"a":[1,2,3]})"_json, test_spec("int", false, false, true)},
+            {R"({"a":null})"_json, test_spec("int", true, false, true)},
+            {R"({})"_json, test_spec("int", true, false, true)},
+            {R"({"a":{"key1":"value1"}})"_json, test_spec("string", false, true, false)},
+            {R"({"a":{}})"_json, test_spec("int", false, true, false)},
+            {R"({"a":{"b":"string"}})"_json, test_spec(vl_struct{{"b", type_spec{"string"}}})},
             {R"({"a":{"b":"string"}})"_json,
-             R"({"a":{"type":{"b":{"type":"string"}}}})"_json},
-            {R"({"a":{"b":"string"}})"_json,
-             R"({"a":{"type":{"b":{"type":"string","maybe_type":true}}}})"_json},
-            {R"({"a":{}})"_json,
-             R"({"a":{"type":{"b":{"type":"string","maybe_type":true}}}})"_json},
-            {R"({"a":{"n":1}})"_json, R"({"a":{"type":"T"}})"_json},
-            {R"({"a":{}})"_json, R"({"a":{"type":"T"}})"_json},
-            {R"({"a":"one"})"_json,
-             R"({"a":{"type":["one","two","three"]}})"_json},
-            {R"({"a":"three"})"_json,
-             R"({"a":{"type":["one","two","three"]}})"_json},
+             test_spec(vl_struct{{"b", type_spec{"string", true, false, false}}})},
+            {R"({"a":{}})"_json, test_spec(vl_struct{{"b", type_spec{"string", true, false, false}}})},
+            {R"({"a":{"n":1}})"_json, test_spec("T")},
+            {R"({"a":{}})"_json, test_spec("T")},
+            {R"({"a":"one"})"_json, test_spec(vl_enum{"one", "two", "three"})},
+            {R"({"a":"three"})"_json, test_spec(vl_enum{"one", "two", "three"})},
+            {R"({"a":{"one":{},"two":{},"three":{}}})"_json,
+             test_spec(vl_struct{}, false, true, false)},
         };
         for (const auto& test : testdata) {
+            std::cerr << test.data << "\n";
             REQUIRE_NOTHROW(interface.validate(test.data, test.type));
         }
     }
@@ -432,38 +422,33 @@ TEST_CASE("Varlink interface types")
         varlink_interface interface("interface org.test\ntype T(n: int)");
         struct Testdata {
             json data;
-            json type;
+            type_spec type;
         };
         std::vector<Testdata> testdata{
-            {R"({"a":"string"})"_json, R"({"a":{"type":"int"}})"_json},
-            {R"({"b":1337})"_json, R"({"a":{"type":"int"}})"_json},
-            {R"({"a":10})"_json, R"({"a":{"type":"string"}})"_json},
-            {R"({"a":0})"_json, R"({"a":{"type":"bool"}})"_json},
-            {R"({"a":"string"})"_json, R"({"a":{"type":"float"}})"_json},
-            {R"({"a":null})"_json, R"({"a":{"type":"object"}})"_json},
-            {R"({"a":null})"_json,
-             R"({"a":{"type":"int","maybe_type":false}})"_json},
-            {R"({})"_json, R"({"a":{"type":"int"}})"_json},
-            {R"({"a":[1,2,3]})"_json, R"({"a":{"type":"int"}})"_json},
-            {R"({"a":1})"_json, R"({"a":{"type":"int","array_type":true}})"_json},
-            {R"({"a":null})"_json,
-             R"({"a":{"type":"int","array_type":true,"maybe_type":false}})"_json},
-            {R"({})"_json, R"({"a":{"type":"int","array_type":true}})"_json},
-            {R"({"a":{"key1":"value1"}})"_json, R"({"a":{"type":"string"}})"_json},
-            {R"({"a":[]})"_json, R"({"a":{"type":"int","dict_type":true}})"_json},
-            {R"({"a":{"a":"string"}})"_json,
-             R"({"a":{"type":{"b":{"type":"string"}}}})"_json},
-            {R"({"a":10})"_json,
-             R"({"a":{"type":{"b":{"type":"string","maybe_type":true}}}})"_json},
-            {R"({"a":{}})"_json, R"({"a":{"type":{"b":{"type":"string"}}}})"_json},
-            {R"({"a":{"n":"string"}})"_json, R"({"a":{"type":"T"}})"_json},
-            {R"({"a":{}})"_json, R"({"a":{"type":"T"}})"_json},
-            {R"({"a":"four"})"_json,
-             R"({"a":{"type":["one","two","three"]}})"_json},
+            {R"({"a":"string"})"_json, test_spec("int")},
+            {R"({"b":1337})"_json, test_spec("int")},
+            {R"({"a":10})"_json, test_spec("string")},
+            {R"({"a":0})"_json, test_spec("bool")},
+            {R"({"a":"string"})"_json, test_spec("float")},
+            {R"({"a":null})"_json, test_spec("object")},
+            {R"({"a":null})"_json, test_spec("int")},
+            {R"({})"_json, test_spec("int")},
+            {R"({"a":[1,2,3]})"_json, test_spec("int")},
+            {R"({"a":1})"_json, test_spec("int", false, false, true)},
+            {R"({"a":null})"_json, test_spec("int", false, false, true)},
+            {R"({})"_json, test_spec("int", false, false, true)},
+            {R"({"a":{"key1":"value1"}})"_json, test_spec("string")},
+            {R"({"a":[]})"_json, test_spec("int", false, true, false)},
+            {R"({"a":{"a":"string"}})"_json, test_spec(vl_struct{{"b", type_spec{"string"}}})},
+            {R"({"a":10})"_json, test_spec(vl_struct{{"b", {"string", true, false, false}}})},
+            {R"({"a":{}})"_json, test_spec(vl_struct{{"b", type_spec{"string"}}})},
+            {R"({"a":{"n":"string"}})"_json, test_spec("T")},
+            {R"({"a":{}})"_json, test_spec("T")},
+            {R"({"a":"four"})"_json, test_spec(vl_enum{"one", "two", "three"})},
+            {R"({"a":{"one":1,"two":2,"three":3}})"_json, test_spec(vl_struct{}, false, true, false)},
         };
         for (const auto& test : testdata) {
-            REQUIRE_THROWS_AS(
-                interface.validate(test.data, test.type), varlink_error);
+            REQUIRE_THROWS_AS(interface.validate(test.data, test.type), varlink_error);
         }
     }
 }
