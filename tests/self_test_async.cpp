@@ -64,7 +64,7 @@ std::unique_ptr<BaseEnvironment> getEnvironment()
         REQUIRE(e.args()[parameter].get<string>() == value);      \
     }
 
-using test_client = async_client<Environment::protocol::socket>;
+using test_client = async_client<Environment::protocol>;
 using socket_type = typename test_client::socket_type;
 
 TEST_CASE("Testing server with client")

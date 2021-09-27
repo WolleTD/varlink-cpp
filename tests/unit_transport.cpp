@@ -4,7 +4,7 @@
 #include "fake_socket.hpp"
 
 using namespace varlink;
-using test_connection = json_connection<FakeSocket>;
+using test_connection = json_connection<fake_proto>;
 
 TEST_CASE("JSON transport sync read")
 {

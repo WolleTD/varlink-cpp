@@ -5,15 +5,15 @@
 #include <varlink/service.hpp>
 
 namespace varlink {
-template <typename Socket>
-class server_session : public std::enable_shared_from_this<server_session<Socket>> {
+template <typename Protocol>
+class server_session : public std::enable_shared_from_this<server_session<Protocol>> {
   public:
-    using socket_type = Socket;
-    using protocol_type = typename socket_type::protocol_type;
+    using protocol_type = Protocol;
+    using socket_type = typename protocol_type::socket;
     using executor_type = typename socket_type::executor_type;
-    using connection_type = json_connection<socket_type>;
+    using connection_type = json_connection<protocol_type>;
 
-    using std::enable_shared_from_this<server_session<Socket>>::shared_from_this;
+    using std::enable_shared_from_this<server_session<Protocol>>::shared_from_this;
 
     socket_type& socket() { return connection.socket(); }
     [[nodiscard]] const socket_type& socket() const { return connection.socket(); }
@@ -21,7 +21,7 @@ class server_session : public std::enable_shared_from_this<server_session<Socket
     executor_type get_executor() { return socket().get_executor(); }
 
   private:
-    json_connection<socket_type> connection;
+    connection_type connection;
     varlink_service& service_;
 
   public:

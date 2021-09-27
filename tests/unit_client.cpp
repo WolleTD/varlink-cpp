@@ -4,7 +4,7 @@
 #include "fake_socket.hpp"
 
 using namespace varlink;
-using test_client = async_client<FakeSocket>;
+using test_client = async_client<fake_proto>;
 
 TEST_CASE("Client sync call processing")
 {

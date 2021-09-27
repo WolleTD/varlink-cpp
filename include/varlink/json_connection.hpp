@@ -9,13 +9,12 @@
 
 namespace varlink {
 
-template <typename Socket, typename = std::enable_if_t<std::is_base_of_v<net::socket_base, Socket>>>
+template <typename Protocol>
 class json_connection {
   public:
-    using socket_type = Socket;
-    using protocol_type = typename socket_type::protocol_type;
+    using protocol_type = Protocol;
+    using socket_type = typename protocol_type::socket;
     using executor_type = typename socket_type::executor_type;
-    using result_type = json;
 
     socket_type& socket() { return stream; }
     const socket_type& socket() const { return stream; }
@@ -111,10 +110,10 @@ class json_connection {
 
     class initiate_async_receive {
       private:
-        json_connection<socket_type>* self_;
+        json_connection* self_;
 
       public:
-        explicit initiate_async_receive(json_connection<socket_type>* self) : self_(self) {}
+        explicit initiate_async_receive(json_connection* self) : self_(self) {}
 
         template <typename CompletionHandler>
         void operator()(CompletionHandler&& handler)
@@ -141,10 +140,10 @@ class json_connection {
     };
     class initiate_async_send {
       private:
-        json_connection<socket_type>* self_;
+        json_connection* self_;
 
       public:
-        explicit initiate_async_send(json_connection<socket_type>* self) : self_(self) {}
+        explicit initiate_async_send(json_connection* self) : self_(self) {}
 
         template <typename CompletionHandler>
         void operator()(CompletionHandler&& handler, const json& message)

@@ -2,9 +2,16 @@
 #include <varlink/detail/config.hpp>
 using namespace varlink;
 
+class FakeSocket;
+
+struct fake_proto {
+    using socket = FakeSocket;
+    using endpoint = net::local::stream_protocol::endpoint;
+};
+
 class FakeSocket : public net::socket_base {
   public:
-    using protocol_type = net::local::stream_protocol;
+    using protocol_type = fake_proto;
     using executor_type = net::any_io_executor;
     bool error_on_write{false};
     bool cancelled{false};

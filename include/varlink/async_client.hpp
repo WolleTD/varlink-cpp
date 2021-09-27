@@ -9,24 +9,24 @@
 namespace varlink {
 using callmode = varlink_message::callmode;
 
-template <typename Socket>
+template <typename Protocol>
 class async_client {
   public:
-    using socket_type = Socket;
-    using protocol_type = typename socket_type::protocol_type;
+    using protocol_type = Protocol;
+    using socket_type = typename protocol_type::socket;
     using executor_type = typename socket_type::executor_type;
-    using Connection = json_connection<Socket>;
+    using connection_type = json_connection<protocol_type>;
 
     socket_type& socket() { return connection.socket(); }
     [[nodiscard]] const socket_type& socket() const { return connection.socket(); }
 
     executor_type get_executor() { return socket().get_executor(); }
 
-    explicit async_client(Socket socket)
+    explicit async_client(socket_type socket)
         : connection(std::move(socket)), call_strand(get_executor())
     {
     }
-    explicit async_client(Connection&& existing_connection)
+    explicit async_client(connection_type&& existing_connection)
         : connection(std::move(existing_connection)), call_strand(get_executor())
     {
     }
@@ -131,7 +131,7 @@ class async_client {
     }
 
   private:
-    Connection connection;
+    connection_type connection;
     detail::manual_strand<executor_type> call_strand;
 
     std::function<json()> call_impl(const basic_varlink_message& message)
@@ -180,10 +180,10 @@ class async_client {
     template <callmode CallMode>
     class initiate_async_call {
       private:
-        async_client<socket_type>* self_;
+        async_client* self_;
 
       public:
-        explicit initiate_async_call(async_client<socket_type>* self) : self_(self) {}
+        explicit initiate_async_call(async_client* self) : self_(self) {}
 
         template <typename CompletionHandler>
         void operator()(CompletionHandler&& handler, const typed_varlink_message<CallMode>& message)
@@ -219,8 +219,8 @@ class async_client {
     };
 };
 
-using varlink_client_unix = async_client<net::local::stream_protocol::socket>;
-using varlink_client_tcp = async_client<net::ip::tcp::socket>;
+using varlink_client_unix = async_client<net::local::stream_protocol>;
+using varlink_client_tcp = async_client<net::ip::tcp>;
 using varlink_client_variant = std::variant<varlink_client_unix, varlink_client_tcp>;
 
 } // namespace varlink

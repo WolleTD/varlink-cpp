@@ -11,14 +11,19 @@ class varlink_client {
   private:
     varlink_client_variant client;
 
+    template <typename Endpoint>
+    using protocol_t = typename std::decay_t<Endpoint>::protocol_type;
+    template <typename Endpoint>
+    using client_t = async_client<protocol_t<Endpoint>>;
+
     static auto make_client(net::io_context& ctx, const varlink_uri& uri)
     {
         return std::visit(
             [&](auto&& sockaddr) -> varlink_client_variant {
-                using Socket = typename std::decay_t<decltype(sockaddr)>::protocol_type::socket;
+                using Socket = typename protocol_t<decltype(sockaddr)>::socket;
                 auto socket = Socket{ctx, sockaddr.protocol()};
                 socket.connect(sockaddr);
-                return async_client(std::move(socket));
+                return client_t<decltype(sockaddr)>(std::move(socket));
             },
             endpoint_from_uri(uri));
     }

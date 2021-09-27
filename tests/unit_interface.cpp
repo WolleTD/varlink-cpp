@@ -412,7 +412,6 @@ TEST_CASE("Varlink interface types")
              test_spec(vl_struct{}, false, true, false)},
         };
         for (const auto& test : testdata) {
-            std::cerr << test.data << "\n";
             REQUIRE_NOTHROW(interface.validate(test.data, test.type));
         }
     }

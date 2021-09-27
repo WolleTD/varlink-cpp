@@ -6,16 +6,16 @@
 #include <varlink/server_session.hpp>
 
 namespace varlink {
-template <typename Acceptor>
-class async_server : public std::enable_shared_from_this<async_server<Acceptor>> {
+template <typename Protocol>
+class async_server : public std::enable_shared_from_this<async_server<Protocol>> {
   public:
-    using acceptor_type = Acceptor;
-    using protocol_type = typename acceptor_type::protocol_type;
+    using protocol_type = Protocol;
+    using acceptor_type = typename protocol_type::acceptor;
     using socket_type = typename protocol_type::socket;
     using executor_type = typename acceptor_type::executor_type;
-    using session_type = server_session<socket_type>;
+    using session_type = server_session<protocol_type>;
 
-    using std::enable_shared_from_this<async_server<Acceptor>>::shared_from_this;
+    using std::enable_shared_from_this<async_server<Protocol>>::shared_from_this;
 
     executor_type get_executor() { return acceptor_.get_executor(); }
 
@@ -62,10 +62,10 @@ class async_server : public std::enable_shared_from_this<async_server<Acceptor>>
   private:
     class async_accept_initiator {
       private:
-        async_server<Acceptor>* self_;
+        async_server* self_;
 
       public:
-        explicit async_accept_initiator(async_server<Acceptor>* self) : self_(self) {}
+        explicit async_accept_initiator(async_server* self) : self_(self) {}
 
         template <typename ConnectionHandler>
         void operator()(ConnectionHandler&& handler)
@@ -83,8 +83,8 @@ class async_server : public std::enable_shared_from_this<async_server<Acceptor>>
     };
 };
 
-using async_server_unix = async_server<net::local::stream_protocol::acceptor>;
-using async_server_tcp = async_server<net::ip::tcp::acceptor>;
+using async_server_unix = async_server<net::local::stream_protocol>;
+using async_server_tcp = async_server<net::ip::tcp>;
 using async_server_variant = std::variant<async_server_unix, async_server_tcp>;
 
 } // namespace varlink

@@ -12,12 +12,16 @@ class varlink_server {
     varlink_service service;
     async_server_variant server;
 
+    template <typename Endpoint>
+    using protocol_t = typename std::decay_t<Endpoint>::protocol_type;
+    template <typename Endpoint>
+    using server_t = async_server<protocol_t<Endpoint>>;
+
     auto make_async_server(net::io_context& ctx, const varlink_uri& uri)
     {
         return std::visit(
             [&](auto&& sockaddr) -> async_server_variant {
-                using Acceptor = typename std::decay_t<decltype(sockaddr)>::protocol_type::acceptor;
-                return async_server(Acceptor{ctx, sockaddr}, service);
+                return server_t<decltype(sockaddr)>({ctx, sockaddr}, service);
             },
             endpoint_from_uri(uri));
     }

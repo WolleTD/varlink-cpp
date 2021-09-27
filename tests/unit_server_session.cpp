@@ -4,7 +4,7 @@
 #include "fake_socket.hpp"
 
 using namespace varlink;
-using test_session = server_session<FakeSocket>;
+using test_session = server_session<fake_proto>;
 
 TEST_CASE("Server session processing")
 {
