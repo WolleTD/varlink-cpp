@@ -89,17 +89,17 @@ TEST_CASE("JSON transport async read")
             [](const json& r) { REQUIRE(r["object"].get<bool>() == true); },
             [](const json& r) { REQUIRE(r.get<std::string>() == "string"); },
             [](const json& r) { REQUIRE(r["int"].get<int>() == 42); },
-            [](const json& r) {
-                REQUIRE(r["float"].get<double>() == Approx(3.14));
-            },
+            [](const json& r) { REQUIRE(r["float"].get<double>() == Approx(3.14)); },
             [](const json& r) { REQUIRE(r[0].get<std::string>() == "array"); },
             [](const json& r) { REQUIRE(r.is_null() == true); },
         };
         auto test = testers.begin();
-        conn->async_receive([&test](auto ec, const json& r) {
+        std::function<void(std::error_code, json)> read_handler = [&](auto ec, const json& r) {
             REQUIRE(not ec);
             (*test++)(r);
-        });
+            if (test != testers.end()) conn->async_receive(read_handler);
+        };
+        conn->async_receive(read_handler);
         REQUIRE(test == testers.begin());
         REQUIRE(ctx.run() > 0);
         REQUIRE(test == testers.end());
@@ -228,34 +228,38 @@ TEST_CASE("JSON transport async write")
 
     SECTION("Write basic json")
     {
-        setup_test(
-            "{\"object\":true}", "\"string\"", "{\"float\":3.14}", "null");
+        setup_test("{\"object\":true}", "\"string\"", "{\"float\":3.14}", "null");
         std::vector<json> tests = {
             R"({"object":true})"_json,
             R"("string")"_json,
             R"({"float":3.14})"_json,
             R"(null)"_json,
         };
-        for (const auto& t : tests) {
-            conn->async_send(t, [](auto ec) { REQUIRE(not ec); });
-        }
+        auto test = tests.begin();
+        std::function<void(std::error_code)> write_handler = [&](std::error_code ec) {
+            REQUIRE(not ec);
+            if (test != tests.end()) conn->async_send(*test++, write_handler);
+        };
+        conn->async_send(*test++, write_handler);
         REQUIRE(ctx.run() > 0);
         conn->socket().validate_write();
     }
 
     SECTION("Write partial")
     {
-        setup_test(
-            R"({"s":1})", R"({"object":true,"toolong":true})", R"({"last":true})");
+        setup_test(R"({"s":1})", R"({"object":true,"toolong":true})", R"({"last":true})");
         conn->socket().write_max = 10;
         std::vector<json> tests = {
             R"({"s":1})"_json,
             R"({"object":true,"toolong":true})"_json,
             R"({"last":true})"_json,
         };
-        for (const auto& t : tests) {
-            conn->async_send(t, [](auto ec) { REQUIRE(not ec); });
-        }
+        auto test = tests.begin();
+        std::function<void(std::error_code)> write_handler = [&](std::error_code ec) {
+            REQUIRE(not ec);
+            if (test != tests.end()) conn->async_send(*test++, write_handler);
+        };
+        conn->async_send(*test++, write_handler);
         REQUIRE(ctx.run() > 0);
         conn->socket().validate_write();
     }

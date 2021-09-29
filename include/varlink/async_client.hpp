@@ -26,12 +26,10 @@ class async_client {
     explicit async_client(const asio::any_io_executor& ex) : async_client(socket_type(ex)) {}
     explicit async_client(asio::io_context& ctx) : async_client(socket_type(ctx)) {}
 
-    explicit async_client(socket_type socket)
-        : connection(std::move(socket)), call_strand(get_executor())
-    {
-    }
+    explicit async_client(socket_type socket) : connection(std::move(socket)) {}
+
     explicit async_client(connection_type&& existing_connection)
-        : connection(std::move(existing_connection)), call_strand(get_executor())
+        : connection(std::move(existing_connection))
     {
     }
 
@@ -156,7 +154,6 @@ class async_client {
 
   private:
     connection_type connection;
-    detail::manual_strand<executor_type> call_strand;
 
     std::function<json()> call_impl(const basic_varlink_message& message)
     {
@@ -188,10 +185,7 @@ class async_client {
                 }
                 const auto continues =
                     (not ec and reply.contains("continues") and reply["continues"].get<bool>());
-                if (not continues) { call_strand.next(); }
-                else if (not connection.data_available()) {
-                    async_read_reply<CallMode>(std::forward<ReplyHandler>(handler));
-                }
+                if (continues) { async_read_reply<CallMode>(std::forward<ReplyHandler>(handler)); }
                 if constexpr (CallMode == callmode::more) {
                     handler(ec, reply["parameters"], continues);
                 }
@@ -212,32 +206,22 @@ class async_client {
         template <typename CompletionHandler>
         void operator()(CompletionHandler&& handler, const typed_varlink_message<CallMode>& message)
         {
-            self_->call_strand.push(
-                [self = self_, message, handler = std::forward<CompletionHandler>(handler)]() mutable {
-                    self->connection.async_send(
-                        message.json_data(),
-                        [self,
-                         oneway = message.oneway(),
-                         more = message.more(),
-                         handler = std::forward<CompletionHandler>(handler)](auto ec) mutable {
-                            if constexpr (CallMode == callmode::oneway) {
-                                self->call_strand.next();
-                                return handler(ec);
-                            }
-                            else if (ec) {
-                                self->call_strand.next();
-                                if constexpr (CallMode == callmode::more) {
-                                    return handler(ec, json{}, false);
-                                }
-                                else {
-                                    return handler(ec, json{});
-                                }
-                            }
-                            else {
-                                self->template async_read_reply<CallMode>(
-                                    std::forward<CompletionHandler>(handler));
-                            }
-                        });
+            self_->connection.async_send(
+                message.json_data(),
+                [self = self_, handler = std::forward<CompletionHandler>(handler)](auto ec) mutable {
+                    if constexpr (CallMode == callmode::oneway) { return handler(ec); }
+                    else if (ec) {
+                        if constexpr (CallMode == callmode::more) {
+                            return handler(ec, json{}, false);
+                        }
+                        else {
+                            return handler(ec, json{});
+                        }
+                    }
+                    else {
+                        self->template async_read_reply<CallMode>(
+                            std::forward<CompletionHandler>(handler));
+                    }
                 });
         }
     };
