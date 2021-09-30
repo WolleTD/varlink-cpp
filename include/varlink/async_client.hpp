@@ -183,11 +183,13 @@ class async_client {
                 if (reply.contains("error")) {
                     ec = make_varlink_error(reply["error"].get<std::string>());
                 }
-                const auto continues =
-                    (not ec and reply.contains("continues") and reply["continues"].get<bool>());
-                if (continues) { async_read_reply<CallMode>(std::forward<ReplyHandler>(handler)); }
                 if constexpr (CallMode == callmode::more) {
+                    const auto continues =
+                        (not ec and reply.contains("continues") and reply["continues"].get<bool>());
                     handler(ec, reply["parameters"], continues);
+                    if (continues) {
+                        async_read_reply<CallMode>(std::forward<ReplyHandler>(handler));
+                    }
                 }
                 else {
                     handler(ec, reply["parameters"]);

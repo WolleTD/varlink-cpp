@@ -161,13 +161,16 @@ TEST_CASE("Client async call processing")
         bool flag{false};
         bool was_more{false};
         auto msg = varlink_message_more("org.test.Test", {{"ping", "123"}});
-        client->async_call_more(msg, [&](auto ec, const json& r, bool more) {
-            REQUIRE(not ec);
-            REQUIRE(was_more == not more);
-            was_more = more;
-            REQUIRE(r["pong"].get<std::string>() == "123");
-            if (not more) flag = true;
-        });
+        auto move_only_check = std::make_unique<int>();
+        client->async_call_more(
+            msg, [&, moc = std::move(move_only_check)](auto ec, const json& r, bool more) {
+                REQUIRE(moc);
+                REQUIRE(not ec);
+                REQUIRE(was_more == not more);
+                was_more = more;
+                REQUIRE(r["pong"].get<std::string>() == "123");
+                if (not more) flag = true;
+            });
         REQUIRE(ctx.run() > 0);
         REQUIRE(not was_more);
         REQUIRE(flag);
