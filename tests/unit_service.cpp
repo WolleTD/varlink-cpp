@@ -91,6 +91,24 @@ method Test(ping: string) -> (pong: string)
     }
 }
 
+TEST_CASE("Varlink service callbacks simple")
+{
+    varlink_service service{{"test", "unit", "1", "http://example.org"}};
+
+    SECTION("create interface with method callback")
+    {
+        REQUIRE_NOTHROW(
+            service.add_interface("interface org.test\nmethod Test()->()", {{"Test", nullptr}}));
+    }
+
+    SECTION("try create an interface with unknown method callback")
+    {
+        REQUIRE_THROWS_AS(
+            service.add_interface("interface org.test\nmethod Test()->()", {{"Wrong", nullptr}}),
+            std::invalid_argument);
+    }
+}
+
 TEST_CASE("Varlink service callbacks")
 {
     varlink_service service{{"test", "unit", "1", "http://example.org"}};
@@ -116,7 +134,7 @@ method Exception(ping: string) -> (pong: string)
 method EmptyReply() -> ()
 )INTERFACE";
 
-    service.add_interface(varlink_interface(
+    service.add_interface(
         org_test_varlink,
         {
             {"Test",
@@ -133,7 +151,7 @@ method EmptyReply() -> ()
              [] varlink_callback { throw varlink_error("org.test.Error", json::object()); }},
             {"Exception", [] varlink_callback { throw std::exception(); }},
             {"EmptyReply", [] varlink_callback { send_reply({}, false); }},
-        }));
+        });
 
     SECTION("Call a method on an unknown interface")
     {

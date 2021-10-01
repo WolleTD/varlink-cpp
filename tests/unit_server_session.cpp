@@ -22,7 +22,7 @@ method VarlinkError() -> ()
 method Exception() -> ()
 )INTERFACE";
 
-    service.add_interface(varlink_interface(
+    service.add_interface(
         org_test_varlink,
         {
             {"Test",
@@ -37,7 +37,7 @@ method Exception() -> ()
             {"VarlinkError",
              [] varlink_callback { throw varlink_error("org.test.Error", json::object()); }},
             {"Exception", [] varlink_callback { throw std::exception(); }},
-        }));
+        });
 
     auto setup_test = [&](const auto& call, const auto& expected_response) {
         socket.setup_fake(call);

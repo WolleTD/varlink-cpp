@@ -266,20 +266,6 @@ TEST_CASE("Varlink interface methods")
         REQUIRE_THROWS(
             varlink_interface("interface.org.test\nmethod Test()->(a:)"));
     }
-
-    SECTION("create interface with method callback")
-    {
-        REQUIRE_NOTHROW(varlink_interface(
-            "interface org.test\nmethod Test()->()", {{"Test", nullptr}}));
-    }
-
-    SECTION("try create an interface with unknown method callback")
-    {
-        REQUIRE_THROWS_AS(
-            varlink_interface(
-                "interface org.test\nmethod Test()->()", {{"Wrong", nullptr}}),
-            std::invalid_argument);
-    }
 }
 
 TEST_CASE("Varlink interface member access")

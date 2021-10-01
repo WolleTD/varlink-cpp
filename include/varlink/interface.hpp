@@ -5,20 +5,7 @@
 #include <varlink/detail/scanner.hpp>
 #include <varlink/detail/varlink_error.hpp>
 
-#define varlink_callback                               \
-    ([[maybe_unused]] const varlink::json& parameters, \
-     [[maybe_unused]] varlink::callmode mode,          \
-     [[maybe_unused]] const varlink::reply_function& send_reply)
-
 namespace varlink {
-using reply_function = std::function<void(json::object_t, bool)>;
-using callback_function = std::function<void(const json&, callmode, const reply_function&)>;
-
-struct user_callback {
-    std::string name;
-    callback_function callback;
-};
-using callback_map = std::map<std::string, callback_function>;
 
 class varlink_interface {
   private:
@@ -27,7 +14,6 @@ class varlink_interface {
     std::string_view description{};
 
     std::vector<detail::member> members{};
-    callback_map methods{};
 
     [[nodiscard]] const detail::member& find_member(std::string_view name, detail::MemberKind kind) const
     {
@@ -46,8 +32,7 @@ class varlink_interface {
     }
 
   public:
-    explicit varlink_interface(std::string_view fromDescription, callback_map callbacks = {})
-        : description(fromDescription)
+    explicit varlink_interface(std::string_view fromDescription) : description(fromDescription)
     {
         auto scanner = detail::scanner(std::string(description));
         ifname = scanner.read_interface_name();
@@ -58,50 +43,9 @@ class varlink_interface {
             if (std::any_of(members.begin(), members.end(), names_equal)) {
                 throw std::invalid_argument("Member names must be unique");
             }
-            if (member.kind == detail::MemberKind::Method) {
-                if (auto i = callbacks.find(member.name); i != callbacks.end()) {
-                    methods[member.name] = i->second;
-                    callbacks.erase(i);
-                }
-            }
             members.push_back(std::move(member));
         }
         if (members.empty()) throw std::invalid_argument("At least one member is required");
-        if (not callbacks.empty()) throw std::invalid_argument("Callback for unknown method");
-    }
-
-    template <typename ReplyHandler>
-    void call(const basic_varlink_message& message, ReplyHandler&& replySender) const
-    {
-        const auto& m = method(message.method());
-        validate(message.parameters(), m.data.get<detail::vl_struct>()[0].second);
-        const auto it = methods.find(m.name);
-        if (it == methods.end()) throw std::bad_function_call{};
-
-        it->second(
-            message.parameters(),
-            message.mode(),
-            // This is not an asynchronous callback and exceptions
-            // will propagate up to the outer try-catch in this fn.
-            // TODO: This isn't true if the callback dispatches async ops
-            [this,
-             mode = message.mode(),
-             &return_type = m.data.get<detail::vl_struct>()[1].second,
-             replySender = std::forward<ReplyHandler>(replySender)](
-                const json::object_t& params, bool continues) mutable {
-                validate(params, return_type);
-
-                if (mode == callmode::oneway) { replySender(nullptr); }
-                else if (mode == callmode::more) {
-                    replySender({{"parameters", params}, {"continues", continues}});
-                }
-                else if (continues) { // and not more
-                    throw std::bad_function_call{};
-                }
-                else {
-                    replySender({{"parameters", params}});
-                }
-            });
     }
 
     [[nodiscard]] const std::string& name() const noexcept { return ifname; }
