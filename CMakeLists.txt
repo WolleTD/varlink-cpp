@@ -60,23 +60,28 @@ if(NOT VARLINK_DISABLE_CTRE)
     CPMAddPackage("https://github.com/hanickadot/compile-time-regular-expressions.git@3.4.1")
 endif()
 
-# main header only library
+# main library
 
-varlink_wrapper(include/varlink/detail/org.varlink.service.varlink)
+varlink_wrapper(source/org.varlink.service.varlink)
 
-add_library(varlink++ OBJECT include/varlink/detail/org.varlink.service.varlink.hpp)
-
-target_include_directories(varlink++ PUBLIC
-        ${PROJECT_SOURCE_DIR}/include
-        ${PROJECT_BINARY_DIR}/include
+add_library(varlink++
+        source/interface.cpp
+        source/member.cpp
+        source/service.cpp
+        source/org.varlink.service.varlink.hpp
         )
 
-target_link_libraries(varlink++ INTERFACE nlohmann_json asio stdc++fs)
+target_include_directories(varlink++
+        PUBLIC ${PROJECT_SOURCE_DIR}/include
+        PRIVATE ${PROJECT_BINARY_DIR}/source
+        )
+
+target_link_libraries(varlink++ PUBLIC nlohmann_json asio stdc++fs)
 
 if(VARLINK_DISABLE_CTRE)
-    target_compile_definitions(varlink++ INTERFACE VARLINK_DISABLE_CTRE)
+    target_compile_definitions(varlink++ PUBLIC VARLINK_DISABLE_CTRE)
 else()
-    target_link_libraries(varlink++ INTERFACE ctre)
+    target_link_libraries(varlink++ PRIVATE ctre)
 endif()
 
 # command line tool and more example
