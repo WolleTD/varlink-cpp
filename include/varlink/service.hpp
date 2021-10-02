@@ -52,7 +52,7 @@ class varlink_service {
     description desc;
     std::vector<interface_entry> interfaces{};
 
-    [[nodiscard]] auto find_interface(const std::string& ifname) const
+    [[nodiscard]] auto find_interface(std::string_view ifname) const
     {
         return std::find_if(interfaces.cbegin(), interfaces.cend(), [&ifname](auto& i) {
             return (ifname == i->name());

@@ -2,10 +2,9 @@
 #include <varlink/interface.hpp>
 
 namespace varlink {
-varlink_interface::varlink_interface(std::string_view fromDescription)
-    : description(fromDescription)
+varlink_interface::varlink_interface(std::string_view description)
 {
-    auto scanner = detail::scanner(std::string(description));
+    auto scanner = detail::scanner(description);
     ifname = scanner.read_interface_name();
     documentation = scanner.get_docstring();
     for (auto member = scanner.read_member(); member.kind != detail::MemberKind::Undefined;
@@ -56,7 +55,7 @@ void varlink_interface::validate( // NOLINT(misc-no-recursion)
         }
     }
     else if (typespec.is_string() and (collection or not(typespec.array_type or typespec.dict_type))) {
-        const auto& valtype = typespec.get<std::string>();
+        const auto& valtype = typespec.get<detail::string_type>();
         if (not is_primitive(data, valtype)) {
             try {
                 validate(data, type(valtype).data, name);

@@ -4,7 +4,7 @@
 namespace varlink::detail {
 std::string to_string(const type_spec& elem, int indent, size_t depth) // NOLINT(misc-no-recursion)
 {
-    if (elem.is_string()) { return std::string{elem.get<std::string>()}; }
+    if (elem.is_string()) { return std::string{elem.get<detail::string_type>()}; }
     else {
         const auto is_multiline = [&]() -> bool {
             if (indent < 0) return false;

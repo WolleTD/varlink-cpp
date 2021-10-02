@@ -8,13 +8,19 @@
 
 namespace varlink::detail {
 
+#ifdef VARLINK_USE_STRINGS
+using string_type = std::string;
+#else
+using string_type = std::string_view;
+#endif
+
 enum class MemberKind { Undefined, Type, Error, Method };
 
 struct type_spec;
 
-using vl_enum = std::vector<std::string>;
-using vl_struct = std::vector<std::pair<std::string, type_spec>>;
-using type_def = std::variant<std::monostate, std::string, vl_enum, vl_struct>;
+using vl_enum = std::vector<string_type>;
+using vl_struct = std::vector<std::pair<string_type, type_spec>>;
+using type_def = std::variant<std::monostate, string_type, vl_enum, vl_struct>;
 
 struct type_spec {
     type_spec() = default;
@@ -24,7 +30,7 @@ struct type_spec {
     {
     }
     [[nodiscard]] bool is_null() const { return std::holds_alternative<std::monostate>(type); }
-    [[nodiscard]] bool is_string() const { return std::holds_alternative<std::string>(type); }
+    [[nodiscard]] bool is_string() const { return std::holds_alternative<string_type>(type); }
     [[nodiscard]] bool is_enum() const { return std::holds_alternative<vl_enum>(type); }
     [[nodiscard]] bool is_struct() const { return std::holds_alternative<vl_struct>(type); }
     [[nodiscard]] bool empty() const
@@ -54,8 +60,8 @@ struct type_spec {
 
 struct member {
     MemberKind kind{MemberKind::Undefined};
-    std::string name;
-    std::string description;
+    string_type name;
+    string_type description;
     type_spec data;
 
     member() = default;

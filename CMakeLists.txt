@@ -7,6 +7,7 @@ include(CMakeDependentOption)
 option(VARLINK_NO_DOWNLOADS "Don't use CPM, provide all dependencies externally" OFF)
 option(VARLINK_USE_BOOST "Use boost/asio instead of standalone" OFF)
 option(VARLINK_DISABLE_CTRE "Use std::regex instead of ctre" OFF)
+option(VARLINK_USE_STRINGS "Use std::string instead of std::string_view for interface and members" OFF)
 option(VARLINK_BUILD_TESTS "Build tests" ON)
 option(VARLINK_BUILD_EXAMPLES "Build examples" OFF)
 cmake_dependent_option(VARLINK_USE_EXTERNAL_JSON "Use external nlohmann/json.hpp" OFF "NOT VARLINK_NO_DOWNLOADS" ON)
@@ -82,6 +83,10 @@ if(VARLINK_DISABLE_CTRE)
     target_compile_definitions(varlink++ PUBLIC VARLINK_DISABLE_CTRE)
 else()
     target_link_libraries(varlink++ PRIVATE ctre)
+endif()
+
+if(VARLINK_USE_STRINGS)
+    target_compile_definitions(varlink++ PUBLIC VARLINK_USE_STRINGS)
 endif()
 
 # command line tool and more example

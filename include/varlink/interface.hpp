@@ -11,8 +11,8 @@ class varlink_interface {
   public:
     explicit varlink_interface(std::string_view description);
 
-    [[nodiscard]] const std::string& name() const noexcept { return ifname; }
-    [[nodiscard]] const std::string& doc() const noexcept { return documentation; }
+    [[nodiscard]] std::string_view name() const noexcept { return ifname; }
+    [[nodiscard]] std::string_view doc() const noexcept { return documentation; }
 
     [[nodiscard]] const detail::member& method(std::string_view name) const
     {
@@ -47,9 +47,8 @@ class varlink_interface {
         bool collection = false) const;
 
   private:
-    std::string ifname{};
-    std::string documentation{};
-    std::string_view description{};
+    detail::string_type ifname{};
+    detail::string_type documentation{};
     std::vector<detail::member> members{};
 
     [[nodiscard]] const detail::member& find_member(std::string_view name, detail::MemberKind kind) const

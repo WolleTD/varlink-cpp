@@ -21,7 +21,8 @@ jobs:
   build:
     strategy:
       matrix:
-        config: [ "", "-DVARLINK_DISABLE_CTRE=ON" ]
+        config: [ "", "-DVARLINK_DISABLE_CTRE=ON", "-DVARLINK_USE_STRINGS=ON",
+                  "-DVARLINK_DISABLE_CTRE=ON -DVARLINK_USE_STRINGS=ON" ]
     runs-on: ubuntu-latest
 
     steps:

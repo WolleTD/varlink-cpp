@@ -30,9 +30,7 @@ namespace varlink::detail {
 
 class scanner {
   public:
-    explicit scanner(std::string description) : desc_(std::move(description)), pos_(desc_.begin())
-    {
-    }
+    explicit scanner(std::string_view description) : desc_(description), pos_(desc_.begin()) {}
 
     auto read_interface_name()
     {
@@ -53,7 +51,7 @@ class scanner {
             m.kind = MemberKind::Method;
         }
         else if (not keyword.empty()) {
-            throw std::runtime_error("Unexpected keyword " + keyword);
+            throw std::runtime_error("Unexpected keyword " + std::string(keyword));
         }
         m.name = expect(member_pattern);
         m.description = get_docstring();
@@ -61,15 +59,17 @@ class scanner {
         return m;
     }
 
-    void expect_keyword(const std::string& keyword)
+    void expect_keyword(std::string_view keyword)
     {
-        if (expect(keyword_pattern) != keyword) { throw std::runtime_error("Expected " + keyword); }
+        if (expect(keyword_pattern) != keyword) {
+            throw std::runtime_error("Expected " + std::string(keyword));
+        }
     }
 
-    std::string get_docstring() { return std::exchange(current_doc_, {}); }
+    std::string_view get_docstring() { return std::exchange(current_doc_, {}); }
 
   private:
-    type_def read_struct(bool readFirstBracket = true)
+    type_def read_struct(bool readFirstBracket = true) // NOLINT(misc-no-recursion)
     {
         if (readFirstBracket) expect_keyword("(");
         try {
@@ -79,7 +79,7 @@ class scanner {
         catch (...) {
         }
         type_def fields;
-        std::string keyword;
+        std::string_view keyword;
         while (keyword != ")") {
             auto name = expect(identifier_pattern);
             keyword = expect(keyword_pattern);
@@ -89,7 +89,7 @@ class scanner {
                     fields = vl_enum{};
                 }
                 else {
-                    throw std::runtime_error("Expected : or , got " + keyword);
+                    throw std::runtime_error("Expected : or , got " + std::string(keyword));
                 }
             }
             if (auto* s = std::get_if<vl_struct>(&fields); s and keyword == ":") {
@@ -98,10 +98,10 @@ class scanner {
             }
             else if (auto* e = std::get_if<vl_enum>(&fields);
                      e and (keyword == "," or keyword == ")")) {
-                e->push_back(name);
+                e->push_back(string_type{name});
             }
             else {
-                throw std::runtime_error("Parser error, last keyword: " + keyword);
+                throw std::runtime_error("Parser error, last keyword: " + std::string(keyword));
             }
         }
         return fields;
@@ -138,27 +138,33 @@ class scanner {
             return type_spec{read_struct(false)};
         }
         else {
-            return type_spec{keyword};
+            return type_spec{string_type{keyword}};
         }
     }
 
 #ifdef VARLINK_DISABLE_CTRE
     template <typename... Regex>
-    std::string expect_re(const Regex&... rex)
+    std::string_view expect_re(const Regex&... rex)
     {
         static_assert((std::is_same_v<std::regex, Regex> && ...));
-        if (std::smatch m;
+        if (std::cmatch m;
             std::regex_search(pos_, desc_.end(), m, whitespace) && m.prefix().length() == 0) {
             auto s = m.str();
-            for (auto it = std::sregex_iterator(s.begin(), s.end(), docstring);
-                 it != std::sregex_iterator{};
+            for (auto it = std::cregex_iterator(m[0].first, m[0].second, docstring);
+                 it != std::cregex_iterator{};
                  ++it) {
-                current_doc_ += "#" + (*it)[1].str() + "\n";
+                auto& doc = (*it)[0];
+                if (current_doc_.empty())
+                    current_doc_ = std::string_view(doc.first, static_cast<size_t>(doc.length()));
+                else {
+                    auto new_len = static_cast<size_t>(doc.first - current_doc_.data() + doc.length());
+                    current_doc_ = std::string_view(current_doc_.data(), new_len);
+                }
             }
             pos_ += m.length();
         }
         if (pos_ == desc_.end()) return {};
-        std::smatch m, _m;
+        std::cmatch m, _m;
         auto match = [this, &m, &_m](auto& re) {
             if (std::regex_search(pos_, desc_.end(), _m, re) && _m.prefix().length() == 0) {
                 m = _m;
@@ -167,7 +173,7 @@ class scanner {
         (match(rex), ...);
         if (not m.empty()) {
             pos_ += m.length();
-            return m.str();
+            return {m[0].first, static_cast<size_t>(m[0].length())};
         }
         else {
             throw std::runtime_error("interface error" + _m.str() + " | " + _m.prefix().str());
@@ -188,7 +194,12 @@ class scanner {
             auto s = m.to_view();
             auto doc = ctre::search<docstring>(s);
             while (doc) {
-                current_doc_ += doc.to_string();
+                if (current_doc_.empty())
+                    current_doc_ = doc.to_view();
+                else {
+                    auto new_len = static_cast<size_t>(doc.data() - current_doc_.data()) + doc.size();
+                    current_doc_ = std::string_view(current_doc_.data(), new_len);
+                }
                 s.remove_prefix(doc.size());
                 doc = ctre::search<docstring>(s);
             }
@@ -197,7 +208,7 @@ class scanner {
     }
 
     template <CTRE_REGEX_INPUT_TYPE... Regex>
-    std::string expect_re()
+    std::string_view expect_re()
     {
         consume_whitespace();
         if (pos_ == desc_.end()) return {};
@@ -205,7 +216,7 @@ class scanner {
         (match_one<Regex>(match), ...);
         if (not match.empty()) {
             pos_ += static_cast<ptrdiff_t>(match.length());
-            return std::string(match);
+            return match;
         }
         else {
             throw std::runtime_error("interface error" + std::string(pos_, pos_ + 20));
@@ -213,9 +224,9 @@ class scanner {
     }
 #endif
 
-    const std::string desc_;
-    std::string::const_iterator pos_;
-    std::string current_doc_;
+    const std::string_view desc_;
+    std::string_view::const_iterator pos_;
+    std::string_view current_doc_;
 
     REGEX whitespace{"([ \t\n]|#[^\n]*(\n|$))+"};
     REGEX docstring{"(?:[^\n]*)#([^\n]*)\r?\n"};
