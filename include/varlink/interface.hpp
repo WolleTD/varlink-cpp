@@ -2,10 +2,14 @@
 #define LIBVARLINK_INTERFACE_HPP
 
 #include <varlink/detail/member.hpp>
-#include <varlink/detail/message.hpp>
-#include <varlink/detail/varlink_error.hpp>
+#include <varlink/detail/nl_json.hpp>
 
 namespace varlink {
+
+class invalid_parameter : public std::invalid_argument {
+  public:
+    explicit invalid_parameter(const std::string& what) : std::invalid_argument(what) {}
+};
 
 class varlink_interface {
   public:
@@ -51,21 +55,8 @@ class varlink_interface {
     detail::string_type documentation{};
     std::vector<detail::member> members{};
 
-    [[nodiscard]] const detail::member& find_member(std::string_view name, detail::MemberKind kind) const
-    {
-        auto i = std::find_if(members.begin(), members.end(), [&](const auto& e) {
-            return e.name == name && (e.kind == kind || kind == detail::MemberKind::Undefined);
-        });
-        if (i == members.end()) throw std::out_of_range(std::string(name));
-        return *i;
-    }
-
-    [[nodiscard]] bool has_member(std::string_view name, detail::MemberKind kind) const
-    {
-        return std::any_of(members.begin(), members.end(), [&](const auto& e) {
-            return e.name == name && (e.kind == kind || kind == detail::MemberKind::Undefined);
-        });
-    }
+    [[nodiscard]] const detail::member& find_member(std::string_view name, detail::MemberKind kind) const;
+    [[nodiscard]] bool has_member(std::string_view name, detail::MemberKind kind) const;
 
     friend std::ostream& operator<<(std::ostream& os, const varlink_interface& interface);
 };

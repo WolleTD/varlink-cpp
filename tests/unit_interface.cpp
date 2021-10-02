@@ -433,7 +433,7 @@ TEST_CASE("Varlink interface types")
             {R"({"a":{"one":1,"two":2,"three":3}})"_json, test_spec(vl_struct{}, false, true, false)},
         };
         for (const auto& test : testdata) {
-            REQUIRE_THROWS_AS(interface.validate(test.data, test.type), varlink_error);
+            REQUIRE_THROWS_AS(interface.validate(test.data, test.type), invalid_parameter);
         }
     }
 }

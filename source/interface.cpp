@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <varlink/detail/scanner.hpp>
 #include <varlink/interface.hpp>
 
@@ -18,16 +19,28 @@ varlink_interface::varlink_interface(std::string_view description)
     if (members.empty()) throw std::invalid_argument("At least one member is required");
 }
 
+const detail::member& varlink_interface::find_member(std::string_view name, detail::MemberKind kind) const
+{
+    auto i = std::find_if(members.begin(), members.end(), [&](const auto& e) {
+        return e.name == name && (e.kind == kind || kind == detail::MemberKind::Undefined);
+    });
+    if (i == members.end()) throw std::out_of_range(std::string(name));
+    return *i;
+}
+
+bool varlink_interface::has_member(std::string_view name, detail::MemberKind kind) const
+{
+    return std::any_of(members.begin(), members.end(), [&](const auto& e) {
+        return e.name == name && (e.kind == kind || kind == detail::MemberKind::Undefined);
+    });
+}
+
 void varlink_interface::validate( // NOLINT(misc-no-recursion)
     const json& data,
     const detail::type_spec& typespec,
     std::string_view name,
     bool collection) const
 {
-    auto invalid_parameter = [](std::string_view arg) {
-        return varlink_error(
-            "org.varlink.service.InvalidParameter", {{"parameter", std::string(arg)}});
-    };
     auto is_primitive = [](const json& object, std::string_view type) {
         return (type == "string" && object.is_string())
             or (type == "int" && object.is_number_integer())
@@ -61,7 +74,7 @@ void varlink_interface::validate( // NOLINT(misc-no-recursion)
                 validate(data, type(valtype).data, name);
             }
             catch (std::out_of_range&) {
-                throw invalid_parameter(name);
+                throw invalid_parameter(std::string(name));
             }
         }
     }
@@ -71,7 +84,7 @@ void varlink_interface::validate( // NOLINT(misc-no-recursion)
             name = param.first;
             auto spec = param.second;
             if (not data.contains(name) or data[std::string(name)].is_null()) {
-                if (not spec.maybe_type) throw invalid_parameter(name);
+                if (not spec.maybe_type) throw invalid_parameter(std::string(name));
             }
             else {
                 const auto& value = data[std::string(name)];

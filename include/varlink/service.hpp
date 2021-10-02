@@ -1,9 +1,8 @@
 #ifndef LIBVARLINK_SERVICE_HPP
 #define LIBVARLINK_SERVICE_HPP
 
-#include <mutex>
-#include <sstream>
 #include <varlink/detail/message.hpp>
+#include <varlink/detail/varlink_error.hpp>
 #include <varlink/interface.hpp>
 
 #define varlink_callback                               \
@@ -115,6 +114,9 @@ class varlink_service {
         }
         catch (std::bad_function_call& e) {
             error("org.varlink.service.MethodNotImplemented", {{"method", ifname + '.' + methodname}});
+        }
+        catch (invalid_parameter& e) {
+            error("org.varlink.service.InvalidParameter", {{"parameter", e.what()}});
         }
         catch (varlink_error& e) {
             error(e.what(), e.args());

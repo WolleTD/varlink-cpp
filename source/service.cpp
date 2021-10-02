@@ -1,3 +1,4 @@
+#include <sstream>
 #include <org.varlink.service.varlink.hpp>
 #include <varlink/service.hpp>
 
