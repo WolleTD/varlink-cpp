@@ -18,9 +18,13 @@ enum class MemberKind { Undefined, Type, Error, Method };
 
 struct type_spec;
 
+struct vl_invalid {
+    static constexpr bool empty() { return true; }
+};
+
 using vl_enum = std::vector<string_type>;
 using vl_struct = std::vector<std::pair<string_type, type_spec>>;
-using type_def = std::variant<std::monostate, string_type, vl_enum, vl_struct>;
+using type_def = std::variant<vl_invalid, string_type, vl_enum, vl_struct>;
 
 struct type_spec {
     type_spec() = default;
@@ -29,22 +33,13 @@ struct type_spec {
         : type(std::move(type_)), maybe_type(maybe), dict_type(dict), array_type(array)
     {
     }
-    [[nodiscard]] bool is_null() const { return std::holds_alternative<std::monostate>(type); }
+    [[nodiscard]] bool is_null() const { return std::holds_alternative<vl_invalid>(type); }
     [[nodiscard]] bool is_string() const { return std::holds_alternative<string_type>(type); }
     [[nodiscard]] bool is_enum() const { return std::holds_alternative<vl_enum>(type); }
     [[nodiscard]] bool is_struct() const { return std::holds_alternative<vl_struct>(type); }
     [[nodiscard]] bool empty() const
     {
-        return std::visit(
-            [](auto& t) {
-                if constexpr (std::is_same_v<std::decay_t<decltype(t)>, std::monostate>) {
-                    return true;
-                }
-                else {
-                    return t.empty();
-                }
-            },
-            type);
+        return std::visit([](auto& t) { return t.empty(); }, type);
     }
 
     template <typename T>

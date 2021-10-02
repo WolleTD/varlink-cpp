@@ -83,7 +83,7 @@ class scanner {
         while (keyword != ")") {
             auto name = expect(identifier_pattern);
             keyword = expect(keyword_pattern);
-            if (std::holds_alternative<std::monostate>(fields)) {
+            if (std::holds_alternative<vl_invalid>(fields)) {
                 if (keyword == ":") { fields = vl_struct{}; }
                 else if (keyword == ",") {
                     fields = vl_enum{};
