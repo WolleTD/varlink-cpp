@@ -121,6 +121,9 @@ class varlink_service {
         catch (varlink_error& e) {
             error(e.what(), e.args());
         }
+        catch (std::system_error& e) {
+            // All system_errors here are send-errors, so don't send anymore
+        }
         catch (std::exception& e) {
             error("org.varlink.service.InternalError", {{"what", e.what()}});
         }

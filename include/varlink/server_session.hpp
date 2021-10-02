@@ -23,6 +23,7 @@ class server_session : public std::enable_shared_from_this<server_session<Protoc
   private:
     connection_type connection;
     varlink_service& service_;
+    std::error_code send_ec{};
 
   public:
     explicit server_session(socket_type socket, varlink_service& service)
@@ -41,7 +42,8 @@ class server_session : public std::enable_shared_from_this<server_session<Protoc
             if (ec) return;
             try {
                 const basic_varlink_message message{j};
-                self->service_.message_call(message, [self, ec](const json& reply) {
+                self->service_.message_call(message, [self](const json& reply) {
+                    if (self->send_ec) { throw std::system_error(self->send_ec); }
                     if (reply.is_object()) {
                         auto m = std::make_unique<json>(reply);
                         self->async_send_reply(std::move(m));
@@ -59,7 +61,10 @@ class server_session : public std::enable_shared_from_this<server_session<Protoc
     {
         auto& data = *message;
         connection.async_send(data, [m = std::move(message), self = shared_from_this()](auto ec) {
-            if (ec) { self->connection.cancel(); }
+            if (ec) {
+                self->connection.cancel();
+                self->send_ec = ec;
+            }
         });
     }
 };
