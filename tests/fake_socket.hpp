@@ -16,6 +16,7 @@ class FakeSocket : public net::socket_base {
     using executor_type = net::any_io_executor;
     bool error_on_write{false};
     bool cancelled{false};
+    bool validate{false};
     size_t write_max{BUFSIZ};
 
   private:
@@ -30,18 +31,29 @@ class FakeSocket : public net::socket_base {
     FakeSocket(FakeSocket&& r) noexcept = default;
     FakeSocket& operator=(FakeSocket&& r) noexcept = default;
 
+    ~FakeSocket()
+    {
+        if (validate) validate_write();
+    }
+
     [[nodiscard]] executor_type get_executor() const { return ctx_->get_executor(); }
 
     // Fake control
 
-    size_t setup_fake(const net::const_buffer& buffer) { return write_buffer(fake_data, buffer); }
+    size_t setup_fake(const net::const_buffer& buffer)
+    {
+        return write_buffer(fake_data, buffer, true);
+    }
 
     size_t setup_fake(const std::string& str)
     {
         return setup_fake(net::buffer(str.data(), str.size() + 1));
     }
 
-    size_t expect(const net::const_buffer& buffer) { return write_buffer(sent_expect, buffer); }
+    size_t expect(const net::const_buffer& buffer)
+    {
+        return write_buffer(sent_expect, buffer, true);
+    }
 
     size_t expect(const std::string& str)
     {
@@ -121,10 +133,10 @@ class FakeSocket : public net::socket_base {
     void cancel() { cancelled = true; }
 
   private:
-    size_t write_buffer(std::vector<char>& target, const net::const_buffer& buffer) const
+    size_t write_buffer(std::vector<char>& target, const net::const_buffer& buffer, bool all = false) const
     {
         const auto insert_pos = target.size();
-        const auto write_count = std::min(write_max, buffer.size());
+        const auto write_count = all ? buffer.size() : std::min(write_max, buffer.size());
         target.resize(insert_pos + write_count);
         std::memcpy(&target[insert_pos], buffer.data(), write_count);
         return write_count;

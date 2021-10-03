@@ -17,9 +17,6 @@ class json_connection {
     using endpoint_type = typename protocol_type::endpoint;
     using executor_type = typename socket_type::executor_type;
 
-    socket_type& socket() { return stream; }
-    const socket_type& socket() const { return stream; }
-
     executor_type get_executor() { return stream.get_executor(); }
 
   private:

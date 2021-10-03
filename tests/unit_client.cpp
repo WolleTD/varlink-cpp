@@ -20,31 +20,31 @@ TEST_CASE("Client sync call processing")
 
     SECTION("Simple call")
     {
+        socket.validate = true;
         setup_test(
             R"({"method":"org.test.Test","parameters":{"ping":"123"}})",
             R"({"parameters":{"pong":"123"}})");
         auto resp = client->call("org.test.Test", {{"ping", "123"}});
-        client->socket().validate_write();
         REQUIRE(resp["pong"].get<std::string>() == "123");
     }
 
     SECTION("Oneway call")
     {
+        socket.validate = true;
         setup_test(
             R"({"method":"org.test.Test","oneway":true,"parameters":{"ping":"123"}})",
             net::buffer(&client, 0));
         client->call_oneway("org.test.Test", {{"ping", "123"}});
-        client->socket().validate_write();
     }
 
     SECTION("More call")
     {
+        socket.validate = true;
         std::string reply = R"({"continues":true,"parameters":{"pong":"123"}})";
         reply += '\0';
         reply += R"({"continues":false,"parameters":{"pong":"123"}})";
         setup_test(R"({"method":"org.test.Test","more":true,"parameters":{"ping":"123"}})", reply);
         auto resp = client->call_more("org.test.Test", {{"ping", "123"}});
-        client->socket().validate_write();
         REQUIRE(resp()["pong"].get<std::string>() == "123");
         REQUIRE(resp()["pong"].get<std::string>() == "123");
         REQUIRE(resp() == nullptr);
@@ -52,6 +52,7 @@ TEST_CASE("Client sync call processing")
 
     SECTION("Error returned")
     {
+        socket.validate = true;
         setup_test(
             R"({"method":"org.test.Test","parameters":{"ping":"123"}})",
             R"({"error":"org.test.Error","parameters":{"test":1337}})");
@@ -63,11 +64,11 @@ TEST_CASE("Client sync call processing")
             REQUIRE(std::string_view(e.what()) == "org.test.Error");
             REQUIRE(e.args()["test"].get<int>() == 1337);
         }
-        client->socket().validate_write();
     }
 
     SECTION("End of file")
     {
+        socket.validate = true;
         setup_test(
             R"({"method":"org.test.Test","parameters":{"ping":"123"}})",
             net::buffer(std::string_view(R"({"parameters":{"pong":)")));
@@ -82,11 +83,11 @@ TEST_CASE("Client sync call processing")
             // Unexpected exception
             REQUIRE(false);
         }
-        client->socket().validate_write();
     }
 
     SECTION("Incomplete message")
     {
+        socket.validate = true;
         setup_test(
             R"({"method":"org.test.Test","parameters":{"ping":"123"}})", R"({"parameters":{"pong":)");
         try {
@@ -96,13 +97,12 @@ TEST_CASE("Client sync call processing")
         catch (std::invalid_argument& e) {
             REQUIRE(std::string_view(e.what()).empty());
         }
-        client->socket().validate_write();
     }
 
     SECTION("Broken pipe")
     {
+        socket.error_on_write = true;
         setup_test("", "");
-        client->socket().error_on_write = true;
         REQUIRE_THROWS_AS(client->call("org.test.Test", {{"ping", "123"}}), std::system_error);
     }
 }
@@ -121,6 +121,7 @@ TEST_CASE("Client async call processing")
 
     SECTION("Simple call")
     {
+        socket.validate = true;
         setup_test(
             R"({"method":"org.test.Test","parameters":{"ping":"123"}})",
             R"({"parameters":{"pong":"123"}})");
@@ -133,11 +134,11 @@ TEST_CASE("Client async call processing")
         });
         REQUIRE(ctx.run() > 0);
         REQUIRE(flag);
-        client->socket().validate_write();
     }
 
     SECTION("Oneway call")
     {
+        socket.validate = true;
         setup_test(
             R"({"method":"org.test.Test","oneway":true,"parameters":{"ping":"123"}})",
             net::buffer(&client, 0));
@@ -149,11 +150,11 @@ TEST_CASE("Client async call processing")
         });
         REQUIRE(ctx.run() > 0);
         REQUIRE(flag);
-        client->socket().validate_write();
     }
 
     SECTION("More call")
     {
+        socket.validate = true;
         std::string reply = R"({"continues":true,"parameters":{"pong":"123"}})";
         reply += '\0';
         reply += R"({"continues":false,"parameters":{"pong":"123"}})";
@@ -174,11 +175,11 @@ TEST_CASE("Client async call processing")
         REQUIRE(ctx.run() > 0);
         REQUIRE(not was_more);
         REQUIRE(flag);
-        client->socket().validate_write();
     }
 
     SECTION("Error returned")
     {
+        socket.validate = true;
         setup_test(
             R"({"method":"org.test.Test","parameters":{"ping":"123"}})",
             R"({"error":"org.test.Error","parameters":{"test":1337}})");
@@ -192,11 +193,11 @@ TEST_CASE("Client async call processing")
         });
         REQUIRE(ctx.run() > 0);
         REQUIRE(flag);
-        client->socket().validate_write();
     }
 
     SECTION("End of file")
     {
+        socket.validate = true;
         setup_test(
             R"({"method":"org.test.Test","parameters":{"ping":"123"}})",
             net::buffer(std::string_view(R"({"parameters":{"pong":)")));
@@ -209,11 +210,11 @@ TEST_CASE("Client async call processing")
         });
         REQUIRE(ctx.run() > 0);
         REQUIRE(flag);
-        client->socket().validate_write();
     }
 
     SECTION("Incomplete message")
     {
+        socket.validate = true;
         setup_test(
             R"({"method":"org.test.Test","parameters":{"ping":"123"}})", R"({"parameters":{"pong":)");
         bool flag{false};
@@ -225,14 +226,13 @@ TEST_CASE("Client async call processing")
         });
         REQUIRE(ctx.run() > 0);
         REQUIRE(flag);
-        client->socket().validate_write();
     }
 
     SECTION("Broken pipe")
     {
+        socket.error_on_write = true;
         setup_test("", "");
         bool flag{false};
-        client->socket().error_on_write = true;
         auto msg = varlink_message("org.test.Test", {{"ping", "123"}});
         client->async_call(msg, [&](auto ec, const json& r) {
             REQUIRE(ec == net::error::broken_pipe);

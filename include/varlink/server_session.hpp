@@ -15,9 +15,6 @@ class server_session : public std::enable_shared_from_this<server_session<Protoc
 
     using std::enable_shared_from_this<server_session<Protocol>>::shared_from_this;
 
-    socket_type& socket() { return connection.socket(); }
-    [[nodiscard]] const socket_type& socket() const { return connection.socket(); }
-
     executor_type get_executor() { return connection.get_executor(); }
 
   private:

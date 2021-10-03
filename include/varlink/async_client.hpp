@@ -16,9 +16,6 @@ class async_client {
     using executor_type = typename socket_type::executor_type;
     using connection_type = json_connection<protocol_type>;
 
-    socket_type& socket() { return connection.socket(); }
-    [[nodiscard]] const socket_type& socket() const { return connection.socket(); }
-
     executor_type get_executor() { return connection.get_executor(); }
 
     explicit async_client(const asio::any_io_executor& ex) : async_client(socket_type(ex)) {}
