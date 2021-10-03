@@ -1,4 +1,3 @@
-#include <filesystem>
 #include <catch2/catch.hpp>
 #include <varlink/client.hpp>
 
@@ -54,17 +53,7 @@ std::unique_ptr<BaseEnvironment> getEnvironment()
     return env;
 }
 
-#define REQUIRE_VARLINK_ERROR(statement, error, parameter, value) \
-    try {                                                         \
-        statement;                                                \
-        REQUIRE_THROWS_AS(statement, varlink_error);              \
-    }                                                             \
-    catch (varlink_error & e) {                                   \
-        REQUIRE(std::string(e.what()) == error);                  \
-        REQUIRE(e.args()[parameter].get<string>() == value);      \
-    }
-
-using test_client = async_client<Environment::protocol::socket>;
+using test_client = async_client<Environment::protocol>;
 using socket_type = typename test_client::socket_type;
 
 TEST_CASE("Testing server with client")
@@ -193,31 +182,6 @@ TEST_CASE("Testing server with client")
         REQUIRE(flag == 6);
     }
 
-    SECTION("Don't multiplex responses")
-    {
-        using namespace std::chrono;
-        using namespace std::chrono_literals;
-        int flag{0};
-        steady_clock::time_point more_done{};
-        steady_clock::time_point ping_done{};
-        auto msg1 = varlink_message_more("org.test.M", {{"n", 5}, {"t", true}});
-        client.async_call_more(msg1, [&](auto ec, const json& resp, bool c) {
-            REQUIRE(not ec);
-            REQUIRE(c == (flag < 5));
-            REQUIRE(flag++ == resp["m"].get<int>());
-            if (not c) { more_done = steady_clock::now(); }
-        });
-        auto msg2 = varlink_message("org.test.P", {{"p", "test"}});
-        client.async_call(msg2, [&](auto ec, const json& resp) {
-            REQUIRE(not ec);
-            REQUIRE(resp["q"].get<string>() == "test");
-            ping_done = steady_clock::now();
-        });
-        REQUIRE(ctx.run() > 0);
-        REQUIRE(flag == 6);
-        REQUIRE(more_done < ping_done);
-    }
-
     SECTION("Call method with empty response")
     {
         bool flag{false};
@@ -305,18 +269,19 @@ TEST_CASE("Testing server with client")
         REQUIRE(flag);
     }
 
-    /*
     SECTION("Call a method that generates an internal exception")
     {
-        try {
-            client.call("org.err.E", {})();
-        }
-        catch (varlink_error& e) {
-            REQUIRE(
-                std::string(e.what()) == "org.varlink.service.InternalError");
-        }
+        bool flag{false};
+        auto msg = varlink_message("org.err.E", {});
+        client.async_call(msg, [&](auto ec, const json& resp) {
+            REQUIRE(ec.category() == varlink_category());
+            REQUIRE(ec.message() == "org.varlink.service.InternalError");
+            REQUIRE(resp["what"].get<std::string>() == "std::exception");
+            flag = true;
+        });
+        REQUIRE(ctx.run() > 0);
+        REQUIRE(flag);
     }
-     */
 
     SECTION("Concurrent handling of two connections")
     {
@@ -347,6 +312,20 @@ TEST_CASE("Testing server with client")
         REQUIRE(more_cnt == 2);
         REQUIRE(flag);
         REQUIRE(ping_duration < more_duration * 0.8);
+    }
+
+    SECTION("Move client and call method org.test.Ping")
+    {
+        bool flag{false};
+        auto msg = varlink_message("org.test.P", {{"p", "test"}});
+        auto my_client = std::move(client);
+        my_client.async_call(msg, [&](auto ec, const json& resp) {
+            REQUIRE(not ec);
+            REQUIRE(resp["q"].get<string>() == "test");
+            flag = true;
+        });
+        REQUIRE(ctx.run() > 0);
+        REQUIRE(flag);
     }
 }
 

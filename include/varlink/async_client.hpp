@@ -7,35 +7,52 @@
 #include <varlink/json_connection.hpp>
 
 namespace varlink {
-using callmode = varlink_message::callmode;
-
-template <typename Socket>
+template <typename Protocol>
 class async_client {
   public:
-    using socket_type = Socket;
-    using protocol_type = typename socket_type::protocol_type;
+    using protocol_type = Protocol;
+    using socket_type = typename protocol_type::socket;
+    using endpoint_type = typename protocol_type::endpoint;
     using executor_type = typename socket_type::executor_type;
-    using Connection = json_connection<Socket>;
+    using connection_type = json_connection<protocol_type>;
 
     socket_type& socket() { return connection.socket(); }
     [[nodiscard]] const socket_type& socket() const { return connection.socket(); }
 
-    executor_type get_executor() { return socket().get_executor(); }
+    executor_type get_executor() { return connection.get_executor(); }
 
-    explicit async_client(Socket socket)
-        : connection(std::move(socket)), call_strand(get_executor())
+    explicit async_client(const asio::any_io_executor& ex) : async_client(socket_type(ex)) {}
+    explicit async_client(asio::io_context& ctx) : async_client(socket_type(ctx)) {}
+
+    explicit async_client(socket_type socket) : connection(std::move(socket)) {}
+
+    explicit async_client(connection_type&& existing_connection)
+        : connection(std::move(existing_connection))
     {
     }
-    explicit async_client(Connection&& existing_connection)
-        : connection(std::move(existing_connection)), call_strand(get_executor())
+
+    template <typename ConnectHandler>
+    decltype(auto) async_connect(const endpoint_type& endpoint, ConnectHandler&& handler)
     {
+        return connection.async_connect(endpoint, std::forward<ConnectHandler>(handler));
     }
 
-    template <VARLINK_COMPLETION_TOKEN_FOR(void(std::error_code, std::shared_ptr<connection_type>))
-                  ReplyHandler VARLINK_DEFAULT_COMPLETION_TOKEN_TYPE(executor_type)>
-    auto async_call(
-        const varlink_message& message,
-        ReplyHandler&& handler VARLINK_DEFAULT_COMPLETION_TOKEN(executor_type))
+    void connect(const endpoint_type& endpoint) { connection.connect(endpoint); }
+    void connect(const endpoint_type& endpoint, std::error_code& ec)
+    {
+        connection.connect(endpoint, ec);
+    }
+
+    void close() { connection.close(); }
+    void close(std::error_code& ec) { connection.close(ec); }
+
+    void cancel() { connection.cancel(); }
+    void cancel(std::error_code& ec) { connection.cancel(ec); }
+
+    bool is_open() { return connection.is_open(); }
+
+    template <typename ReplyHandler>
+    auto async_call(const varlink_message& message, ReplyHandler&& handler)
     {
         return net::async_initiate<ReplyHandler, void(std::error_code)>(
             initiate_async_call<callmode::basic>(this), handler, message);
@@ -48,11 +65,8 @@ class async_client {
         return async_call(message, std::forward<ReplyHandler>(handler));
     }
 
-    template <VARLINK_COMPLETION_TOKEN_FOR(void(std::error_code, std::shared_ptr<connection_type>))
-                  ReplyHandler VARLINK_DEFAULT_COMPLETION_TOKEN_TYPE(executor_type)>
-    auto async_call_more(
-        const varlink_message_more& message,
-        ReplyHandler&& handler VARLINK_DEFAULT_COMPLETION_TOKEN(executor_type))
+    template <typename ReplyHandler>
+    auto async_call_more(const varlink_message_more& message, ReplyHandler&& handler)
     {
         return net::async_initiate<ReplyHandler, void(std::error_code)>(
             initiate_async_call<callmode::more>(this), handler, message);
@@ -65,11 +79,8 @@ class async_client {
         return async_call_more(message, std::forward<ReplyHandler>(handler));
     }
 
-    template <VARLINK_COMPLETION_TOKEN_FOR(void(std::error_code, std::shared_ptr<connection_type>))
-                  ReplyHandler VARLINK_DEFAULT_COMPLETION_TOKEN_TYPE(executor_type)>
-    auto async_call_oneway(
-        const varlink_message_oneway& message,
-        ReplyHandler&& handler VARLINK_DEFAULT_COMPLETION_TOKEN(executor_type))
+    template <typename ReplyHandler>
+    auto async_call_oneway(const varlink_message_oneway& message, ReplyHandler&& handler)
     {
         return net::async_initiate<ReplyHandler, void(std::error_code)>(
             initiate_async_call<callmode::oneway>(this), handler, message);
@@ -82,11 +93,8 @@ class async_client {
         return async_call_oneway(message, std::forward<ReplyHandler>(handler));
     }
 
-    template <VARLINK_COMPLETION_TOKEN_FOR(void(std::error_code, std::shared_ptr<connection_type>))
-                  ReplyHandler VARLINK_DEFAULT_COMPLETION_TOKEN_TYPE(executor_type)>
-    auto async_call_upgrade(
-        const varlink_message_upgrade& message,
-        ReplyHandler&& handler VARLINK_DEFAULT_COMPLETION_TOKEN(executor_type))
+    template <typename ReplyHandler>
+    auto async_call_upgrade(const varlink_message_upgrade& message, ReplyHandler&& handler)
     {
         return net::async_initiate<ReplyHandler, void(std::error_code)>(
             initiate_async_call<callmode::upgrade>(this), handler, message);
@@ -116,7 +124,7 @@ class async_client {
         return call_more(varlink_message_more(method, parameters));
     }
 
-    void call_oneway(const varlink_message_oneway& message) { call_impl(message); }
+    void call_oneway(const varlink_message_oneway& message) { call_impl(message)(); }
 
     void call_oneway(std::string_view method, const json& parameters)
     {
@@ -131,45 +139,43 @@ class async_client {
     }
 
   private:
-    Connection connection;
-    detail::manual_strand<executor_type> call_strand;
+    connection_type connection;
 
     std::function<json()> call_impl(const basic_varlink_message& message)
     {
         connection.send(message.json_data());
 
-        return [this, continues = not message.oneway(), more = message.more()]() mutable -> json {
-            if (continues) {
+        return [this, mode = message.mode()]() mutable -> json {
+            if (mode == callmode::oneway) { return nullptr; }
+            else {
                 json reply = connection.receive();
                 if (reply.contains("error")) {
-                    continues = false;
+                    mode = callmode::oneway;
                     throw varlink_error(reply["error"].get<std::string>(), reply["parameters"]);
                 }
-                continues = (more and reply.contains("continues") and reply["continues"].get<bool>());
+                if (mode != callmode::more or not reply_continues(reply)) {
+                    mode = callmode::oneway;
+                }
                 return reply["parameters"];
-            }
-            else {
-                return nullptr;
             }
         };
     }
 
-    template <callmode CallMode, typename ReplyHandler, typename = std::enable_if_t<CallMode != callmode::oneway>>
+    template <callmode CallMode, typename ReplyHandler>
     void async_read_reply(ReplyHandler&& handler)
     {
+        static_assert(CallMode != callmode::oneway);
         connection.async_receive(
             [this, handler = std::forward<ReplyHandler>(handler)](auto ec, json reply) mutable {
                 if (reply.contains("error")) {
                     ec = make_varlink_error(reply["error"].get<std::string>());
                 }
-                const auto continues =
-                    (not ec and reply.contains("continues") and reply["continues"].get<bool>());
-                if (not continues) { call_strand.next(); }
-                else if (not connection.data_available()) {
-                    async_read_reply<CallMode>(std::forward<ReplyHandler>(handler));
-                }
                 if constexpr (CallMode == callmode::more) {
+                    const auto continues = (not ec and reply_continues(reply));
                     handler(ec, reply["parameters"], continues);
+                    if (continues) {
+                        async_read_reply<CallMode>(std::forward<ReplyHandler>(handler));
+                    }
                 }
                 else {
                     handler(ec, reply["parameters"]);
@@ -180,47 +186,37 @@ class async_client {
     template <callmode CallMode>
     class initiate_async_call {
       private:
-        async_client<socket_type>* self_;
+        async_client* self_;
 
       public:
-        explicit initiate_async_call(async_client<socket_type>* self) : self_(self) {}
+        explicit initiate_async_call(async_client* self) : self_(self) {}
 
         template <typename CompletionHandler>
         void operator()(CompletionHandler&& handler, const typed_varlink_message<CallMode>& message)
         {
-            self_->call_strand.push(
-                [self = self_, message, handler = std::forward<CompletionHandler>(handler)]() mutable {
-                    self->connection.async_send(
-                        message.json_data(),
-                        [self,
-                         oneway = message.oneway(),
-                         more = message.more(),
-                         handler = std::forward<CompletionHandler>(handler)](auto ec) mutable {
-                            if constexpr (CallMode == callmode::oneway) {
-                                self->call_strand.next();
-                                return handler(ec);
-                            }
-                            else if (ec) {
-                                self->call_strand.next();
-                                if constexpr (CallMode == callmode::more) {
-                                    return handler(ec, json{}, false);
-                                }
-                                else {
-                                    return handler(ec, json{});
-                                }
-                            }
-                            else {
-                                self->template async_read_reply<CallMode>(
-                                    std::forward<CompletionHandler>(handler));
-                            }
-                        });
+            self_->connection.async_send(
+                message.json_data(),
+                [self = self_, handler = std::forward<CompletionHandler>(handler)](auto ec) mutable {
+                    if constexpr (CallMode == callmode::oneway) { return handler(ec); }
+                    else if (ec) {
+                        if constexpr (CallMode == callmode::more) {
+                            return handler(ec, json{}, false);
+                        }
+                        else {
+                            return handler(ec, json{});
+                        }
+                    }
+                    else {
+                        self->template async_read_reply<CallMode>(
+                            std::forward<CompletionHandler>(handler));
+                    }
                 });
         }
     };
 };
 
-using varlink_client_unix = async_client<net::local::stream_protocol::socket>;
-using varlink_client_tcp = async_client<net::ip::tcp::socket>;
+using varlink_client_unix = async_client<net::local::stream_protocol>;
+using varlink_client_tcp = async_client<net::ip::tcp>;
 using varlink_client_variant = std::variant<varlink_client_unix, varlink_client_tcp>;
 
 } // namespace varlink

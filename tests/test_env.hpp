@@ -35,9 +35,8 @@ class BaseEnvironment {
     net::steady_timer& get_timer() { return *timer; }
 #endif
 
-    void add_interface(std::string_view iface, const callback_map& cb)
+    void add_interface(std::string_view iface, callback_map&& cb)
     {
-        if (server)
-            server->add_interface(iface, cb);
+        if (server) server->add_interface(iface, std::move(cb));
     }
 };

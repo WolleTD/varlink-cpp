@@ -236,7 +236,7 @@ class varlink_certification {
 };
 
 #define varlink_callback_forward(callback) \
-    [&] varlink_callback { return callback(parameters, wants_more, send_reply); }
+    [&] varlink_callback { return callback(parameters, mode, send_reply); }
 
 std::unique_ptr<varlink::net::io_context> ctx;
 

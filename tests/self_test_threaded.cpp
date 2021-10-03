@@ -1,4 +1,4 @@
-#include <filesystem>
+#include <thread>
 #include <catch2/catch.hpp>
 #include <varlink/client.hpp>
 
@@ -41,15 +41,17 @@ std::unique_ptr<BaseEnvironment> getEnvironment()
     return env;
 }
 
-#define REQUIRE_VARLINK_ERROR(statement, error, parameter, value) \
-    try {                                                         \
-        statement;                                                \
-        REQUIRE_THROWS_AS(statement, varlink_error);              \
-    }                                                             \
-    catch (varlink_error & e) {                                   \
-        REQUIRE(std::string(e.what()) == error);                  \
-        REQUIRE(e.args()[parameter].get<string>() == value);      \
-    }
+#define REQUIRE_VARLINK_ERROR(statement, error, parameter, value)  \
+    do {                                                           \
+        try {                                                      \
+            statement;                                             \
+            REQUIRE_THROWS_AS(statement, varlink_error);           \
+        }                                                          \
+        catch (varlink_error & e) {                                \
+            REQUIRE(std::string(e.what()) == (error));             \
+            REQUIRE(e.args()[parameter].get<string>() == (value)); \
+        }                                                          \
+    } while (false)
 
 TEST_CASE("Testing server with client")
 {

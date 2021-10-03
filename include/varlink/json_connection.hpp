@@ -4,62 +4,72 @@
 
 #include <optional>
 #include <varlink/detail/config.hpp>
-#include <varlink/detail/manual_strand.hpp>
 #include <varlink/detail/nl_json.hpp>
 
 namespace varlink {
 
-template <typename Socket, typename = std::enable_if_t<std::is_base_of_v<net::socket_base, Socket>>>
+template <typename Protocol>
 class json_connection {
   public:
-    using socket_type = Socket;
-    using protocol_type = typename socket_type::protocol_type;
+    using protocol_type = Protocol;
+    using socket_type = typename protocol_type::socket;
+    using endpoint_type = typename protocol_type::endpoint;
     using executor_type = typename socket_type::executor_type;
-    using result_type = json;
 
     socket_type& socket() { return stream; }
     const socket_type& socket() const { return stream; }
 
     executor_type get_executor() { return stream.get_executor(); }
 
-    [[nodiscard]] bool data_available() const { return (read_end != readbuf.begin()); }
-
   private:
     using byte_buffer = std::vector<char>;
     byte_buffer readbuf;
     byte_buffer::iterator read_end;
     socket_type stream;
-    net::strand<executor_type> read_strand;
-    detail::manual_strand<executor_type> write_strand;
 
   public:
+    explicit json_connection(asio::io_context& ctx) : json_connection(socket_type(ctx)) {}
+
     explicit json_connection(socket_type socket)
-        : readbuf(BUFSIZ),
-          read_end(readbuf.begin()),
-          stream(std::move(socket)),
-          read_strand(stream.get_executor()),
-          write_strand(stream.get_executor())
+        : readbuf(BUFSIZ), read_end(readbuf.begin()), stream(std::move(socket))
     {
     }
 
     json_connection(const json_connection&) = delete;
     json_connection& operator=(const json_connection&) = delete;
     json_connection(json_connection&&) noexcept = default;
-    json_connection& operator=(json_connection&&) noexcept = default;
+    // NOLINTNEXTLINE(performance-noexcept-move-constructor) stream's operator= isn't noexcept
+    json_connection& operator=(json_connection&&) = default;
 
-    template <VARLINK_COMPLETION_TOKEN_FOR(void(std::error_code))
-                  CompletionHandler VARLINK_DEFAULT_COMPLETION_TOKEN_TYPE(executor_type)>
-    auto async_send(
-        const json& message,
-        CompletionHandler&& handler VARLINK_DEFAULT_COMPLETION_TOKEN(executor_type))
+    template <typename ConnectHandler>
+    decltype(auto) async_connect(const endpoint_type& endpoint, ConnectHandler&& handler)
+    {
+        return stream.async_connect(endpoint, std::forward<ConnectHandler>(handler));
+    }
+
+    void connect(const endpoint_type& endpoint) { stream.connect(endpoint); }
+    void connect(const endpoint_type& endpoint, std::error_code& ec)
+    {
+        stream.connect(endpoint, ec);
+    }
+
+    void close() { stream.close(); }
+    void close(std::error_code& ec) { stream.close(ec); }
+
+    void cancel() { stream.cancel(); }
+    void cancel(std::error_code& ec) { stream.cancel(ec); }
+
+    bool is_open() { return stream.is_open(); }
+
+    template <typename CompletionHandler>
+    auto async_send(const json& message, CompletionHandler&& handler)
     {
         return net::async_initiate<CompletionHandler, void(std::error_code)>(
             initiate_async_send(this), handler, message);
     }
 
-    template <VARLINK_COMPLETION_TOKEN_FOR(void(std::error_code, json message))
-                  CompletionHandler VARLINK_DEFAULT_COMPLETION_TOKEN_TYPE(executor_type)>
-    auto async_receive(CompletionHandler&& handler VARLINK_DEFAULT_COMPLETION_TOKEN(executor_type))
+    template <typename CompletionHandler>
+    auto async_receive(CompletionHandler&& handler)
     {
         return net::async_initiate<CompletionHandler, void(std::error_code, json)>(
             initiate_async_receive(this), handler);
@@ -111,57 +121,60 @@ class json_connection {
 
     class initiate_async_receive {
       private:
-        json_connection<socket_type>* self_;
+        json_connection* self_;
 
       public:
-        explicit initiate_async_receive(json_connection<socket_type>* self) : self_(self) {}
+        explicit initiate_async_receive(json_connection* self) : self_(self) {}
 
         template <typename CompletionHandler>
         void operator()(CompletionHandler&& handler)
         {
-            self_->stream.async_receive(
-                net::buffer(
-                    &(*self_->read_end), static_cast<size_t>(self_->readbuf.end() - self_->read_end)),
-                net::bind_executor(
-                    self_->read_strand,
+            std::error_code _ec;
+            if (auto _message = self_->read_next_message(_ec); _message) {
+                net::post(
+                    self_->get_executor(),
+                    [_ec, _message, handler = std::forward<CompletionHandler>(handler)]() mutable {
+                        handler(_ec, std::move(_message.value()));
+                    });
+            }
+            else {
+                self_->stream.async_receive(
+                    net::buffer(
+                        &(*self_->read_end),
+                        static_cast<size_t>(self_->readbuf.end() - self_->read_end)),
                     [self = self_, handler = std::forward<CompletionHandler>(handler)](
                         std::error_code ec, size_t n) mutable {
                         if (ec) { handler(ec, json{}); }
                         else {
                             self->read_end += static_cast<ptrdiff_t>(n);
-                            while (auto message = self->read_next_message(ec)) {
+                            if (auto message = self->read_next_message(ec); message) {
                                 handler(ec, message.value());
                             }
-                            if (self->read_end != self->readbuf.begin()) {
+                            else {
                                 self->async_receive(std::forward<CompletionHandler>(handler));
                             }
                         }
-                    }));
+                    });
+            }
         }
     };
     class initiate_async_send {
       private:
-        json_connection<socket_type>* self_;
+        json_connection* self_;
 
       public:
-        explicit initiate_async_send(json_connection<socket_type>* self) : self_(self) {}
+        explicit initiate_async_send(json_connection* self) : self_(self) {}
 
         template <typename CompletionHandler>
         void operator()(CompletionHandler&& handler, const json& message)
         {
-            self_->write_strand.push(
-                [self = self_, &message, handler = std::forward<CompletionHandler>(handler)]() mutable {
-                    auto m = std::make_unique<std::string>(message.dump());
-                    auto buffer = net::buffer(m->data(), m->size() + 1);
-                    net::async_write(
-                        self->stream,
-                        buffer,
-                        [handler = std::forward<CompletionHandler>(handler), self, m = std::move(m)](
-                            std::error_code ec, size_t) mutable {
-                            self->write_strand.next();
-                            handler(ec);
-                        });
-                });
+            auto m = std::make_unique<std::string>(message.dump());
+            auto buffer = net::buffer(m->data(), m->size() + 1);
+            net::async_write(
+                self_->stream,
+                buffer,
+                [handler = std::forward<CompletionHandler>(handler), m = std::move(m)](
+                    std::error_code ec, size_t) mutable { handler(ec); });
         }
     };
 };

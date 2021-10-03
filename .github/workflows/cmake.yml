@@ -19,13 +19,17 @@ jobs:
         target-ref: master
 
   build:
+    strategy:
+      matrix:
+        config: [ "", "-DVARLINK_DISABLE_CTRE=ON", "-DVARLINK_USE_STRINGS=ON",
+                  "-DVARLINK_DISABLE_CTRE=ON -DVARLINK_USE_STRINGS=ON" ]
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v2
 
     - name: Configure CMake
-      run: cmake -S. -Bbuild -DCMAKE_BUILD_TYPE=$BUILD_TYPE
+      run: cmake -S. -Bbuild -DCMAKE_BUILD_TYPE=$BUILD_TYPE ${{ matrix.config }}
 
     - name: Build
       run: cmake --build build -j `nproc`

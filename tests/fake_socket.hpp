@@ -2,9 +2,17 @@
 #include <varlink/detail/config.hpp>
 using namespace varlink;
 
+class FakeSocket;
+
+struct fake_proto {
+    using socket = FakeSocket;
+    using endpoint = net::local::stream_protocol::endpoint;
+};
+
 class FakeSocket : public net::socket_base {
   public:
-    using protocol_type = net::local::stream_protocol;
+    using protocol_type = fake_proto;
+    using endpoint_type = typename protocol_type::endpoint;
     using executor_type = net::any_io_executor;
     bool error_on_write{false};
     bool cancelled{false};
@@ -18,13 +26,7 @@ class FakeSocket : public net::socket_base {
 
   public:
     explicit FakeSocket(net::io_context& ctx) : ctx_(&ctx) {}
-    FakeSocket(
-        [[maybe_unused]] net::io_context& ctx,
-        [[maybe_unused]] net::local::stream_protocol p,
-        [[maybe_unused]] int fd)
-        : ctx_(&ctx)
-    {
-    }
+    FakeSocket(net::io_context& ctx, net::local::stream_protocol, int) : ctx_(&ctx) {}
     FakeSocket(FakeSocket&& r) noexcept = default;
     FakeSocket& operator=(FakeSocket&& r) noexcept = default;
 

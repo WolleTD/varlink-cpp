@@ -15,18 +15,21 @@ class example_more_server {
     {
         timer.expires_after(std::chrono::seconds(1));
         timer.async_wait([this, i, count, send_reply](auto ec) mutable {
-            if (not ec) {
-                json state = json::object();
-                state["progress"] = (100 / count) * i;
-                send_reply({{"state", state}}, true);
-                if (i < count) {
-                    start_timer(i + 1, count, send_reply);
+            try {
+                if (not ec) {
+                    json state = json::object();
+                    state["progress"] = (100 / count) * i;
+                    send_reply({{"state", state}}, true);
+                    if (i < count) { start_timer(i + 1, count, send_reply); }
+                    else {
+                        state.erase("progress");
+                        state["end"] = true;
+                        send_reply({{"state", state}}, false);
+                    }
                 }
-                else {
-                    state.erase("progress");
-                    state["end"] = true;
-                    send_reply({{"state", state}}, false);
-                }
+            }
+            catch (std::system_error& e) {
+                std::cerr << "Stopping more process: " << e.what() << "\n";
             }
         });
     }
@@ -49,7 +52,7 @@ class example_more_server {
         };
 
         auto more = [this] varlink_callback {
-            if (wants_more) {
+            if (mode == callmode::more) {
                 nlohmann::json state = {{"start", true}};
                 send_reply({{"state", state}}, true);
                 state.erase("start");

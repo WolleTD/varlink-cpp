@@ -4,7 +4,7 @@
 #include "fake_socket.hpp"
 
 using namespace varlink;
-using test_session = server_session<FakeSocket>;
+using test_session = server_session<fake_proto>;
 
 TEST_CASE("Server session processing")
 {
@@ -22,13 +22,12 @@ method VarlinkError() -> ()
 method Exception() -> ()
 )INTERFACE";
 
-    service.add_interface(varlink_interface(
+    service.add_interface(
         org_test_varlink,
         {
             {"Test",
              [] varlink_callback {
-                 if (wants_more)
-                     send_reply({{"pong", parameters["ping"]}}, true);
+                 if (mode == callmode::more) send_reply({{"pong", parameters["ping"]}}, true);
                  send_reply({{"pong", parameters["ping"]}}, false);
              }},
             {"TestTypes",
@@ -36,11 +35,9 @@ method Exception() -> ()
                  send_reply({{"pong", 123}}, false);
              }},
             {"VarlinkError",
-             [] varlink_callback {
-                 throw varlink_error("org.test.Error", json::object());
-             }},
+             [] varlink_callback { throw varlink_error("org.test.Error", json::object()); }},
             {"Exception", [] varlink_callback { throw std::exception(); }},
-        }));
+        });
 
     auto setup_test = [&](const auto& call, const auto& expected_response) {
         socket.setup_fake(call);
