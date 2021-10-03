@@ -15,21 +15,18 @@ class example_more_server {
     {
         timer.expires_after(std::chrono::seconds(1));
         timer.async_wait([this, i, count, send_reply](auto ec) mutable {
-            try {
                 if (not ec) {
-                    json state = json::object();
-                    state["progress"] = (100 / count) * i;
-                    send_reply({{"state", state}}, true);
-                    if (i < count) { start_timer(i + 1, count, send_reply); }
-                    else {
-                        state.erase("progress");
-                        state["end"] = true;
-                        send_reply({{"state", state}}, false);
-                    }
+                json state = json::object();
+                state["progress"] = (100 / count) * i;
+                send_reply({{"state", state}}, [this](auto ec) {
+                    if (ec) { timer.cancel(); }
+                });
+                if (i < count) { start_timer(i + 1, count, send_reply); }
+                else {
+                    state.erase("progress");
+                    state["end"] = true;
+                    send_reply({{"state", state}}, nullptr);
                 }
-            }
-            catch (std::system_error& e) {
-                std::cerr << "Stopping more process: " << e.what() << "\n";
             }
         });
     }
@@ -47,19 +44,19 @@ class example_more_server {
                   "https://varlink.org"}),
           timer(ctx)
     {
-        auto ping = [] varlink_callback {
-            send_reply({{"pong", parameters["ping"]}}, false);
-        };
+        auto ping = [] varlink_callback { return {{"pong", parameters["ping"]}}; };
 
-        auto more = [this] varlink_callback {
+        auto more = [this] varlink_more_callback {
             if (mode == callmode::more) {
                 nlohmann::json state = {{"start", true}};
-                send_reply({{"state", state}}, true);
-                state.erase("start");
                 auto n = parameters["n"].get<size_t>();
-                state["progress"] = 0;
-                send_reply({{"state", state}}, true);
-                start_timer(1, n, send_reply);
+                send_reply({{"state", state}}, [this, send_reply, n](auto) {
+                    nlohmann::json state;
+                    state["progress"] = 0;
+                    send_reply({{"state", state}}, [this, send_reply, n](auto) {
+                        start_timer(1, n, send_reply);
+                    });
+                });
             }
             else {
                 throw varlink::varlink_error(
@@ -70,7 +67,7 @@ class example_more_server {
 
         auto stop = [&] varlink_callback {
             ctx.stop();
-            send_reply({}, false);
+            return {};
         };
 
         _server.add_interface(

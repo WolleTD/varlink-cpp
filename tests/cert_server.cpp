@@ -86,14 +86,14 @@ class varlink_certification {
         auto client_id = generate_client_id();
         auto lk = std::lock_guard(start_mut);
         status[client_id] = "Test01";
-        send_reply({{"client_id", client_id}}, false);
+        return {{"client_id", client_id}};
     };
 
     auto Test01 varlink_callback
     {
         auto client_id = check_client_id(parameters);
         assert_method(client_id, "Test01", "Test02");
-        send_reply({{"bool", true}}, false);
+        return {{"bool", true}};
     };
 
     auto Test02 varlink_callback
@@ -101,7 +101,7 @@ class varlink_certification {
         auto client_id = check_client_id(parameters);
         assert_method(client_id, "Test02", "Test03");
         assert_parameter(parameters, "bool", true);
-        send_reply({{"int", 1}}, false);
+        return {{"int", 1}};
     };
 
     auto Test03 varlink_callback
@@ -109,7 +109,7 @@ class varlink_certification {
         auto client_id = check_client_id(parameters);
         assert_method(client_id, "Test03", "Test04");
         assert_parameter(parameters, "int", 1);
-        send_reply({{"float", 1.0}}, false);
+        return {{"float", 1.0}};
     };
 
     auto Test04 varlink_callback
@@ -117,7 +117,7 @@ class varlink_certification {
         auto client_id = check_client_id(parameters);
         assert_method(client_id, "Test04", "Test05");
         assert_parameter(parameters, "float", 1.0);
-        send_reply({{"string", "ping"}}, false);
+        return {{"string", "ping"}};
     };
 
     auto Test05 varlink_callback
@@ -125,12 +125,7 @@ class varlink_certification {
         auto client_id = check_client_id(parameters);
         assert_method(client_id, "Test05", "Test06");
         assert_parameter(parameters, "string", "ping");
-        send_reply(
-            {{"bool", false},
-             {"int", 2},
-             {"float", 3.14},
-             {"string", "a lot of string"}},
-            false);
+        return {{"bool", false}, {"int", 2}, {"float", 3.14}, {"string", "a lot of string"}};
     };
 
     auto Test06 varlink_callback
@@ -141,13 +136,9 @@ class varlink_certification {
         assert_parameter(parameters, "int", 2);
         assert_parameter(parameters, "float", 3.14);
         assert_parameter(parameters, "string", "a lot of string");
-        send_reply(
-            {{"struct",
-              {{"bool", false},
-               {"int", 2},
-               {"float", 3.14},
-               {"string", "a lot of string"}}}},
-            false);
+        return {
+            {"struct",
+             {{"bool", false}, {"int", 2}, {"float", 3.14}, {"string", "a lot of string"}}}};
     };
 
     auto Test07 varlink_callback
@@ -159,7 +150,7 @@ class varlink_certification {
         assert_parameter(my_struct, "int", 2);
         assert_parameter(my_struct, "float", 3.14);
         assert_parameter(my_struct, "string", "a lot of string");
-        send_reply({{"map", {{"foo", "Foo"}, {"bar", "Bar"}}}}, false);
+        return {{"map", {{"foo", "Foo"}, {"bar", "Bar"}}}};
     };
 
     auto Test08 varlink_callback
@@ -169,12 +160,11 @@ class varlink_certification {
         const auto& my_map = parameters["map"];
         assert_parameter(my_map, "foo", "Foo");
         assert_parameter(my_map, "bar", "Bar");
-        send_reply(
-            {{"set",
-              {{"one", varlink::json::object()},
-               {"two", varlink::json::object()},
-               {"three", varlink::json::object()}}}},
-            false);
+        return {
+            {"set",
+             {{"one", varlink::json::object()},
+              {"two", varlink::json::object()},
+              {"three", varlink::json::object()}}}};
     };
 
     auto Test09 varlink_callback
@@ -187,21 +177,33 @@ class varlink_certification {
             {{"one", varlink::json::object()},
              {"two", varlink::json::object()},
              {"three", varlink::json::object()}});
-        send_reply({{"mytype", my_object}}, false);
+        return {{"mytype", my_object}};
     };
 
-    auto Test10 varlink_callback
+    auto Test10 varlink_more_callback
     {
         auto client_id = check_client_id(parameters);
         assert_method(client_id, "Test10", "Test11");
         if (parameters["mytype"] != my_object) {
-            throw certification_error(
-                my_object.dump(), parameters["mytype"].dump());
+            throw certification_error(my_object.dump(), parameters["mytype"].dump());
         }
-        for (int i = 1; i < 10; i++) {
-            send_reply({{"string", "Reply number " + std::to_string(i)}}, true);
-        }
-        send_reply({{"string", "Reply number 10"}}, false);
+        struct handler {
+            varlink_certification* self;
+            varlink::reply_function send_reply;
+            size_t counter{0};
+
+            void operator()(std::error_code)
+            {
+                if (++counter < 10) {
+                    send_reply({{"string", "Reply number " + std::to_string(counter)}}, *this);
+                }
+                else {
+                    std::cerr << "Sending final message" << std::endl;
+                    send_reply({{"string", "Reply number 10"}}, nullptr);
+                }
+            }
+        };
+        handler{this, send_reply}(std::error_code{});
     };
 
     auto Test11 varlink_callback
@@ -222,7 +224,7 @@ class varlink_certification {
         if (parameters["last_more_replies"] != expected) {
             throw certification_error(expected.dump(), parameters.dump());
         }
-        send_reply({}, false);
+        return {};
     };
 
     auto End varlink_callback
@@ -231,12 +233,14 @@ class varlink_certification {
         assert_method(client_id, "End", "Start");
         auto lk = std::lock_guard(start_mut);
         status.erase(client_id);
-        send_reply({{"all_ok", true}}, false);
+        return {{"all_ok", true}};
     };
 };
 
 #define varlink_callback_forward(callback) \
-    [&] varlink_callback { return callback(parameters, mode, send_reply); }
+    [&] varlink_callback { return callback(parameters, mode); }
+#define varlink_more_callback_forward(callback) \
+    [&] varlink_more_callback { return callback(parameters, mode, send_reply); }
 
 std::unique_ptr<varlink::net::io_context> ctx;
 
@@ -271,7 +275,7 @@ int main(int argc, char* argv[])
             {"Test07", varlink_callback_forward(cert.Test07)},
             {"Test08", varlink_callback_forward(cert.Test08)},
             {"Test09", varlink_callback_forward(cert.Test09)},
-            {"Test10", varlink_callback_forward(cert.Test10)},
+            {"Test10", varlink_more_callback_forward(cert.Test10)},
             {"Test11", varlink_callback_forward(cert.Test11)},
             {"End", varlink_callback_forward(cert.End)},
         });

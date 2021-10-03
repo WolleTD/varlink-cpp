@@ -34,8 +34,8 @@ auto varlink_srv = varlink::varlink_server(ctx, "unix:/tmp/example.varlink",
 
 // interfaces can only be added once and callbacks can't be changed
 varlink_srv.add_interface(org_example_more_varlink, varlink::callback_map{
-    // varlink_callback is a macro containing the callback parameter list
-    {"Ping", [] varlink_callback { send_reply({{"pong", parameters["ping"]}}, /* continues = */ false); }}
+    // varlink_more_callback is a macro containing the callback parameter list
+    {"Ping", [] varlink_more_callback { send_reply({{"pong", parameters["ping"]}}, /* continues = */ false); }}
 });
 
 varlink_srv.async_serve_forever();

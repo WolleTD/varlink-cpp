@@ -15,7 +15,7 @@ varlink_service::varlink_service(description Description) : desc(std::move(Descr
         for (const auto& interface : interfaces) {
             info["interfaces"].push_back(interface->name());
         }
-        send_reply(info, false);
+        return info;
     };
     auto getInterfaceDescription = [this] varlink_callback {
         const auto& ifname = parameters["interface"].get<std::string>();
@@ -23,7 +23,7 @@ varlink_service::varlink_service(description Description) : desc(std::move(Descr
         if (const auto interface_it = find_interface(ifname); interface_it != interfaces.cend()) {
             std::stringstream ss;
             ss << **interface_it;
-            send_reply({{"description", ss.str()}}, false);
+            return {{"description", ss.str()}};
         }
         else {
             throw varlink_error("org.varlink.service.InterfaceNotFound", {{"interface", ifname}});

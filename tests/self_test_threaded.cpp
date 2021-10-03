@@ -20,19 +20,17 @@ std::unique_ptr<BaseEnvironment> getEnvironment()
         "interface org.test\nmethod P(p:string) -> (q:string)\n"
         "method M(n:int,t:?bool)->(m:int)\n"
         "method E()->()\n";
-    auto ping_callback = [] varlink_callback {
-        send_reply({{"q", parameters["p"].get<string>()}}, false);
-    };
-    auto more_callback = [] varlink_callback {
+    auto ping_callback = [] varlink_callback { return {{"q", parameters["p"].get<string>()}}; };
+    auto more_callback = [] varlink_more_callback {
         const auto count = parameters["n"].get<int>();
         const bool wait = parameters.contains("t") && parameters["t"].get<bool>();
         for (auto i = 0; i < count; i++) {
-            send_reply({{"m", i}}, true);
+            send_reply({{"m", i}}, [](auto) {});
             if (wait) std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
-        send_reply({{"m", count}}, false);
+        send_reply({{"m", count}}, nullptr);
     };
-    auto empty_callback = [] varlink_callback { send_reply({}, false); };
+    auto empty_callback = [] varlink_callback { return {}; };
     env->add_interface(
         testif, callback_map{{"P", ping_callback}, {"M", more_callback}, {"E", empty_callback}});
     env->add_interface(

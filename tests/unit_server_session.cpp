@@ -26,13 +26,17 @@ method Exception() -> ()
         org_test_varlink,
         {
             {"Test",
-             [] varlink_callback {
-                 if (mode == callmode::more) send_reply({{"pong", parameters["ping"]}}, true);
-                 send_reply({{"pong", parameters["ping"]}}, false);
+             [] varlink_more_callback {
+                 if (mode == callmode::more)
+                     send_reply({{"pong", parameters["ping"]}}, [=](auto) {
+                         send_reply({{"pong", parameters["ping"]}}, nullptr);
+                     });
+                 else
+                     send_reply({{"pong", parameters["ping"]}}, nullptr);
              }},
             {"TestTypes",
              [] varlink_callback {
-                 send_reply({{"pong", 123}}, false);
+                 return {{"pong", 123}};
              }},
             {"VarlinkError",
              [] varlink_callback { throw varlink_error("org.test.Error", json::object()); }},

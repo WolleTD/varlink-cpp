@@ -39,14 +39,15 @@ class server_session : public std::enable_shared_from_this<server_session<Protoc
             if (ec) return;
             try {
                 const basic_varlink_message message{j};
-                self->service_.message_call(message, [self](const json& reply) {
-                    if (self->send_ec) { throw std::system_error(self->send_ec); }
-                    if (reply.is_object()) {
-                        auto m = std::make_unique<json>(reply);
-                        self->async_send_reply(std::move(m));
-                    }
-                    if (not reply_continues(reply)) { self->start(); }
-                });
+                self->service_.message_call(
+                    message, [self](const json& reply, const more_handler& moreHandler) {
+                        auto continues = bool(moreHandler);
+                        if (reply.is_object()) {
+                            auto m = std::make_unique<json>(reply);
+                            self->async_send_reply(std::move(m), moreHandler);
+                        }
+                        if (not continues) { self->start(); }
+                    });
             }
             catch (...) {
             }
@@ -54,15 +55,18 @@ class server_session : public std::enable_shared_from_this<server_session<Protoc
     }
 
   private:
-    void async_send_reply(std::unique_ptr<json> message)
+    template <typename MoreHandler>
+    void async_send_reply(std::unique_ptr<json> message, MoreHandler&& moreHandler)
     {
         auto& data = *message;
-        connection.async_send(data, [m = std::move(message), self = shared_from_this()](auto ec) {
-            if (ec) {
-                self->connection.cancel();
-                self->send_ec = ec;
-            }
-        });
+        connection.async_send(
+            data,
+            [m = std::move(message),
+             self = shared_from_this(),
+             moreHandler = std::forward<MoreHandler>(moreHandler)](auto ec) mutable {
+                if (ec) { self->connection.cancel(); }
+                if (moreHandler) moreHandler(ec);
+            });
     }
 };
 

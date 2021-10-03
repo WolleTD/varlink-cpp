@@ -12,13 +12,15 @@
 using namespace varlink;
 using std::string;
 
-void start_timer(net::steady_timer& timer, int i, int count, const reply_function& send_reply)
+void start_timer(net::steady_timer& timer, size_t i, size_t count, const reply_function& send_reply)
 {
     timer.expires_after(std::chrono::milliseconds(10));
     timer.async_wait([&timer, i, continues = (i < count), count, send_reply](auto ec) mutable {
         if (not ec) {
-            send_reply({{"m", i}}, continues);
-            if (continues) start_timer(timer, i + 1, count, send_reply);
+            send_reply(
+                {{"m", i}},
+                continues ? [=, &timer](auto) { start_timer(timer, i + 1, count, send_reply); }
+                          : more_handler{});
         }
     });
 }
@@ -30,21 +32,30 @@ std::unique_ptr<BaseEnvironment> getEnvironment()
         "interface org.test\nmethod P(p:string) -> (q:string)\n"
         "method M(n:int,t:?bool)->(m:int)\n"
         "method E()->()\n";
-    auto ping_callback = [] varlink_callback {
-        send_reply({{"q", parameters["p"].get<string>()}}, false);
-    };
-    auto more_callback = [&timer = env->get_timer()] varlink_callback {
-        const auto count = parameters["n"].get<int>();
+    auto ping_callback = [] varlink_callback { return {{"q", parameters["p"].get<string>()}}; };
+    auto more_callback = [&timer = env->get_timer()] varlink_more_callback {
+        const auto count = parameters["n"].get<size_t>();
         const bool wait = parameters.contains("t") && parameters["t"].get<bool>();
-        send_reply({{"m", 0}}, true);
-        if (wait) { start_timer(timer, 1, count, send_reply); }
-        else {
-            for (auto i = 1; i <= count; i++) {
-                send_reply({{"m", i}}, (i < count));
+        struct handler {
+            const bool wait;
+            const size_t count;
+            varlink::reply_function send_reply;
+            net::steady_timer& timer;
+            size_t i{1};
+
+            void operator()(std::error_code)
+            {
+                if (wait)
+                    start_timer(timer, i, count, send_reply);
+                else {
+                    json args = {{"m", i}};
+                    send_reply(args, (i++ < count) ? more_handler(*this) : nullptr);
+                }
             }
-        }
+        };
+        send_reply({{"m", 0}}, handler{wait, count, send_reply, timer});
     };
-    auto empty_callback = [] varlink_callback { send_reply({}, false); };
+    auto empty_callback = [] varlink_callback { return {}; };
     env->add_interface(
         testif, callback_map{{"P", ping_callback}, {"M", more_callback}, {"E", empty_callback}});
     env->add_interface(
