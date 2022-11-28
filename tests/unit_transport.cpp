@@ -188,8 +188,7 @@ TEST_CASE("JSON transport sync write")
 
     SECTION("Write basic json")
     {
-        setup_test(
-            "{\"object\":true}", "\"string\"", "{\"float\":3.14}", "null");
+        setup_test("{\"object\":true}", "\"string\"", "{\"float\":3.14}", "null");
         conn->send(R"({"object":true})"_json);
         conn->send(R"("string")"_json);
         conn->send(R"({"float":3.14})"_json);
@@ -199,8 +198,7 @@ TEST_CASE("JSON transport sync write")
 
     SECTION("Write partial")
     {
-        setup_test(
-            R"({"s":1})", R"({"object":true,"toolong":true})", R"({"last":true})");
+        setup_test(R"({"s":1})", R"({"object":true,"toolong":true})", R"({"last":true})");
         conn->socket().write_max = 10;
         conn->send(R"({"s":1})"_json);
         conn->send(R"({"object":true,"toolong":true})"_json);

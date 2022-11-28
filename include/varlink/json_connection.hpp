@@ -4,6 +4,7 @@
 
 #include <optional>
 #include <varlink/detail/config.hpp>
+#include <varlink/detail/manual_strand.hpp>
 #include <varlink/detail/nl_json.hpp>
 
 namespace varlink {
@@ -26,12 +27,16 @@ class json_connection {
     byte_buffer readbuf;
     byte_buffer::iterator read_end;
     socket_type stream;
+    detail::manual_strand<executor_type> write_strand;
 
   public:
     explicit json_connection(asio::io_context& ctx) : json_connection(socket_type(ctx)) {}
 
     explicit json_connection(socket_type socket)
-        : readbuf(BUFSIZ), read_end(readbuf.begin()), stream(std::move(socket))
+        : readbuf(BUFSIZ),
+          read_end(readbuf.begin()),
+          stream(std::move(socket)),
+          write_strand(stream.get_executor())
     {
     }
 
@@ -168,13 +173,19 @@ class json_connection {
         template <typename CompletionHandler>
         void operator()(CompletionHandler&& handler, const json& message)
         {
-            auto m = std::make_unique<std::string>(message.dump());
-            auto buffer = net::buffer(m->data(), m->size() + 1);
-            net::async_write(
-                self_->stream,
-                buffer,
-                [handler = std::forward<CompletionHandler>(handler), m = std::move(m)](
-                    std::error_code ec, size_t) mutable { handler(ec); });
+            self_->write_strand.push(
+                [self = self_, &message, handler = std::forward<CompletionHandler>(handler)]() mutable {
+                    auto m = std::make_unique<std::string>(message.dump());
+                    auto buffer = net::buffer(m->data(), m->size() + 1);
+                    net::async_write(
+                        self->stream,
+                        buffer,
+                        [handler = std::forward<CompletionHandler>(handler), self, m = std::move(m)](
+                            std::error_code ec, size_t) mutable {
+                            self->write_strand.next();
+                            handler(ec);
+                        });
+                });
         }
     };
 };

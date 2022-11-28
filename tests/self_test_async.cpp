@@ -182,6 +182,31 @@ TEST_CASE("Testing server with client")
         REQUIRE(flag == 6);
     }
 
+    SECTION("Don't multiplex responses")
+    {
+        using namespace std::chrono;
+        using namespace std::chrono_literals;
+        int flag{0};
+        steady_clock::time_point more_done{};
+        steady_clock::time_point ping_done{};
+        auto msg1 = varlink_message_more("org.test.M", {{"n", 5}, {"t", true}});
+        client.async_call_more(msg1, [&](auto ec, const json& resp, bool c) {
+            REQUIRE(not ec);
+            REQUIRE(c == (flag < 5));
+            REQUIRE(flag++ == resp["m"].get<int>());
+            if (not c) { more_done = steady_clock::now(); }
+        });
+        auto msg2 = varlink_message("org.test.P", {{"p", "test"}});
+        client.async_call(msg2, [&](auto ec, const json& resp) {
+            REQUIRE(not ec);
+            REQUIRE(resp["q"].get<string>() == "test");
+            ping_done = steady_clock::now();
+        });
+        REQUIRE(ctx.run() > 0);
+        REQUIRE(flag == 6);
+        REQUIRE(more_done < ping_done);
+    }
+
     SECTION("Call method with empty response")
     {
         bool flag{false};
