@@ -219,7 +219,8 @@ class scanner {
             return match;
         }
         else {
-            throw std::runtime_error("interface error" + std::string(pos_, pos_ + 20));
+            auto end = std::min(desc_.end(), pos_ + 20);
+            throw std::runtime_error("interface error " + std::string(pos_, end));
         }
     }
 #endif

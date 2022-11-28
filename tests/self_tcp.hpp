@@ -13,22 +13,18 @@ class TCPEnvironment : public BaseEnvironment {
     };
     static protocol::endpoint get_endpoint()
     {
-        return protocol::endpoint(
+        return {
             net::ip::make_address_v4("127.0.0.1"),
 #ifdef VARLINK_TEST_ASYNC
             61337
 #else
             51337
 #endif
-        );
+        };
     }
 
   private:
-    const varlink_service::description description{
-        "varlink",
-        "test",
-        "1",
-        "test.org"};
+    const varlink_service::description description{"varlink", "test", "1", "test.org"};
 
   public:
     TCPEnvironment() : BaseEnvironment()

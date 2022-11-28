@@ -9,7 +9,8 @@ include(CodeCoverage)
 append_coverage_compiler_flags()
 endif ()
 
-link_libraries(varlink++)
+link_libraries(varlink++ asan)
+add_compile_options(-fsanitize=address)
 
 function(varlink_test NAME)
     add_executable(test_${NAME} ${ARGN})
