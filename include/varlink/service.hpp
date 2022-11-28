@@ -69,7 +69,7 @@ class varlink_service {
     template <typename ReplyHandler>
     void message_call(const basic_varlink_message& message, ReplyHandler&& replySender) const noexcept
     {
-        const auto error = [&](const std::string& what, const json& params) {
+        const auto error = [=](const std::string& what, const json& params) {
             assert(params.is_object());
             replySender({{"error", what}, {"parameters", params}});
         };
