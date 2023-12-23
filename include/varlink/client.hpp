@@ -21,7 +21,7 @@ class varlink_client {
   public:
     explicit varlink_client(asio::any_io_executor ex) : ex_(std::move(ex)), client() {}
 
-    varlink_client(asio::any_io_executor ex, varlink_uri endpoint) : ex_(std::move(ex))
+    varlink_client(asio::any_io_executor ex, const varlink_uri& endpoint) : ex_(std::move(ex))
     {
         connect(endpoint);
     }

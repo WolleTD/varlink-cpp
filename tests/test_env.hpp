@@ -1,5 +1,5 @@
 #pragma once
-#include <varlink/client.hpp>
+#include "test_env_wrapper.h"
 
 using namespace varlink;
 
@@ -40,3 +40,12 @@ class BaseEnvironment {
         if (server) server->add_interface(iface, std::move(cb));
     }
 };
+
+std::unique_ptr<BaseEnvironment> getEnvironment();
+
+EnvironmentWrapper::~EnvironmentWrapper() = default;
+
+EnvironmentWrapper getWrappedEnvironment()
+{
+    return {getEnvironment()};
+}

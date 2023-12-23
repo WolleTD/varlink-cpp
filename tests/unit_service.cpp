@@ -1,4 +1,4 @@
-#include <catch2/catch.hpp>
+#include <catch2/catch_test_macros.hpp>
 
 #include <varlink/service.hpp>
 
@@ -11,19 +11,15 @@ TEST_CASE("Varlink service")
     auto testcall = [&service](
                         std::string_view method,
                         const json& parameters,
-                        bool more,
-                        bool oneway,
-                        const std::function<void(const json&)>& sendmore) {
+                        const std::function<void(const json&)>& callback) {
         service.message_call(
-            basic_varlink_message(
-                {{"method", method}, {"parameters", parameters}, {"more", more}, {"oneway", oneway}}),
-            sendmore);
+            basic_varlink_message({{"method", method}, {"parameters", parameters}}), callback);
     };
 
     SECTION("Call org.varlink.service.GetInfo")
     {
         json info;
-        testcall("org.varlink.service.GetInfo", json::object(), false, false, [&](auto&& r) {
+        testcall("org.varlink.service.GetInfo", json::object(), [&](auto&& r) {
             info = r["parameters"];
         });
         REQUIRE(info["vendor"].get<string>() == "test");
@@ -44,7 +40,7 @@ method Test(ping: string) -> (pong: string)
     SECTION("Add an interface and call .GetInfo")
     {
         json info;
-        testcall("org.varlink.service.GetInfo", json::object(), false, false, [&](auto&& r) {
+        testcall("org.varlink.service.GetInfo", json::object(), [&](auto&& r) {
             info = r["parameters"];
         });
         REQUIRE(info["interfaces"].size() == 2);
@@ -57,8 +53,6 @@ method Test(ping: string) -> (pong: string)
         testcall(
             "org.varlink.service.GetInterfaceDescription",
             {{"interface", "org.test"}},
-            false,
-            false,
             [&](auto&& r) { info = r["parameters"]; });
         REQUIRE(
             info["description"].get<string>()
@@ -71,8 +65,6 @@ method Test(ping: string) -> (pong: string)
         testcall(
             "org.varlink.service.GetInterfaceDescription",
             {{"interface", "org.not.test"}},
-            false,
-            false,
             [&](auto&& r) { err = r; });
         REQUIRE(err["error"].get<string>() == "org.varlink.service.InterfaceNotFound");
         REQUIRE(err["parameters"]["interface"].get<string>() == "org.not.test");
@@ -83,7 +75,7 @@ method Test(ping: string) -> (pong: string)
         REQUIRE_THROWS_AS(
             service.add_interface(varlink_interface(org_test_varlink)), std::invalid_argument);
         json info;
-        testcall("org.varlink.service.GetInfo", json::object(), false, false, [&](auto&& r) {
+        testcall("org.varlink.service.GetInfo", json::object(), [&](auto&& r) {
             info = r["parameters"];
         });
         REQUIRE(info["interfaces"].size() == 2);

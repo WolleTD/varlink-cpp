@@ -1,12 +1,11 @@
 #define CATCH_CONFIG_RUNNER
-#include <catch2/catch.hpp>
-
-class BaseEnvironment {};
-extern std::unique_ptr<BaseEnvironment> getEnvironment();
+#include "test_env_wrapper.h"
+#include <csignal>
+#include <catch2/catch_session.hpp>
 
 int main(int argc, char** argv)
 {
     signal(SIGPIPE, SIG_IGN);
-    auto env = getEnvironment();
+    auto env = getWrappedEnvironment();
     return Catch::Session().run(argc, argv);
 }

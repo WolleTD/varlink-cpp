@@ -74,7 +74,7 @@ class varlink_certification {
         const std::string& param,
         const varlink::json& expected)
     {
-        auto value = parameters[param];
+        const auto& value = parameters[param];
         if (value != expected) {
             throw certification_error(expected.dump(), value.dump());
         }
@@ -154,7 +154,7 @@ class varlink_certification {
     {
         auto client_id = check_client_id(parameters);
         assert_method(client_id, "Test07", "Test08");
-        auto my_struct = parameters["struct"];
+        const auto& my_struct = parameters["struct"];
         assert_parameter(my_struct, "bool", false);
         assert_parameter(my_struct, "int", 2);
         assert_parameter(my_struct, "float", 3.14);
@@ -166,7 +166,7 @@ class varlink_certification {
     {
         auto client_id = check_client_id(parameters);
         assert_method(client_id, "Test08", "Test09");
-        auto my_map = parameters["map"];
+        const auto& my_map = parameters["map"];
         assert_parameter(my_map, "foo", "Foo");
         assert_parameter(my_map, "bar", "Bar");
         send_reply(

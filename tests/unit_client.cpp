@@ -1,4 +1,4 @@
-#include <catch2/catch.hpp>
+#include <catch2/catch_test_macros.hpp>
 #include <varlink/async_client.hpp>
 
 #include "fake_socket.hpp"
@@ -78,7 +78,7 @@ TEST_CASE("Client sync call processing")
         catch (std::system_error& e) {
             REQUIRE(e.code() == net::error::eof);
         }
-        catch (std::exception& e) {
+        catch (std::exception&) {
             // Unexpected exception
             REQUIRE(false);
         }
@@ -94,7 +94,7 @@ TEST_CASE("Client sync call processing")
             REQUIRE(false);
         }
         catch (std::invalid_argument& e) {
-            REQUIRE(std::string_view(e.what()) == "");
+            REQUIRE(std::string_view(e.what()).empty());
         }
         client->socket().validate_write();
     }

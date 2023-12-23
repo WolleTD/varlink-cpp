@@ -24,11 +24,7 @@ class UnixEnvironment : public BaseEnvironment {
     }
 
   private:
-    const varlink_service::description description{
-        "varlink",
-        "test",
-        "1",
-        "test.org"};
+    const varlink_service::description description{"varlink", "test", "1", "test.org"};
 
   public:
     UnixEnvironment() : BaseEnvironment()

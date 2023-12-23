@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    - uses: actions/checkout@v3
     - name: Check format
       uses: wolletd/clang-format-checker@master
       with:
@@ -26,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
 
     - name: Configure CMake
       run: cmake -S. -Bbuild -DCMAKE_BUILD_TYPE=$BUILD_TYPE ${{ matrix.config }}

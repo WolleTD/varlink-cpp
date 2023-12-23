@@ -69,7 +69,7 @@ class varlink_service {
     template <typename ReplyHandler>
     void message_call(const basic_varlink_message& message, ReplyHandler&& replySender) const noexcept
     {
-        const auto error = [&](const std::string& what, const json& params) {
+        const auto error = [=](const std::string& what, const json& params) {
             assert(params.is_object());
             replySender({{"error", what}, {"parameters", params}});
         };
@@ -109,10 +109,10 @@ class varlink_service {
             auto& callback = interface.callback(methodname);
             callback(message.parameters(), message.mode(), handler);
         }
-        catch (std::out_of_range& e) {
+        catch (std::out_of_range&) {
             error("org.varlink.service.MethodNotFound", {{"method", ifname + '.' + methodname}});
         }
-        catch (std::bad_function_call& e) {
+        catch (std::bad_function_call&) {
             error("org.varlink.service.MethodNotImplemented", {{"method", ifname + '.' + methodname}});
         }
         catch (invalid_parameter& e) {
@@ -121,7 +121,7 @@ class varlink_service {
         catch (varlink_error& e) {
             error(e.what(), e.args());
         }
-        catch (std::system_error& e) {
+        catch (std::system_error&) {
             // All system_errors here are send-errors, so don't send anymore
         }
         catch (std::exception& e) {

@@ -19,7 +19,7 @@ class varlink_error_category : public std::error_category {
         try {
             return errors.at(static_cast<size_t>(c));
         }
-        catch (std::out_of_range& e) {
+        catch (std::out_of_range&) {
             return "unknown";
         }
     }

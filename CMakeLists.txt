@@ -1,6 +1,6 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.25)
 
-project(libvarlink++)
+project(libvarlink++ LANGUAGES CXX VERSION 0.9)
 
 include(CMakeDependentOption)
 
@@ -21,45 +21,46 @@ set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 include(VarlinkWrapper)
 include(CPM)
 
-if(NOT VARLINK_USE_EXTERNAL_JSON)
+if (NOT VARLINK_USE_EXTERNAL_JSON)
     CPMAddPackage(
-        NAME nlohmann_json
-        URL http://github.com/nlohmann/json/releases/download/v3.9.1/include.zip
-        URL_HASH SHA256=6bea5877b1541d353bd77bdfbdb2696333ae5ed8f9e8cc22df657192218cad91
-        VERSION 3.9.1
+            NAME nlohmann_json
+            URL http://github.com/nlohmann/json/releases/download/v3.11.3/include.zip
+            URL_HASH SHA256=a22461d13119ac5c78f205d3df1db13403e58ce1bb1794edc9313677313f4a9d
+            VERSION 3.11.3
     )
     if (nlohmann_json_ADDED)
         add_library(nlohmann_json INTERFACE IMPORTED)
         target_include_directories(nlohmann_json INTERFACE ${nlohmann_json_SOURCE_DIR}/include)
-    endif()
-else()
+    endif ()
+else ()
     if (NOT TARGET nlohmann_json)
         find_package(nlohmann_json REQUIRED)
-    endif()
-endif()
+    endif ()
+endif ()
 
-if(NOT TARGET asio)
+if (NOT TARGET asio)
     add_library(asio INTERFACE IMPORTED)
-    if(VARLINK_USE_BOOST)
+    if (VARLINK_USE_BOOST)
         find_package(Boost REQUIRED)
         target_link_libraries(asio INTERFACE Boost::headers)
-    elseif(NOT VARLINK_USE_EXTERNAL_ASIO)
+    elseif (NOT VARLINK_USE_EXTERNAL_ASIO)
         CPMAddPackage(
                 NAME asio
-                URL https://github.com/chriskohlhoff/asio/archive/asio-1-18-0.zip
-                VERSION 1.18.0
+                URL https://github.com/chriskohlhoff/asio/archive/asio-1-29-0.zip
+                URL_HASH SHA256=45a7967e9bbfe8b7af404daeaed4b9214fd663bef00ad4f52c3c92399297445b
+                VERSION 1.29.0
         )
-        if(asio_ADDED)
+        if (asio_ADDED)
             target_include_directories(asio SYSTEM INTERFACE ${asio_SOURCE_DIR}/asio/include)
-        endif()
-    endif()
+        endif ()
+    endif ()
     target_compile_definitions(asio INTERFACE ASIO_STANDALONE ASIO_NO_DEPRECATED)
     target_link_libraries(asio INTERFACE pthread)
-endif()
+endif ()
 
-if(NOT VARLINK_DISABLE_CTRE)
-    CPMAddPackage("https://github.com/hanickadot/compile-time-regular-expressions.git@3.4.1")
-endif()
+if (NOT VARLINK_DISABLE_CTRE)
+    CPMAddPackage("https://github.com/hanickadot/compile-time-regular-expressions.git@3.8.1")
+endif ()
 
 # main library
 
@@ -70,40 +71,40 @@ add_library(varlink++
         source/member.cpp
         source/service.cpp
         source/org.varlink.service.varlink.hpp
-        )
+)
 
 target_include_directories(varlink++
         PUBLIC ${PROJECT_SOURCE_DIR}/include
         PRIVATE ${PROJECT_BINARY_DIR}/source
-        )
+)
 
 target_link_libraries(varlink++ PUBLIC nlohmann_json asio stdc++fs)
 
-if(VARLINK_DISABLE_CTRE)
+if (VARLINK_DISABLE_CTRE)
     target_compile_definitions(varlink++ PUBLIC VARLINK_DISABLE_CTRE)
-else()
+else ()
     target_link_libraries(varlink++ PRIVATE ctre)
-endif()
+endif ()
 
-if(VARLINK_USE_STRINGS)
+if (VARLINK_USE_STRINGS)
     target_compile_definitions(varlink++ PUBLIC VARLINK_USE_STRINGS)
-endif()
+endif ()
 
 # command line tool and more example
 
 #add_subdirectory(tool)
-if(VARLINK_BUILD_EXAMPLES)
+if (VARLINK_BUILD_EXAMPLES)
     add_subdirectory(example)
-endif()
+endif ()
 
 # testing
 
-if(VARLINK_BUILD_TESTS)
-    if(NOT VARLINK_USE_EXTERNAL_CATCH2)
-        CPMAddPackage("gh:catchorg/Catch2@2.13.2")
-    else()
+if (VARLINK_BUILD_TESTS)
+    if (NOT VARLINK_USE_EXTERNAL_CATCH2)
+        CPMAddPackage("gh:catchorg/Catch2@3.5.0")
+    else ()
         find_package(Catch2 REQUIRED)
-    endif()
+    endif ()
     include(CTest)
     add_subdirectory(tests)
-endif()
+endif ()
