@@ -18,7 +18,7 @@ class movable_function : public std::function<T> {
 
     // specialization for CopyConstructible Fn
     template <typename Fn>
-    struct wrapper<Fn, std::enable_if_t<std::is_copy_constructible<Fn>::value>> {
+    struct wrapper<Fn, std::enable_if_t<std::is_copy_constructible_v<Fn>>> {
         Fn fn;
 
         template <typename... Args>
@@ -30,9 +30,7 @@ class movable_function : public std::function<T> {
 
     // specialization for MoveConstructible-only Fn
     template <typename Fn>
-    struct wrapper<
-        Fn,
-        std::enable_if_t<!std::is_copy_constructible<Fn>::value && std::is_move_constructible<Fn>::value>> {
+    struct wrapper<Fn, std::enable_if_t<!std::is_copy_constructible_v<Fn> && std::is_move_constructible_v<Fn>>> {
         Fn fn;
 
         explicit wrapper(Fn&& _fn) : fn(std::forward<Fn>(_fn)) {}

@@ -54,7 +54,7 @@ std::unique_ptr<BaseEnvironment> getEnvironment()
 }
 
 using test_client = async_client<Environment::protocol>;
-using socket_type = typename test_client::socket_type;
+using socket_type = test_client::socket_type;
 
 TEST_CASE("Testing server with client")
 {

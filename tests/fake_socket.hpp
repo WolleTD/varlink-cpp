@@ -12,7 +12,7 @@ struct fake_proto {
 class FakeSocket : public net::socket_base {
   public:
     using protocol_type = fake_proto;
-    using endpoint_type = typename protocol_type::endpoint;
+    using endpoint_type = protocol_type::endpoint;
     using executor_type = net::any_io_executor;
     bool error_on_write{false};
     bool cancelled{false};
@@ -30,34 +30,25 @@ class FakeSocket : public net::socket_base {
     FakeSocket(FakeSocket&& r) noexcept = default;
     FakeSocket& operator=(FakeSocket&& r) noexcept = default;
 
-    [[nodiscard]] executor_type get_executor() const
-    {
-        return ctx_->get_executor();
-    }
+    [[nodiscard]] executor_type get_executor() const { return ctx_->get_executor(); }
 
     // Fake control
 
-    size_t setup_fake(const net::const_buffer& buffer)
-    {
-        return write_buffer(fake_data, buffer);
-    }
+    size_t setup_fake(const net::const_buffer& buffer) { return write_buffer(fake_data, buffer); }
 
     size_t setup_fake(const std::string& str)
     {
         return setup_fake(net::buffer(str.data(), str.size() + 1));
     }
 
-    size_t expect(const net::const_buffer& buffer)
-    {
-        return write_buffer(sent_expect, buffer);
-    }
+    size_t expect(const net::const_buffer& buffer) { return write_buffer(sent_expect, buffer); }
 
     size_t expect(const std::string& str)
     {
         return expect(net::buffer(str.data(), str.size() + 1));
     }
 
-    void validate_write()
+    void validate_write() const
     {
         REQUIRE(
             std::string_view(sent_data.data(), sent_data.size())
@@ -68,9 +59,8 @@ class FakeSocket : public net::socket_base {
 
     size_t send(const net::const_buffer& buffer)
     {
-        if (error_on_write) {
-            throw std::system_error(net::error::broken_pipe);
-        } else {
+        if (error_on_write) { throw std::system_error(net::error::broken_pipe); }
+        else {
             return write_buffer(sent_data, buffer);
         }
     }
@@ -80,13 +70,9 @@ class FakeSocket : public net::socket_base {
     {
         net::post(
             ctx_->get_executor(),
-            [this,
-             buffer,
-             handler = std::forward<CompletionHandler>(handler)]() mutable {
+            [this, buffer, handler = std::forward<CompletionHandler>(handler)]() mutable {
                 if (not cancelled) {
-                    if (error_on_write) {
-                        return handler(net::error::broken_pipe, 0);
-                    }
+                    if (error_on_write) { return handler(net::error::broken_pipe, 0); }
                     else {
                         auto n = send(buffer);
                         return handler(std::error_code{}, n);
@@ -100,16 +86,13 @@ class FakeSocket : public net::socket_base {
 
     size_t receive(const net::mutable_buffer& buffer)
     {
-        if (fake_data.empty()) {
-            throw std::system_error(net::error::eof);
-        }
+        if (fake_data.empty()) { throw std::system_error(net::error::eof); }
         else {
             const auto max_buffer = std::min(fake_data.size(), buffer.size());
             const auto read_count = std::min(write_max, max_buffer);
             std::memcpy(buffer.data(), fake_data.data(), read_count);
             fake_data.erase(
-                fake_data.begin(),
-                fake_data.begin() + static_cast<ptrdiff_t>(read_count));
+                fake_data.begin(), fake_data.begin() + static_cast<ptrdiff_t>(read_count));
             return read_count;
         }
     }
@@ -119,9 +102,7 @@ class FakeSocket : public net::socket_base {
     {
         net::post(
             ctx_->get_executor(),
-            [this,
-             buffer,
-             handler = std::forward<CompletionHandler>(handler)]() mutable {
+            [this, buffer, handler = std::forward<CompletionHandler>(handler)]() mutable {
                 try {
                     if (not cancelled) {
                         auto n = receive(buffer);

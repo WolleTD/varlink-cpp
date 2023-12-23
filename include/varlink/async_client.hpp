@@ -127,7 +127,7 @@ class async_client {
         return call_more(varlink_message_more(method, parameters));
     }
 
-    void call_oneway(const varlink_message_oneway& message) { call_impl(message)(); }
+    void call_oneway(const varlink_message_oneway& message) { (void)call_impl(message)(); }
 
     void call_oneway(std::string_view method, const json& parameters)
     {

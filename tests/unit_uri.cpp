@@ -13,9 +13,9 @@ TEST_CASE("Varlink uri static asserts")
         constexpr auto uri = varlink_uri(test);
         static_assert(uri.type == varlink_uri::type::unix);
         static_assert(uri.path == "/tmp/test.sock");
-        static_assert(uri.qualified_method == "");
-        static_assert(uri.interface == "");
-        static_assert(uri.method == "");
+        static_assert(uri.qualified_method.empty());
+        static_assert(uri.interface.empty());
+        static_assert(uri.method.empty());
     }
 
     SECTION("Unix socket with method")
@@ -36,9 +36,9 @@ TEST_CASE("Varlink uri static asserts")
         static_assert(uri.type == varlink_uri::type::tcp);
         static_assert(uri.host == "127.0.0.1");
         static_assert(uri.port == "1337");
-        static_assert(uri.qualified_method == "");
-        static_assert(uri.interface == "");
-        static_assert(uri.method == "");
+        static_assert(uri.qualified_method.empty());
+        static_assert(uri.interface.empty());
+        static_assert(uri.method.empty());
     }
 
     SECTION("TCP address with method")
@@ -55,8 +55,7 @@ TEST_CASE("Varlink uri static asserts")
 
     SECTION("Remove future use")
     {
-        constexpr std::string_view test =
-            "tcp:127.0.0.1:1337/org.test.Method;rfu=foo";
+        constexpr std::string_view test = "tcp:127.0.0.1:1337/org.test.Method;rfu=foo";
         constexpr auto uri = varlink_uri(test);
         static_assert(uri.type == varlink_uri::type::tcp);
         static_assert(uri.host == "127.0.0.1");
@@ -84,7 +83,6 @@ TEST_CASE("Varlink uri")
         REQUIRE_NOTHROW(varlink_uri("unix:/tmp/test.sock/org.test.Method", true));
         REQUIRE_NOTHROW(varlink_uri("tcp:127.0.0.1:123"));
         REQUIRE_NOTHROW(varlink_uri("tcp:127.0.0.1:123/org.test.Method"));
-        REQUIRE_NOTHROW(
-            varlink_uri("tcp:127.0.0.1:123/org.test.Method;rfu-extension"));
+        REQUIRE_NOTHROW(varlink_uri("tcp:127.0.0.1:123/org.test.Method;rfu-extension"));
     }
 }

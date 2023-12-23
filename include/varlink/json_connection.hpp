@@ -118,7 +118,7 @@ class json_connection {
         try {
             return json::parse(message);
         }
-        catch (json::parse_error& e) {
+        catch (json::parse_error&) {
             ec = net::error::invalid_argument;
             return json{};
         }

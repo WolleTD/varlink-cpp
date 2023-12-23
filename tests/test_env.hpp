@@ -1,6 +1,5 @@
 #pragma once
 #include "test_env_wrapper.h"
-#include <varlink/client.hpp>
 
 using namespace varlink;
 

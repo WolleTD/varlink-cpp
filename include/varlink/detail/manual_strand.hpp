@@ -59,4 +59,4 @@ class manual_strand {
 };
 } // namespace varlink::detail
 
-#endif // LIBVARLINK_JOB_QUEUE_HPP
+#endif // LIBVARLINK_MANUAL_STRAND_H
