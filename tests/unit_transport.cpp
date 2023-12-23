@@ -1,10 +1,12 @@
-#include <catch2/catch.hpp>
+#include <catch2/catch_approx.hpp>
+#include <catch2/catch_test_macros.hpp>
 #include <varlink/json_connection.hpp>
 
 #include "fake_socket.hpp"
 
 using namespace varlink;
 using test_connection = json_connection<fake_proto>;
+using Catch::Approx;
 
 TEST_CASE("JSON transport sync read")
 {

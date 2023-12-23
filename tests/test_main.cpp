@@ -1,6 +1,7 @@
 #define CATCH_CONFIG_RUNNER
 #include "test_env_wrapper.h"
-#include <catch2/catch.hpp>
+#include <csignal>
+#include <catch2/catch_session.hpp>
 
 int main(int argc, char** argv)
 {

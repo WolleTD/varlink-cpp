@@ -5,16 +5,15 @@ add_compile_options(-Wall -Wextra -Wshadow -Wnon-virtual-dtor -Wold-style-cast -
         -Wnull-dereference -Wdouble-promotion -Wformat=2)
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-include(CodeCoverage)
-append_coverage_compiler_flags()
+    include(CodeCoverage)
+    append_coverage_compiler_flags()
 endif ()
 
-link_libraries(varlink++ asan)
+link_libraries(varlink++ asan Catch2::Catch2)
 add_compile_options(-fsanitize=address)
 
 function(varlink_test NAME)
     add_executable(test_${NAME} ${ARGN})
-    target_link_libraries(test_${NAME} PRIVATE Catch2::Catch2)
     add_test(${NAME} test_${NAME})
 endfunction()
 
@@ -31,12 +30,13 @@ varlink_test(unittests
         unit_service.cpp
         unit_transport.cpp
         unit_uri.cpp
-        unit_main.cpp
-        )
-varlink_test(self_errors self_errors.cpp unit_main.cpp)
+)
+target_link_libraries(test_unittests PRIVATE Catch2::Catch2WithMain)
+
+varlink_test(self_errors self_errors.cpp)
+target_link_libraries(test_self_errors PRIVATE Catch2::Catch2WithMain)
 
 add_library(catch_main test_main.cpp)
-target_link_libraries(catch_main PUBLIC Catch2::Catch2)
 
 varlink_test(self_unix self_test_threaded.cpp)
 target_link_libraries(test_self_unix PRIVATE catch_main)
@@ -63,7 +63,7 @@ bash_test(certification self_cert.sh)
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     setup_target_for_coverage_gcovr_html(
-        NAME coverage
-        EXECUTABLE test_self_unix COMMAND test_self_tcp COMMAND test_self_errors COMMAND test_unittests
-        EXCLUDE "${PROJECT_SOURCE_DIR}/3rdparty" "${PROJECT_SOURCE_DIR}/test")
-endif()
+            NAME coverage
+            EXECUTABLE test_self_unix COMMAND test_self_tcp COMMAND test_self_errors COMMAND test_unittests
+            EXCLUDE "${PROJECT_SOURCE_DIR}/3rdparty" "${PROJECT_SOURCE_DIR}/test")
+endif ()

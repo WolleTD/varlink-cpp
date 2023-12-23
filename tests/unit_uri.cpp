@@ -1,4 +1,4 @@
-#include <catch2/catch.hpp>
+#include <catch2/catch_test_macros.hpp>
 
 #include <varlink/uri.hpp>
 
@@ -71,14 +71,11 @@ TEST_CASE("Varlink uri")
 {
     SECTION("Invalid varlink URIs throw")
     {
-        REQUIRE_THROWS_AS(
-            varlink_uri("unx:/tmp/test.sock"), std::invalid_argument);
+        REQUIRE_THROWS_AS(varlink_uri("unx:/tmp/test.sock"), std::invalid_argument);
         REQUIRE_THROWS_AS(varlink_uri("/tmp/test.sock"), std::invalid_argument);
         REQUIRE_THROWS_AS(varlink_uri(""), std::invalid_argument);
-        REQUIRE_THROWS_AS(
-            varlink_uri("udp:127.0.0.1:123"), std::invalid_argument);
-        REQUIRE_THROWS_AS(
-            varlink_uri("tcp:127.0.0.1/no.port"), std::invalid_argument);
+        REQUIRE_THROWS_AS(varlink_uri("udp:127.0.0.1:123"), std::invalid_argument);
+        REQUIRE_THROWS_AS(varlink_uri("tcp:127.0.0.1/no.port"), std::invalid_argument);
     }
 
     SECTION("Valid varlink URIs")

@@ -101,7 +101,7 @@ endif ()
 
 if (VARLINK_BUILD_TESTS)
     if (NOT VARLINK_USE_EXTERNAL_CATCH2)
-        CPMAddPackage("gh:catchorg/Catch2@2.13.10")
+        CPMAddPackage("gh:catchorg/Catch2@3.5.0")
     else ()
         find_package(Catch2 REQUIRED)
     endif ()
