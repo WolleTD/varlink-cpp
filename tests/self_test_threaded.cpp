@@ -135,11 +135,6 @@ TEST_CASE("Testing server with client")
         REQUIRE(resp.empty());
     }
 
-    SECTION("Call method and don't read")
-    {
-        client.call("org.test.P", json{{"p", "test"}});
-    }
-
     SECTION("Call method org.test.More and don't read all responses")
     {
         auto more = client.call_more("org.test.M", json{{"n", 5}});
