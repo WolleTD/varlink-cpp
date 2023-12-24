@@ -6,13 +6,11 @@
 
 namespace varlink {
 
-class invalid_parameter : public std::invalid_argument {
-  public:
+struct invalid_parameter : std::invalid_argument {
     explicit invalid_parameter(const std::string& what) : std::invalid_argument(what) {}
 };
 
-class varlink_interface {
-  public:
+struct varlink_interface {
     explicit varlink_interface(std::string_view description);
 
     [[nodiscard]] std::string_view name() const noexcept { return ifname; }
@@ -51,16 +49,16 @@ class varlink_interface {
         bool collection = false) const;
 
   private:
-    detail::string_type ifname{};
-    detail::string_type documentation{};
-    std::vector<detail::member> members{};
-
     [[nodiscard]] const detail::member& find_member(std::string_view name, detail::MemberKind kind) const;
     [[nodiscard]] bool has_member(std::string_view name, detail::MemberKind kind) const;
 
     friend std::ostream& operator<<(std::ostream& os, const varlink_interface& interface);
+
+    detail::string_type ifname{};
+    detail::string_type documentation{};
+    std::vector<detail::member> members{};
 };
 
-std::ostream& operator<<(std::ostream& os, const varlink::varlink_interface& interface);
+std::ostream& operator<<(std::ostream& os, const varlink_interface& interface);
 } // namespace varlink
 #endif // LIBVARLINK_INTERFACE_HPP

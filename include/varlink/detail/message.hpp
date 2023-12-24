@@ -12,20 +12,15 @@ enum class callmode {
     upgrade,
 };
 
-class basic_varlink_message {
-  private:
-    json _json;
-    callmode _mode{callmode::basic};
-
-  public:
+struct basic_varlink_message {
     basic_varlink_message() = default;
-    explicit basic_varlink_message(const json& msg) : _json(msg)
+    explicit basic_varlink_message(const json& msg) : json_(msg)
     {
-        if (!_json.is_object() or !_json.contains("method") or !_json["method"].is_string()
-            or (_json.contains("parameters") && !_json["parameters"].is_object())) {
+        if (!json_.is_object() or !json_.contains("method") or !json_["method"].is_string()
+            or (json_.contains("parameters") && !json_["parameters"].is_object())) {
             throw std::invalid_argument("Not a varlink message: " + msg.dump());
         }
-        _mode = (msg.contains("more") && msg["more"].get<bool>())       ? callmode::more
+        mode_ = (msg.contains("more") && msg["more"].get<bool>())       ? callmode::more
               : (msg.contains("oneway") && msg["oneway"].get<bool>())   ? callmode::oneway
               : (msg.contains("upgrade") && msg["upgrade"].get<bool>()) ? callmode::upgrade
                                                                         : callmode::basic;
@@ -37,49 +32,52 @@ class basic_varlink_message {
     }
 
     basic_varlink_message(const std::string_view method, const json& parameters, callmode mode)
-        : _json({{"method", method}}), _mode(mode)
+        : json_({{"method", method}}), mode_(mode)
     {
         if (not parameters.is_null() and not parameters.is_object()) {
             throw std::invalid_argument("parameters is not an object");
         }
         else if (not parameters.empty()) {
-            _json["parameters"] = parameters;
+            json_["parameters"] = parameters;
         }
-        if (_mode == callmode::oneway) { _json["oneway"] = true; }
-        else if (_mode == callmode::more) {
-            _json["more"] = true;
+        if (mode_ == callmode::oneway) { json_["oneway"] = true; }
+        else if (mode_ == callmode::more) {
+            json_["more"] = true;
         }
-        else if (_mode == callmode::upgrade) {
-            _json["upgrade"] = true;
+        else if (mode_ == callmode::upgrade) {
+            json_["upgrade"] = true;
         }
     }
 
-    [[nodiscard]] auto mode() const { return _mode; }
+    [[nodiscard]] auto mode() const { return mode_; }
 
     [[nodiscard]] json parameters() const
     {
-        return _json.contains("parameters") ? _json["parameters"] : json::object();
+        return json_.contains("parameters") ? json_["parameters"] : json::object();
     }
-    [[nodiscard]] const json& json_data() const { return _json; }
+    [[nodiscard]] const json& json_data() const { return json_; }
 
     [[nodiscard]] std::string interface() const
     {
-        const auto& fqmethod = _json["method"].get<std::string>();
+        const auto& fqmethod = json_["method"].get<std::string>();
         return fqmethod.substr(0, fqmethod.rfind('.'));
     }
 
     [[nodiscard]] std::string method() const
     {
-        const auto& fqmethod = _json["method"].get<std::string>();
+        const auto& fqmethod = json_["method"].get<std::string>();
         return fqmethod.substr(fqmethod.rfind('.') + 1);
     }
 
     friend bool operator==(const basic_varlink_message& lhs, const basic_varlink_message& rhs) noexcept;
+
+  private:
+    json json_;
+    callmode mode_{callmode::basic};
 };
 
 template <callmode CallMode>
-class typed_varlink_message : public basic_varlink_message {
-  public:
+struct typed_varlink_message : basic_varlink_message {
     typed_varlink_message(const std::string_view method, const json& parameters)
         : basic_varlink_message(method, parameters, CallMode)
     {
@@ -93,7 +91,7 @@ using varlink_message_upgrade = typed_varlink_message<callmode::upgrade>;
 
 inline bool operator==(const basic_varlink_message& lhs, const basic_varlink_message& rhs) noexcept
 {
-    return (lhs._json == rhs._json);
+    return (lhs.json_ == rhs.json_);
 }
 
 inline bool reply_continues(const json& reply)

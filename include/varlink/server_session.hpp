@@ -6,23 +6,14 @@
 
 namespace varlink {
 template <typename Protocol>
-class server_session : public std::enable_shared_from_this<server_session<Protocol>> {
-  public:
+struct server_session : std::enable_shared_from_this<server_session<Protocol>> {
     using protocol_type = Protocol;
     using socket_type = typename protocol_type::socket;
     using executor_type = typename socket_type::executor_type;
     using connection_type = json_connection<protocol_type>;
 
-    using std::enable_shared_from_this<server_session<Protocol>>::shared_from_this;
+    using std::enable_shared_from_this<server_session>::shared_from_this;
 
-    executor_type get_executor() { return connection.get_executor(); }
-
-  private:
-    connection_type connection;
-    varlink_service& service_;
-    std::error_code send_ec{};
-
-  public:
     explicit server_session(socket_type socket, varlink_service& service)
         : connection(std::move(socket)), service_(service)
     {
@@ -32,6 +23,8 @@ class server_session : public std::enable_shared_from_this<server_session<Protoc
     server_session& operator=(const server_session&) = delete;
     server_session(server_session&&) noexcept = default;
     server_session& operator=(server_session&&) noexcept = default;
+
+    executor_type get_executor() { return connection.get_executor(); }
 
     void start()
     {
@@ -68,6 +61,10 @@ class server_session : public std::enable_shared_from_this<server_session<Protoc
                 if (moreHandler) moreHandler(ec);
             });
     }
+
+    connection_type connection;
+    varlink_service& service_;
+    std::error_code send_ec{};
 };
 
 } // namespace varlink

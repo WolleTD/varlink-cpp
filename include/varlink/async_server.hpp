@@ -7,23 +7,15 @@
 
 namespace varlink {
 template <typename Protocol>
-class async_server : public std::enable_shared_from_this<async_server<Protocol>> {
-  public:
+struct async_server : std::enable_shared_from_this<async_server<Protocol>> {
     using protocol_type = Protocol;
     using acceptor_type = typename protocol_type::acceptor;
     using socket_type = typename protocol_type::socket;
     using executor_type = typename acceptor_type::executor_type;
     using session_type = server_session<protocol_type>;
 
-    using std::enable_shared_from_this<async_server<Protocol>>::shared_from_this;
+    using std::enable_shared_from_this<async_server>::shared_from_this;
 
-    executor_type get_executor() { return acceptor_.get_executor(); }
-
-  private:
-    acceptor_type acceptor_;
-    varlink_service& service_;
-
-  public:
     explicit async_server(acceptor_type acceptor, varlink_service& service)
         : acceptor_(std::move(acceptor)), service_(service)
     {
@@ -33,6 +25,8 @@ class async_server : public std::enable_shared_from_this<async_server<Protocol>>
     async_server& operator=(const async_server&) = delete;
     async_server(async_server&& src) noexcept = default;
     async_server& operator=(async_server&& src) noexcept = default;
+
+    executor_type get_executor() { return acceptor_.get_executor(); }
 
     template <typename ConnectionHandler>
     auto async_accept(ConnectionHandler&& handler)
@@ -59,11 +53,7 @@ class async_server : public std::enable_shared_from_this<async_server<Protocol>>
     }
 
   private:
-    class async_accept_initiator {
-      private:
-        async_server* self_;
-
-      public:
+    struct async_accept_initiator {
         explicit async_accept_initiator(async_server* self) : self_(self) {}
 
         template <typename ConnectionHandler>
@@ -79,12 +69,20 @@ class async_server : public std::enable_shared_from_this<async_server<Protocol>>
                     handler_(ec, std::move(session));
                 });
         }
+
+      private:
+        async_server* self_;
     };
+
+    acceptor_type acceptor_;
+    varlink_service& service_;
 };
 
 using async_server_unix = async_server<net::local::stream_protocol>;
 using async_server_tcp = async_server<net::ip::tcp>;
 using async_server_variant = std::variant<async_server_unix, async_server_tcp>;
 
+template <typename Endpoint>
+using server_t = async_server<typename std::decay_t<Endpoint>::protocol_type>;
 } // namespace varlink
 #endif // LIBVARLINK_ASYNC_SERVER_HPP

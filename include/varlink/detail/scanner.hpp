@@ -28,8 +28,7 @@ namespace varlink::detail {
 #define expect(...) expect_re<__VA_ARGS__>()
 #endif
 
-class scanner {
-  public:
+struct scanner {
     explicit scanner(std::string_view description) : desc_(description), pos_(desc_.begin()) {}
 
     auto read_interface_name()

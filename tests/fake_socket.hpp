@@ -2,30 +2,18 @@
 #include <varlink/detail/config.hpp>
 using namespace varlink;
 
-class FakeSocket;
+struct FakeSocket;
 
 struct fake_proto {
     using socket = FakeSocket;
     using endpoint = net::local::stream_protocol::endpoint;
 };
 
-class FakeSocket : public net::socket_base {
-  public:
+struct FakeSocket : net::socket_base {
     using protocol_type = fake_proto;
     using endpoint_type = protocol_type::endpoint;
     using executor_type = net::any_io_executor;
-    bool error_on_write{false};
-    bool cancelled{false};
-    bool validate{false};
-    size_t write_max{BUFSIZ};
 
-  private:
-    std::vector<char> fake_data{};
-    std::vector<char> sent_data{};
-    std::vector<char> sent_expect{};
-    net::io_context* ctx_;
-
-  public:
     explicit FakeSocket(net::io_context& ctx) : ctx_(&ctx) {}
     FakeSocket(net::io_context& ctx, net::local::stream_protocol, int) : ctx_(&ctx) {}
     FakeSocket(FakeSocket&& r) noexcept = default;
@@ -132,6 +120,11 @@ class FakeSocket : public net::socket_base {
 
     void cancel() { cancelled = true; }
 
+    bool error_on_write{false};
+    bool cancelled{false};
+    bool validate{false};
+    size_t write_max{BUFSIZ};
+
   private:
     size_t write_buffer(std::vector<char>& target, const net::const_buffer& buffer, bool all = false) const
     {
@@ -141,4 +134,9 @@ class FakeSocket : public net::socket_base {
         std::memcpy(&target[insert_pos], buffer.data(), write_count);
         return write_count;
     }
+
+    std::vector<char> fake_data{};
+    std::vector<char> sent_data{};
+    std::vector<char> sent_expect{};
+    net::io_context* ctx_;
 };

@@ -8,18 +8,8 @@
 #include <varlink/uri.hpp>
 
 namespace varlink {
-class varlink_client {
-  private:
-    asio::any_io_executor ex_;
-    std::optional<varlink_client_variant> client;
-
-    template <typename Endpoint>
-    using protocol_t = typename std::decay_t<Endpoint>::protocol_type;
-    template <typename Endpoint>
-    using client_t = async_client<protocol_t<Endpoint>>;
-
-  public:
-    explicit varlink_client(asio::any_io_executor ex) : ex_(std::move(ex)), client() {}
+struct varlink_client {
+    explicit varlink_client(asio::any_io_executor ex) : ex_(std::move(ex)) {}
 
     varlink_client(asio::any_io_executor ex, const varlink_uri& endpoint) : ex_(std::move(ex))
     {
@@ -164,6 +154,10 @@ class varlink_client {
         return std::visit(
             [&](auto&& c) { return c.call_upgrade(std::forward<Args>(args)...); }, *client);
     }
+
+  private:
+    asio::any_io_executor ex_;
+    std::optional<varlink_client_variant> client;
 };
 } // namespace varlink
 

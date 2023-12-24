@@ -10,23 +10,12 @@
 namespace varlink {
 
 template <typename Protocol>
-class json_connection {
-  public:
+struct json_connection {
     using protocol_type = Protocol;
     using socket_type = typename protocol_type::socket;
     using endpoint_type = typename protocol_type::endpoint;
     using executor_type = typename socket_type::executor_type;
 
-    executor_type get_executor() { return stream.get_executor(); }
-
-  private:
-    using byte_buffer = std::vector<char>;
-    byte_buffer readbuf;
-    byte_buffer::iterator read_end;
-    socket_type stream;
-    detail::manual_strand<executor_type> write_strand;
-
-  public:
     explicit json_connection(asio::io_context& ctx) : json_connection(socket_type(ctx)) {}
 
     explicit json_connection(socket_type socket)
@@ -42,6 +31,8 @@ class json_connection {
     json_connection(json_connection&&) noexcept = default;
     // NOLINTNEXTLINE(performance-noexcept-move-constructor) stream's operator= isn't noexcept
     json_connection& operator=(json_connection&&) = default;
+
+    executor_type get_executor() { return stream.get_executor(); }
 
     template <typename ConnectHandler>
     decltype(auto) async_connect(const endpoint_type& endpoint, ConnectHandler&& handler)
@@ -121,11 +112,7 @@ class json_connection {
         }
     };
 
-    class initiate_async_receive {
-      private:
-        json_connection* self_;
-
-      public:
+    struct initiate_async_receive {
         explicit initiate_async_receive(json_connection* self) : self_(self) {}
 
         template <typename CompletionHandler>
@@ -159,12 +146,12 @@ class json_connection {
                     });
             }
         }
-    };
-    class initiate_async_send {
+
       private:
         json_connection* self_;
+    };
 
-      public:
+    struct initiate_async_send {
         explicit initiate_async_send(json_connection* self) : self_(self) {}
 
         template <typename CompletionHandler>
@@ -184,7 +171,16 @@ class json_connection {
                         });
                 });
         }
+
+      private:
+        json_connection* self_;
     };
+
+    using byte_buffer = std::vector<char>;
+    byte_buffer readbuf;
+    byte_buffer::iterator read_end;
+    socket_type stream;
+    detail::manual_strand<executor_type> write_strand;
 };
 } // namespace varlink
 

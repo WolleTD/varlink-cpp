@@ -1,10 +1,9 @@
 #pragma once
 #include "test_env.hpp"
 
-class TCPEnvironment : public BaseEnvironment {
-  public:
+struct TCPEnvironment : BaseEnvironment {
     using protocol = net::ip::tcp;
-    static constexpr const std::string_view varlink_uri{
+    static constexpr std::string_view varlink_uri{
 #ifdef VARLINK_TEST_ASYNC
         "tcp:127.0.0.1:61337"
 #else
@@ -23,10 +22,6 @@ class TCPEnvironment : public BaseEnvironment {
         };
     }
 
-  private:
-    const varlink_service::description description{"varlink", "test", "1", "test.org"};
-
-  public:
     TCPEnvironment() : BaseEnvironment()
     {
 #ifdef VARLINK_TEST_ASYNC
@@ -38,6 +33,9 @@ class TCPEnvironment : public BaseEnvironment {
         server = std::make_unique<test_server>(varlink_uri, description);
 #endif
     }
+
+  private:
+    const varlink_service::description description{"varlink", "test", "1", "test.org"};
 };
 
 using Environment = TCPEnvironment;

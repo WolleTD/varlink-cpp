@@ -15,8 +15,7 @@
 
 namespace varlink::detail {
 template <typename Executor>
-class manual_strand {
-  public:
+struct manual_strand {
     using function_type = movable_function<void()>;
     template <typename T>
     using queue = std::queue<T, std::list<T>>;

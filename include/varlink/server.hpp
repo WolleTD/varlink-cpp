@@ -8,15 +8,6 @@
 
 namespace varlink {
 class varlink_server {
-  private:
-    varlink_service service;
-    async_server_variant server;
-
-    template <typename Endpoint>
-    using protocol_t = typename std::decay_t<Endpoint>::protocol_type;
-    template <typename Endpoint>
-    using server_t = async_server<protocol_t<Endpoint>>;
-
     auto make_async_server(net::io_context& ctx, const varlink_uri& uri)
     {
         return std::visit(
@@ -57,6 +48,10 @@ class varlink_server {
     {
         return std::visit([](auto&& s) { return s.get_executor(); }, server);
     }
+
+  private:
+    varlink_service service;
+    async_server_variant server;
 };
 } // namespace varlink
 

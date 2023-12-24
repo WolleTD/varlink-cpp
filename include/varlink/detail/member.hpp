@@ -67,7 +67,7 @@ struct member {
 
     [[nodiscard]] const type_spec& method_parameter_type() const
     {
-        if (kind == MemberKind::Method) { return data.get<detail::vl_struct>()[0].second; }
+        if (kind == MemberKind::Method) { return data.get<vl_struct>()[0].second; }
         else {
             throw std::invalid_argument("Not a method");
         }
@@ -75,7 +75,7 @@ struct member {
 
     [[nodiscard]] const type_spec& method_return_type() const
     {
-        if (kind == MemberKind::Method) { return data.get<detail::vl_struct>()[1].second; }
+        if (kind == MemberKind::Method) { return data.get<vl_struct>()[1].second; }
         else {
             throw std::invalid_argument("Not a method");
         }

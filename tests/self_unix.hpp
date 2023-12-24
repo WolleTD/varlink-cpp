@@ -2,10 +2,9 @@
 #include "test_env.hpp"
 #include <experimental/filesystem>
 
-class UnixEnvironment : public BaseEnvironment {
-  public:
+struct UnixEnvironment : BaseEnvironment {
     using protocol = net::local::stream_protocol;
-    static constexpr const std::string_view varlink_uri{
+    static constexpr std::string_view varlink_uri{
 #ifdef VARLINK_TEST_ASYNC
         "unix:test-integration-async.socket"
 #else
@@ -23,10 +22,6 @@ class UnixEnvironment : public BaseEnvironment {
         };
     }
 
-  private:
-    const varlink_service::description description{"varlink", "test", "1", "test.org"};
-
-  public:
     UnixEnvironment() : BaseEnvironment()
     {
         std::experimental::filesystem::remove(get_endpoint().path());
@@ -39,6 +34,9 @@ class UnixEnvironment : public BaseEnvironment {
         server = std::make_unique<test_server>(varlink_uri, description);
 #endif
     }
+
+  private:
+    const varlink_service::description description{"varlink", "test", "1", "test.org"};
 };
 
 using Environment = UnixEnvironment;

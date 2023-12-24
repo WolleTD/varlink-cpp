@@ -5,14 +5,7 @@
 using namespace varlink;
 using std::string;
 
-class certification_client {
-    varlink_client client_;
-    string client_id;
-    bool all_ok{false};
-    std::vector<string> test_methods;
-    std::vector<string> more_replies;
-
-  public:
+struct certification_client {
     certification_client(net::io_context& ctx, std::string_view uri)
         : client_(ctx, uri),
           test_methods(
@@ -89,6 +82,12 @@ class certification_client {
                 call_method(12, json{{"client_id", client_id}});
             });
     }
+
+    varlink_client client_;
+    string client_id;
+    bool all_ok{false};
+    std::vector<string> test_methods;
+    std::vector<string> more_replies;
 };
 
 int main(int argc, char* argv[])

@@ -7,11 +7,7 @@
 
 namespace varlink {
 
-class varlink_error_category : public std::error_category {
-  private:
-    std::vector<std::string> errors{"no_error"};
-
-  public:
+struct varlink_error_category : std::error_category {
     [[nodiscard]] const char* name() const noexcept final { return "VarlinkError"; }
 
     [[nodiscard]] std::string message(int c) const final
@@ -31,22 +27,25 @@ class varlink_error_category : public std::error_category {
         if (err == errors.end()) errors.emplace_back(error);
         return {static_cast<int>(idx), *this};
     }
+
+  private:
+    std::vector<std::string> errors{"no_error"};
 };
 
-class varlink_error : public std::logic_error {
-    json _args;
-
-  public:
+struct varlink_error : std::logic_error {
     varlink_error(const std::string& what, json args)
         : std::logic_error(what), _args(std::move(args))
     {
     }
     [[nodiscard]] const json& args() const { return _args; }
+
+  private:
+    json _args;
 };
 
-extern inline varlink::varlink_error_category& varlink_category()
+extern inline varlink_error_category& varlink_category()
 {
-    static varlink::varlink_error_category c;
+    static varlink_error_category c;
     return c;
 }
 

@@ -8,8 +8,7 @@
 
 namespace varlink {
 template <typename Protocol>
-class async_client {
-  public:
+struct async_client {
     using protocol_type = Protocol;
     using socket_type = typename protocol_type::socket;
     using endpoint_type = typename protocol_type::endpoint;
@@ -139,26 +138,20 @@ class async_client {
     }
 
   private:
-    connection_type connection;
-    detail::manual_strand<executor_type> call_strand;
-
     std::function<json()> call_impl(const basic_varlink_message& message)
     {
         connection.send(message.json_data());
 
         return [this, mode = message.mode()]() mutable -> json {
             if (mode == callmode::oneway) { return nullptr; }
-            else {
-                json reply = connection.receive();
-                if (reply.contains("error")) {
-                    mode = callmode::oneway;
-                    throw varlink_error(reply["error"].get<std::string>(), reply["parameters"]);
-                }
-                if (mode != callmode::more or not reply_continues(reply)) {
-                    mode = callmode::oneway;
-                }
-                return reply["parameters"];
+
+            json reply = connection.receive();
+            if (reply.contains("error")) {
+                mode = callmode::oneway;
+                throw varlink_error(reply["error"].get<std::string>(), reply["parameters"]);
             }
+            if (mode != callmode::more or not reply_continues(reply)) { mode = callmode::oneway; }
+            return reply["parameters"];
         };
     }
 
@@ -189,11 +182,7 @@ class async_client {
     }
 
     template <callmode CallMode>
-    class initiate_async_call {
-      private:
-        async_client* self_;
-
-      public:
+    struct initiate_async_call {
         explicit initiate_async_call(async_client* self) : self_(self) {}
 
         template <typename CompletionHandler>
@@ -224,12 +213,20 @@ class async_client {
                         });
                 });
         }
+
+      private:
+        async_client* self_;
     };
+
+    connection_type connection;
+    detail::manual_strand<executor_type> call_strand;
 };
 
 using varlink_client_unix = async_client<net::local::stream_protocol>;
 using varlink_client_tcp = async_client<net::ip::tcp>;
 using varlink_client_variant = std::variant<varlink_client_unix, varlink_client_tcp>;
 
+template <typename Endpoint>
+using client_t = async_client<typename std::decay_t<Endpoint>::protocol_type>;
 } // namespace varlink
 #endif // LIBVARLINK_ASYNC_CLIENT_HPP

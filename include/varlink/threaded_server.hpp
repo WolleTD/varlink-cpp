@@ -7,16 +7,6 @@
 
 namespace varlink {
 class threaded_server {
-  private:
-    net::thread_pool ctx;
-    varlink_service service;
-    async_server_variant server;
-
-    template <typename Endpoint>
-    using protocol_t = typename std::decay_t<Endpoint>::protocol_type;
-    template <typename Endpoint>
-    using server_t = async_server<protocol_t<Endpoint>>;
-
     auto make_async_server(const varlink_uri& uri)
     {
         return std::visit(
@@ -54,6 +44,11 @@ class threaded_server {
     void stop() { ctx.stop(); }
 
     void join() { ctx.join(); }
+
+  private:
+    net::thread_pool ctx;
+    varlink_service service;
+    async_server_variant server;
 };
 
 } // namespace varlink

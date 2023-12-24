@@ -32,29 +32,7 @@ using more_callback_function = std::function<void(const json&, callmode, const r
 using callback_function = std::variant<nullptr_t, simple_callback_function, more_callback_function>;
 using callback_map = std::map<std::string, callback_function>;
 
-class varlink_service {
-    struct interface_entry {
-        interface_entry(varlink_interface spec, callback_map callbacks)
-            : spec_(std::move(spec)), callbacks_(std::move(callbacks))
-        {
-        }
-
-        auto* operator->() const { return &spec_; }
-        auto& operator*() const { return spec_; }
-
-        [[nodiscard]] auto& callback(const std::string& methodname) const
-        {
-            const auto callback_entry = callbacks_.find(methodname);
-            if (callback_entry == callbacks_.end()) throw std::bad_function_call{};
-            return callback_entry->second;
-        }
-
-      private:
-        varlink_interface spec_;
-        callback_map callbacks_;
-    };
-
-  public:
+struct varlink_service {
     struct description {
         std::string vendor{};
         std::string product{};
@@ -62,10 +40,14 @@ class varlink_service {
         std::string url{};
     };
 
-  private:
-    description desc;
-    std::vector<interface_entry> interfaces{};
+    explicit varlink_service(description Description);
 
+    varlink_service(const varlink_service& src) = delete;
+    varlink_service& operator=(const varlink_service&) = delete;
+    varlink_service(varlink_service&& src) = delete;
+    varlink_service& operator=(varlink_service&&) = delete;
+
+  private:
     [[nodiscard]] auto find_interface(std::string_view ifname) const
     {
         return std::find_if(interfaces.cbegin(), interfaces.cend(), [&ifname](auto& i) {
@@ -74,13 +56,6 @@ class varlink_service {
     }
 
   public:
-    explicit varlink_service(description Description);
-
-    varlink_service(const varlink_service& src) = delete;
-    varlink_service& operator=(const varlink_service&) = delete;
-    varlink_service(varlink_service&& src) = delete;
-    varlink_service& operator=(varlink_service&&) = delete;
-
     template <typename ReplyHandler>
     void message_call(const basic_varlink_message& message, ReplyHandler&& replySender) const noexcept
     {
@@ -179,6 +154,31 @@ class varlink_service {
     {
         add_interface(varlink_interface(definition), std::move(callbacks));
     }
+
+  private:
+    struct interface_entry {
+        interface_entry(varlink_interface spec, callback_map callbacks)
+            : spec_(std::move(spec)), callbacks_(std::move(callbacks))
+        {
+        }
+
+        auto* operator->() const { return &spec_; }
+        auto& operator*() const { return spec_; }
+
+        [[nodiscard]] auto& callback(const std::string& methodname) const
+        {
+            const auto callback_entry = callbacks_.find(methodname);
+            if (callback_entry == callbacks_.end()) throw std::bad_function_call{};
+            return callback_entry->second;
+        }
+
+      private:
+        varlink_interface spec_;
+        callback_map callbacks_;
+    };
+
+    description desc;
+    std::vector<interface_entry> interfaces{};
 };
 } // namespace varlink
 #endif // LIBVARLINK_SERVICE_HPP
