@@ -13,21 +13,17 @@ struct example_more_server {
               varlink_service::description{"Varlink", "More example", "1", "https://varlink.org"}),
           timer(ctx)
     {
-        auto more = [this](auto& parameters, auto mode, auto& send_reply) {
+        varlink_service::interface_handler handler(org_example_more_varlink);
+        handler.add_callback("Ping", ping);
+        handler.add_callback("TestMore", [this](auto& parameters, auto mode, auto& send_reply) {
             this->more(parameters, mode, send_reply);
-        };
+        });
+        handler.add_callback("StopServing", [this](auto&, auto) { return stop(); });
 
-        auto stop = [&](auto&, auto) { return this->stop(); };
-
-        server.add_interface(
-            org_example_more_varlink,
-            callback_map{{"Ping", ping}, {"TestMore", more}, {"StopServing", stop}});
+        server.add_interface(std::move(handler));
     }
 
-    static json::object_t ping(const json& parameters, callmode)
-    {
-        return {{"pong", parameters["ping"]}};
-    }
+    static json ping(const json& parameters, callmode) { return {{"pong", parameters["ping"]}}; }
 
     void more(const json& parameters, callmode mode, const reply_function& send_reply)
     {

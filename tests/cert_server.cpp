@@ -247,23 +247,23 @@ int main(int argc, char* argv[])
     ctx = std::make_unique<varlink::net::io_context>();
     auto server = varlink::varlink_server(*ctx, argv[1], varlink::varlink_service::description{});
     auto cert = varlink_certification{};
-    server.add_interface(
-        varlink::org_varlink_certification_varlink,
-        varlink::callback_map{
-            {"Start", varlink_callback_forward(cert.Start)},
-            {"Test01", varlink_callback_forward(cert.Test01)},
-            {"Test02", varlink_callback_forward(cert.Test02)},
-            {"Test03", varlink_callback_forward(cert.Test03)},
-            {"Test04", varlink_callback_forward(cert.Test04)},
-            {"Test05", varlink_callback_forward(cert.Test05)},
-            {"Test06", varlink_callback_forward(cert.Test06)},
-            {"Test07", varlink_callback_forward(cert.Test07)},
-            {"Test08", varlink_callback_forward(cert.Test08)},
-            {"Test09", varlink_callback_forward(cert.Test09)},
-            {"Test10", varlink_more_callback_forward(cert.Test10)},
-            {"Test11", varlink_callback_forward(cert.Test11)},
-            {"End", varlink_callback_forward(cert.End)},
-        });
+
+    varlink::varlink_service::interface_handler handler(varlink::org_varlink_certification_varlink);
+    handler.add_callback("Start", varlink_callback_forward(cert.Start));
+    handler.add_callback("Test01", varlink_callback_forward(cert.Test01));
+    handler.add_callback("Test02", varlink_callback_forward(cert.Test02));
+    handler.add_callback("Test03", varlink_callback_forward(cert.Test03));
+    handler.add_callback("Test04", varlink_callback_forward(cert.Test04));
+    handler.add_callback("Test05", varlink_callback_forward(cert.Test05));
+    handler.add_callback("Test06", varlink_callback_forward(cert.Test06));
+    handler.add_callback("Test07", varlink_callback_forward(cert.Test07));
+    handler.add_callback("Test08", varlink_callback_forward(cert.Test08));
+    handler.add_callback("Test09", varlink_callback_forward(cert.Test09));
+    handler.add_callback("Test10", varlink_more_callback_forward(cert.Test10));
+    handler.add_callback("Test11", varlink_callback_forward(cert.Test11));
+    handler.add_callback("End", varlink_callback_forward(cert.End));
+
+    server.add_interface(std::move(handler));
     server.async_serve_forever();
     ctx->run();
     return 0;

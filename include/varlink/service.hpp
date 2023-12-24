@@ -30,6 +30,48 @@ struct varlink_service {
         std::string url{};
     };
 
+    struct interface_handler {
+        explicit interface_handler(std::string_view definition, callback_map callbacks = {})
+            : interface_handler(varlink_interface(definition), std::move(callbacks))
+        {
+        }
+
+        explicit interface_handler(varlink_interface spec, callback_map callbacks = {})
+            : spec_(std::move(spec)), callbacks_(std::move(callbacks))
+        {
+            for (auto& callback : callbacks_) {
+                if (not spec_.has_method(callback.first)) {
+                    throw std::invalid_argument("Callback for unknown method");
+                }
+            }
+        }
+
+        auto* operator->() const { return &spec_; }
+        auto& operator*() const { return spec_; }
+
+        void add_callback(const std::string& methodname, callback_function fn)
+        {
+            if (callbacks_.find(methodname) != callbacks_.end()) {
+                throw std::invalid_argument("Callback already set");
+            }
+            if (not spec_.has_method(methodname)) {
+                throw std::invalid_argument("Callback for unknown method");
+            }
+            callbacks_[methodname] = std::move(fn);
+        }
+
+        [[nodiscard]] auto& callback(const std::string& methodname) const
+        {
+            const auto callback_entry = callbacks_.find(methodname);
+            if (callback_entry == callbacks_.end()) throw std::bad_function_call{};
+            return callback_entry->second;
+        }
+
+      private:
+        varlink_interface spec_;
+        callback_map callbacks_;
+    };
+
     explicit varlink_service(description Description);
 
     varlink_service(const varlink_service& src) = delete;
@@ -125,50 +167,29 @@ struct varlink_service {
         }
     }
 
-    void add_interface(varlink_interface&& interface, callback_map&& callbacks = {})
+    void add_interface(interface_handler&& interface)
     {
-        if (auto pos = find_interface(interface.name()); pos == interfaces.end()) {
-            for (auto& callback : callbacks) {
-                if (not interface.has_method(callback.first)) {
-                    throw std::invalid_argument("Callback for unknown method");
-                }
-            }
-            interfaces.emplace_back(std::move(interface), std::move(callbacks));
+        if (auto pos = find_interface(interface->name()); pos == interfaces.end()) {
+            interfaces.push_back(std::move(interface));
         }
         else {
             throw std::invalid_argument("Interface already exists!");
         }
     }
 
+    void add_interface(varlink_interface&& interface, callback_map&& callbacks = {})
+    {
+        add_interface(interface_handler{std::move(interface), std::move(callbacks)});
+    }
+
     void add_interface(std::string_view definition, callback_map&& callbacks = {})
     {
-        add_interface(varlink_interface(definition), std::move(callbacks));
+        add_interface(interface_handler{definition, std::move(callbacks)});
     }
 
   private:
-    struct interface_entry {
-        interface_entry(varlink_interface spec, callback_map callbacks)
-            : spec_(std::move(spec)), callbacks_(std::move(callbacks))
-        {
-        }
-
-        auto* operator->() const { return &spec_; }
-        auto& operator*() const { return spec_; }
-
-        [[nodiscard]] auto& callback(const std::string& methodname) const
-        {
-            const auto callback_entry = callbacks_.find(methodname);
-            if (callback_entry == callbacks_.end()) throw std::bad_function_call{};
-            return callback_entry->second;
-        }
-
-      private:
-        varlink_interface spec_;
-        callback_map callbacks_;
-    };
-
     description desc;
-    std::vector<interface_entry> interfaces{};
+    std::vector<interface_handler> interfaces{};
 };
 } // namespace varlink
 #endif // LIBVARLINK_SERVICE_HPP
