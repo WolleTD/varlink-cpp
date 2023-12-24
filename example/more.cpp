@@ -13,7 +13,7 @@ struct example_more_server {
               varlink_service::description{"Varlink", "More example", "1", "https://varlink.org"}),
           timer(ctx)
     {
-        varlink_service::interface_handler handler(org_example_more_varlink);
+        varlink_service::interface handler(org_example_more_varlink);
         handler.add_callback("Ping", ping);
         handler.add_callback("TestMore", [this](auto& parameters, auto mode, auto& send_reply) {
             this->more(parameters, mode, send_reply);

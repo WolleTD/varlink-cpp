@@ -30,13 +30,13 @@ struct varlink_service {
         std::string url{};
     };
 
-    struct interface_handler {
-        explicit interface_handler(std::string_view definition, callback_map callbacks = {})
-            : interface_handler(varlink_interface(definition), std::move(callbacks))
+    struct interface {
+        explicit interface(std::string_view definition, callback_map callbacks = {})
+            : interface(varlink_interface(definition), std::move(callbacks))
         {
         }
 
-        explicit interface_handler(varlink_interface spec, callback_map callbacks = {})
+        explicit interface(varlink_interface spec, callback_map callbacks = {})
             : spec_(std::move(spec)), callbacks_(std::move(callbacks))
         {
             for (auto& callback : callbacks_) {
@@ -167,29 +167,29 @@ struct varlink_service {
         }
     }
 
-    void add_interface(interface_handler&& interface)
+    void add_interface(interface&& interf)
     {
-        if (auto pos = find_interface(interface->name()); pos == interfaces.end()) {
-            interfaces.push_back(std::move(interface));
+        if (auto pos = find_interface(interf->name()); pos == interfaces.end()) {
+            interfaces.push_back(std::move(interf));
         }
         else {
             throw std::invalid_argument("Interface already exists!");
         }
     }
 
-    void add_interface(varlink_interface&& interface, callback_map&& callbacks = {})
+    void add_interface(varlink_interface&& spec, callback_map&& callbacks = {})
     {
-        add_interface(interface_handler{std::move(interface), std::move(callbacks)});
+        add_interface(interface{std::move(spec), std::move(callbacks)});
     }
 
     void add_interface(std::string_view definition, callback_map&& callbacks = {})
     {
-        add_interface(interface_handler{definition, std::move(callbacks)});
+        add_interface(interface{definition, std::move(callbacks)});
     }
 
   private:
     description desc;
-    std::vector<interface_handler> interfaces{};
+    std::vector<interface> interfaces{};
 };
 } // namespace varlink
 #endif // LIBVARLINK_SERVICE_HPP

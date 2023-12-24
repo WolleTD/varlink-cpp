@@ -248,7 +248,7 @@ int main(int argc, char* argv[])
     auto server = varlink::varlink_server(*ctx, argv[1], varlink::varlink_service::description{});
     auto cert = varlink_certification{};
 
-    varlink::varlink_service::interface_handler handler(varlink::org_varlink_certification_varlink);
+    varlink::varlink_service::interface handler(varlink::org_varlink_certification_varlink);
     handler.add_callback("Start", varlink_callback_forward(cert.Start));
     handler.add_callback("Test01", varlink_callback_forward(cert.Test01));
     handler.add_callback("Test02", varlink_callback_forward(cert.Test02));
