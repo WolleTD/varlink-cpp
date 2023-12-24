@@ -25,7 +25,10 @@ std::unique_ptr<BaseEnvironment> getEnvironment()
         const auto count = p["n"].get<int>();
         const bool wait = p.contains("t") && p["t"].get<bool>();
         for (auto i = 0; i < count; i++) {
-            r({{"m", i}}, [](auto) {});
+            std::promise<std::error_code> p_ec;
+            auto f_ec = p_ec.get_future();
+            r({{"m", i}}, [&](auto ec) { p_ec.set_value(ec); });
+            if (f_ec.get()) return;
             if (wait) std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
         r({{"m", count}}, nullptr);

@@ -82,6 +82,7 @@ struct more_reply_handler {
         const detail::member& method,
         reply_function&& replySender)
         : mode(message.mode()),
+          method(message.full_method()),
           interface(interface),
           return_type(method.method_return_type()),
           replySender(std::move(replySender))
@@ -90,7 +91,15 @@ struct more_reply_handler {
 
     void operator()(const json::object_t& params, more_handler&& continues) const
     {
-        interface.validate(params, return_type);
+        try {
+            interface.validate(params, return_type);
+        }
+        catch (invalid_parameter& e) {
+            error("org.varlink.service.InvalidParameter", {{"parameter", e.what()}}, [=](auto) {
+                if (continues) continues(std::make_error_code(std::errc::invalid_argument));
+            });
+            return;
+        }
 
         if (mode == callmode::oneway) { replySender(nullptr, nullptr); }
         else if (mode == callmode::more) {
@@ -98,15 +107,24 @@ struct more_reply_handler {
             replySender(reply, std::move(continues));
         }
         else if (continues) { // and not more
-            throw std::bad_function_call{};
+            error("org.varlink.service.MethodNotImplemented", {{"method", method}}, [=](auto) {
+                continues(std::make_error_code(std::errc::operation_not_supported));
+            });
         }
         else {
             replySender({{"parameters", params}}, nullptr);
         }
-    };
+    }
 
   private:
+    void error(const std::string& what, const json& params, more_handler&& handler) const
+    {
+        assert(params.is_object());
+        replySender({{"error", what}, {"parameters", params}}, std::move(handler));
+    }
+
     callmode mode;
+    std::string method;
     const varlink_interface& interface;
     const detail::type_spec& return_type;
     reply_function replySender;

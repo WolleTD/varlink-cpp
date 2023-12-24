@@ -56,7 +56,9 @@ std::unique_ptr<BaseEnvironment> getEnvironment()
             }
         };
         more_counter = 1;
-        r({{"m", 0}}, handler{wait, count, r, timer});
+        net::post(timer.get_executor(), [=, &timer]() {
+            r({{"m", 0}}, handler{wait, count, r, timer});
+        });
     };
     auto empty_callback = [](const auto&, auto) -> json { return json::object(); };
     env->add_interface(
