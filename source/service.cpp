@@ -98,7 +98,7 @@ void varlink_service::message_call(
 
         auto& callback = interface.callback(methodname);
         auto visitor = overloaded{
-            [&](const simple_callback_function& sc) -> void {
+            [&](const sync_callback_function& sc) -> void {
                 auto params = sc(message.parameters(), message.mode());
                 interface->validate(params, m.method_return_type());
                 if (message.mode() == callmode::oneway)
@@ -106,7 +106,7 @@ void varlink_service::message_call(
                 else
                     replySender({{"parameters", params}}, nullptr);
             },
-            [&](const more_callback_function& mc) -> void {
+            [&](const async_callback_function& mc) -> void {
                 // This is not an asynchronous callback and exceptions
                 // will propagate up to the outer try-catch in this fn.
                 // TODO: This isn't true if the callback dispatches async ops
