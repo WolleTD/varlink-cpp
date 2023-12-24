@@ -75,14 +75,61 @@ varlink_service::varlink_service(description Description) : desc(std::move(Descr
         {{"GetInfo", getInfo}, {"GetInterfaceDescription", getInterfaceDescription}});
 }
 
-template <typename Fn, typename ErrorFn>
-void wrap_error(Fn&& fn, std::string_view method, ErrorFn&& error)
+static void process_call(
+    const basic_varlink_message& message,
+    const varlink_service::interface& interface,
+    const detail::member& method,
+    reply_function&& replySender)
 {
+    const auto error = [=](const std::string& what, const json& params) {
+        assert(params.is_object());
+        replySender({{"error", what}, {"parameters", params}}, nullptr);
+    };
+
     try {
-        fn();
+        interface->validate(message.parameters(), method.method_parameter_type());
+
+        auto& callback = interface.callback(message.method());
+        auto visitor = overloaded{
+            [&](const sync_callback_function& sc) -> void {
+                auto params = sc(message.parameters(), message.mode());
+                interface->validate(params, method.method_return_type());
+                if (message.mode() == callmode::oneway)
+                    replySender(nullptr, nullptr);
+                else
+                    replySender({{"parameters", params}}, nullptr);
+            },
+            [&](const async_callback_function& mc) -> void {
+                // This is not an asynchronous callback and exceptions
+                // will propagate up to the outer try-catch in this fn.
+                // TODO: This isn't true if the callback dispatches async ops
+                auto handler = [mode = message.mode(),
+                                &interface,
+                                &return_type = method.method_return_type(),
+                                replySender = std::move(replySender)](
+                                   const json::object_t& params,
+                                   const more_handler& continues) mutable {
+                    interface->validate(params, return_type);
+
+                    if (mode == callmode::oneway) { replySender(nullptr, nullptr); }
+                    else if (mode == callmode::more) {
+                        json reply = {{"parameters", params}, {"continues", bool(continues)}};
+                        replySender(reply, continues);
+                    }
+                    else if (continues) { // and not more
+                        throw std::bad_function_call{};
+                    }
+                    else {
+                        replySender({{"parameters", params}}, nullptr);
+                    }
+                };
+                mc(message.parameters(), message.mode(), handler);
+            },
+            [](const nullptr_t&) -> void { throw std::bad_function_call{}; }};
+        std::visit(visitor, callback);
     }
     catch (std::bad_function_call&) {
-        error("org.varlink.service.MethodNotImplemented", {{"method", method}});
+        error("org.varlink.service.MethodNotImplemented", {{"method", message.full_method()}});
     }
     catch (invalid_parameter& e) {
         error("org.varlink.service.InvalidParameter", {{"parameter", e.what()}});
@@ -96,53 +143,6 @@ void wrap_error(Fn&& fn, std::string_view method, ErrorFn&& error)
     catch (std::exception& e) {
         error("org.varlink.service.InternalError", {{"what", e.what()}});
     }
-}
-
-static void process_call(
-    const basic_varlink_message& message,
-    const varlink_service::interface& interface,
-    const detail::member& method,
-    reply_function&& replySender)
-{
-    interface->validate(message.parameters(), method.method_parameter_type());
-
-    auto& callback = interface.callback(message.method());
-    auto visitor = overloaded{
-        [&](const sync_callback_function& sc) -> void {
-            auto params = sc(message.parameters(), message.mode());
-            interface->validate(params, method.method_return_type());
-            if (message.mode() == callmode::oneway)
-                replySender(nullptr, nullptr);
-            else
-                replySender({{"parameters", params}}, nullptr);
-        },
-        [&](const async_callback_function& mc) -> void {
-            // This is not an asynchronous callback and exceptions
-            // will propagate up to the outer try-catch in this fn.
-            // TODO: This isn't true if the callback dispatches async ops
-            auto handler = [mode = message.mode(),
-                            interface,
-                            &return_type = method.method_return_type(),
-                            replySender = std::move(replySender)](
-                               const json::object_t& params, const more_handler& continues) mutable {
-                interface->validate(params, return_type);
-
-                if (mode == callmode::oneway) { replySender(nullptr, nullptr); }
-                else if (mode == callmode::more) {
-                    json reply = {{"parameters", params}, {"continues", bool(continues)}};
-                    replySender(reply, continues);
-                }
-                else if (continues) { // and not more
-                    throw std::bad_function_call{};
-                }
-                else {
-                    replySender({{"parameters", params}}, nullptr);
-                }
-            };
-            mc(message.parameters(), message.mode(), handler);
-        },
-        [](const nullptr_t&) -> void { throw std::bad_function_call{}; }};
-    std::visit(visitor, callback);
 }
 
 void varlink_service::message_call(
@@ -169,10 +169,7 @@ void varlink_service::message_call(
     }
     const auto& method = *method_it;
 
-    wrap_error(
-        [&]() { process_call(message, interface, method, std::move(replySender)); },
-        message.full_method(),
-        error);
+    process_call(message, interface, method, std::move(replySender));
 }
 
 void varlink_service::add_interface(interface&& interf)
