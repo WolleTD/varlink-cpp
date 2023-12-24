@@ -5,16 +5,6 @@
 #include <varlink/detail/varlink_error.hpp>
 #include <varlink/interface.hpp>
 
-#define varlink_callback                                                                        \
-    ([[maybe_unused]] const varlink::json& parameters, [[maybe_unused]] varlink::callmode mode) \
-        ->varlink::json::object_t
-
-#define varlink_more_callback                                    \
-    ([[maybe_unused]] const varlink::json& parameters,           \
-     [[maybe_unused]] varlink::callmode mode,                    \
-     [[maybe_unused]] const varlink::reply_function& send_reply) \
-        ->void
-
 namespace varlink {
 
 template <typename... Ts>
@@ -27,7 +17,7 @@ overloaded(Ts...) -> overloaded<Ts...>;
 using more_handler = std::function<void(std::error_code)>;
 using reply_function = std::function<void(json::object_t, more_handler)>;
 
-using simple_callback_function = std::function<json(const json&, callmode)>;
+using simple_callback_function = std::function<json::object_t(const json&, callmode)>;
 using more_callback_function = std::function<void(const json&, callmode, const reply_function&)>;
 using callback_function = std::variant<nullptr_t, simple_callback_function, more_callback_function>;
 using callback_map = std::map<std::string, callback_function>;

@@ -26,7 +26,7 @@ method Exception() -> ()
         org_test_varlink,
         {
             {"Test",
-             [] varlink_more_callback {
+             [](const auto& parameters, auto mode, const auto& send_reply) {
                  if (mode == callmode::more)
                      send_reply({{"pong", parameters["ping"]}}, [=](auto) {
                          send_reply({{"pong", parameters["ping"]}}, nullptr);
@@ -35,12 +35,12 @@ method Exception() -> ()
                      send_reply({{"pong", parameters["ping"]}}, nullptr);
              }},
             {"TestTypes",
-             [] varlink_callback {
+             [](const auto&, auto) -> json {
                  return {{"pong", 123}};
              }},
             {"VarlinkError",
-             [] varlink_callback { throw varlink_error("org.test.Error", json::object()); }},
-            {"Exception", [] varlink_callback { throw std::exception(); }},
+             [](const auto&, auto) -> json { throw varlink_error("org.test.Error", json::object()); }},
+            {"Exception", [](const auto&, auto) -> json { throw std::exception(); }},
         });
 
     auto setup_test = [&](const auto& call, const auto& expected_response) {
@@ -85,9 +85,7 @@ method Exception() -> ()
         std::string resp = R"({"continues":true,"parameters":{"pong":"123"}})";
         resp += '\0';
         resp += R"({"continues":false,"parameters":{"pong":"123"}})";
-        setup_test(
-            R"({"method":"org.test.Test","parameters":{"ping":"123"},"more":true})",
-            resp);
+        setup_test(R"({"method":"org.test.Test","parameters":{"ping":"123"},"more":true})", resp);
         conn->start();
         REQUIRE(ctx.run() > 0);
     }
@@ -105,8 +103,7 @@ method Exception() -> ()
     SECTION("Oneway call and regular call")
     {
         socket.validate = true;
-        std::string req =
-            R"({"method":"org.test.Test","parameters":{"ping":"123"},"oneway":true})";
+        std::string req = R"({"method":"org.test.Test","parameters":{"ping":"123"},"oneway":true})";
         req += '\0';
         req += R"({"method":"org.test.Test","parameters":{"ping":"123"}})";
         setup_test(req, R"({"parameters":{"pong":"123"}})");

@@ -32,14 +32,14 @@ std::unique_ptr<BaseEnvironment> getEnvironment()
         "interface org.test\nmethod P(p:string) -> (q:string)\n"
         "method M(n:int,t:?bool)->(m:int)\n"
         "method E()->()\n";
-    auto ping_callback = [] varlink_callback { return {{"q", parameters["p"].get<string>()}}; };
-    auto more_callback = [&timer = env->get_timer()] varlink_more_callback {
-        const auto count = parameters["n"].get<size_t>();
-        const bool wait = parameters.contains("t") && parameters["t"].get<bool>();
+    auto ping_callback = [](const json& p, auto) -> json { return {{"q", p["p"].get<string>()}}; };
+    auto more_callback = [&timer = env->get_timer()](const json& p, auto, const auto& r) {
+        const auto count = p["n"].get<size_t>();
+        const bool wait = p.contains("t") && p["t"].get<bool>();
         struct handler {
             const bool wait;
             const size_t count;
-            varlink::reply_function send_reply;
+            reply_function send_reply;
             net::steady_timer& timer;
             size_t i{1};
 
@@ -53,14 +53,14 @@ std::unique_ptr<BaseEnvironment> getEnvironment()
                 }
             }
         };
-        send_reply({{"m", 0}}, handler{wait, count, send_reply, timer});
+        r({{"m", 0}}, handler{wait, count, r, timer});
     };
-    auto empty_callback = [] varlink_callback { return {}; };
+    auto empty_callback = [](const auto&, auto) -> json { return json::object(); };
     env->add_interface(
         testif, callback_map{{"P", ping_callback}, {"M", more_callback}, {"E", empty_callback}});
     env->add_interface(
         "interface org.err\nmethod E() -> ()\n",
-        callback_map{{"E", [] varlink_callback { throw std::exception{}; }}});
+        callback_map{{"E", [](const auto&, auto) -> json { throw std::exception{}; }}});
     return env;
 }
 

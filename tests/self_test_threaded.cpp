@@ -20,22 +20,22 @@ std::unique_ptr<BaseEnvironment> getEnvironment()
         "interface org.test\nmethod P(p:string) -> (q:string)\n"
         "method M(n:int,t:?bool)->(m:int)\n"
         "method E()->()\n";
-    auto ping_callback = [] varlink_callback { return {{"q", parameters["p"].get<string>()}}; };
-    auto more_callback = [] varlink_more_callback {
-        const auto count = parameters["n"].get<int>();
-        const bool wait = parameters.contains("t") && parameters["t"].get<bool>();
+    auto ping_callback = [](const json& p, auto) -> json { return {{"q", p["p"].get<string>()}}; };
+    auto more_callback = [](const json& p, auto, const auto& r) {
+        const auto count = p["n"].get<int>();
+        const bool wait = p.contains("t") && p["t"].get<bool>();
         for (auto i = 0; i < count; i++) {
-            send_reply({{"m", i}}, [](auto) {});
+            r({{"m", i}}, [](auto) {});
             if (wait) std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
-        send_reply({{"m", count}}, nullptr);
+        r({{"m", count}}, nullptr);
     };
-    auto empty_callback = [] varlink_callback { return {}; };
+    auto empty_callback = [](const auto&, auto) -> json { return json::object(); };
     env->add_interface(
         testif, callback_map{{"P", ping_callback}, {"M", more_callback}, {"E", empty_callback}});
     env->add_interface(
         "interface org.err\nmethod E() -> ()\n",
-        callback_map{{"E", [] varlink_callback { throw std::exception{}; }}});
+        callback_map{{"E", [](const auto&, auto) -> json { throw std::exception{}; }}});
     return env;
 }
 
@@ -135,7 +135,10 @@ TEST_CASE("Testing server with client")
         REQUIRE(resp.empty());
     }
 
-    SECTION("Call method and don't read") { client.call("org.test.P", json{{"p", "test"}}); }
+    SECTION("Call method and don't read")
+    {
+        client.call("org.test.P", json{{"p", "test"}});
+    }
 
     SECTION("Call method org.test.More and don't read all responses")
     {

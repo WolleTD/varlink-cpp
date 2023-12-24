@@ -3,9 +3,13 @@
 
 #include "org.varlink.certification.varlink.hpp"
 
+using varlink::callmode;
+using varlink::json;
+using varlink::reply_function;
+
 class varlink_certification {
   public:
-    auto Start varlink_callback
+    auto Start(const json&, callmode) -> json
     {
         auto client_id = generate_client_id();
         auto lk = std::lock_guard(start_mut);
@@ -13,14 +17,14 @@ class varlink_certification {
         return {{"client_id", client_id}};
     }
 
-    auto Test01 varlink_callback
+    auto Test01(const json& parameters, callmode) -> json
     {
         auto client_id = check_client_id(parameters);
         assert_method(client_id, "Test01", "Test02");
         return {{"bool", true}};
     }
 
-    auto Test02 varlink_callback
+    auto Test02(const json& parameters, callmode) -> json
     {
         auto client_id = check_client_id(parameters);
         assert_method(client_id, "Test02", "Test03");
@@ -28,7 +32,7 @@ class varlink_certification {
         return {{"int", 1}};
     }
 
-    auto Test03 varlink_callback
+    auto Test03(const json& parameters, callmode) -> json
     {
         auto client_id = check_client_id(parameters);
         assert_method(client_id, "Test03", "Test04");
@@ -36,7 +40,7 @@ class varlink_certification {
         return {{"float", 1.0}};
     }
 
-    auto Test04 varlink_callback
+    auto Test04(const json& parameters, callmode) -> json
     {
         auto client_id = check_client_id(parameters);
         assert_method(client_id, "Test04", "Test05");
@@ -44,7 +48,7 @@ class varlink_certification {
         return {{"string", "ping"}};
     }
 
-    auto Test05 varlink_callback
+    auto Test05(const json& parameters, callmode) -> json
     {
         auto client_id = check_client_id(parameters);
         assert_method(client_id, "Test05", "Test06");
@@ -52,7 +56,7 @@ class varlink_certification {
         return {{"bool", false}, {"int", 2}, {"float", 3.14}, {"string", "a lot of string"}};
     }
 
-    auto Test06 varlink_callback
+    auto Test06(const json& parameters, callmode) -> json
     {
         auto client_id = check_client_id(parameters);
         assert_method(client_id, "Test06", "Test07");
@@ -65,7 +69,7 @@ class varlink_certification {
              {{"bool", false}, {"int", 2}, {"float", 3.14}, {"string", "a lot of string"}}}};
     }
 
-    auto Test07 varlink_callback
+    auto Test07(const json& parameters, callmode) -> json
     {
         auto client_id = check_client_id(parameters);
         assert_method(client_id, "Test07", "Test08");
@@ -77,7 +81,7 @@ class varlink_certification {
         return {{"map", {{"foo", "Foo"}, {"bar", "Bar"}}}};
     }
 
-    auto Test08 varlink_callback
+    auto Test08(const json& parameters, callmode) -> json
     {
         auto client_id = check_client_id(parameters);
         assert_method(client_id, "Test08", "Test09");
@@ -85,26 +89,21 @@ class varlink_certification {
         assert_parameter(my_map, "foo", "Foo");
         assert_parameter(my_map, "bar", "Bar");
         return {
-            {"set",
-             {{"one", varlink::json::object()},
-              {"two", varlink::json::object()},
-              {"three", varlink::json::object()}}}};
+            {"set", {{"one", json::object()}, {"two", json::object()}, {"three", json::object()}}}};
     }
 
-    auto Test09 varlink_callback
+    auto Test09(const json& parameters, callmode) -> json
     {
         auto client_id = check_client_id(parameters);
         assert_method(client_id, "Test09", "Test10");
         assert_parameter(
             parameters,
             "set",
-            {{"one", varlink::json::object()},
-             {"two", varlink::json::object()},
-             {"three", varlink::json::object()}});
+            {{"one", json::object()}, {"two", json::object()}, {"three", json::object()}});
         return {{"mytype", my_object}};
     }
 
-    auto Test10 varlink_more_callback
+    auto Test10(const json& parameters, callmode, const reply_function& send_reply)
     {
         auto client_id = check_client_id(parameters);
         assert_method(client_id, "Test10", "Test11");
@@ -113,7 +112,7 @@ class varlink_certification {
         }
         struct handler {
             varlink_certification* self;
-            varlink::reply_function send_reply;
+            reply_function send_reply;
             size_t counter{0};
 
             void operator()(std::error_code)
@@ -130,11 +129,11 @@ class varlink_certification {
         handler{this, send_reply}(std::error_code{});
     }
 
-    auto Test11 varlink_callback
+    auto Test11(const json& parameters, callmode) -> json
     {
         auto client_id = check_client_id(parameters);
         assert_method(client_id, "Test11", "End");
-        auto expected = varlink::json{
+        auto expected = json{
             "Reply number 1",
             "Reply number 2",
             "Reply number 3",
@@ -148,10 +147,10 @@ class varlink_certification {
         if (parameters["last_more_replies"] != expected) {
             throw certification_error(expected.dump(), parameters.dump());
         }
-        return {};
+        return json::object();
     }
 
-    auto End varlink_callback
+    json End(const json& parameters, callmode)
     {
         auto client_id = check_client_id(parameters);
         assert_method(client_id, "End", "Start");
@@ -168,7 +167,7 @@ class varlink_certification {
         return {"org.varlink.certification.CertificationError", {{"want", want}, {"got", got}}};
     }
 
-    std::string check_client_id(const varlink::json& parameters)
+    std::string check_client_id(const json& parameters)
     {
         auto client_id = parameters["client_id"].get<std::string>();
         auto lk = std::lock_guard(start_mut);
@@ -192,10 +191,7 @@ class varlink_certification {
         }
     }
 
-    static void assert_parameter(
-        const varlink::json& parameters,
-        const std::string& param,
-        const varlink::json& expected)
+    static void assert_parameter(const json& parameters, const std::string& param, const json& expected)
     {
         const auto& value = parameters[param];
         if (value != expected) { throw certification_error(expected.dump(), value.dump()); }
@@ -205,7 +201,7 @@ class varlink_certification {
     size_t clients{0};
     std::mutex start_mut;
 
-    const varlink::json my_object = R"json({
+    const json my_object = R"json({
                 "object": {"method": "org.varlink.certification.Test09",
                         "parameters": {"map": {"foo": "Foo", "bar": "Bar"}}},
                 "enum": "two",
@@ -226,9 +222,11 @@ class varlink_certification {
 };
 
 #define varlink_callback_forward(callback) \
-    [&] varlink_callback { return callback(parameters, mode); }
-#define varlink_more_callback_forward(callback) \
-    [&] varlink_more_callback { return callback(parameters, mode, send_reply); }
+    [&](const auto& parameters, auto mode) { return callback(parameters, mode); }
+#define varlink_more_callback_forward(callback)                      \
+    [&](const auto& parameters, auto mode, const auto& send_reply) { \
+        return callback(parameters, mode, send_reply);               \
+    }
 
 std::unique_ptr<varlink::net::io_context> ctx;
 

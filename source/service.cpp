@@ -5,7 +5,7 @@
 namespace varlink {
 varlink_service::varlink_service(description Description) : desc(std::move(Description))
 {
-    auto getInfo = [this] varlink_callback {
+    auto getInfo = [this](const json&, callmode) {
         json::object_t info = {
             {"vendor", desc.vendor},
             {"product", desc.product},
@@ -17,7 +17,7 @@ varlink_service::varlink_service(description Description) : desc(std::move(Descr
         }
         return info;
     };
-    auto getInterfaceDescription = [this] varlink_callback {
+    auto getInterfaceDescription = [this](const json& parameters, callmode) -> json {
         const auto& ifname = parameters["interface"].get<std::string>();
 
         if (const auto interface_it = find_interface(ifname); interface_it != interfaces.cend()) {

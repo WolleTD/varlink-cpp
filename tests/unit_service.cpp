@@ -130,7 +130,7 @@ method EmptyReply() -> ()
         org_test_varlink,
         {
             {"Test",
-             [] varlink_more_callback {
+             [](const auto& parameters, auto mode, const auto& send_reply) {
                  if (mode == callmode::more)
                      send_reply({{"pong", parameters["ping"]}}, [=](auto) {
                          send_reply({{"pong", parameters["ping"]}}, nullptr);
@@ -139,7 +139,7 @@ method EmptyReply() -> ()
                      send_reply({{"pong", parameters["ping"]}}, nullptr);
              }},
             {"TestTypes",
-             [] varlink_more_callback {
+             [](const auto&, auto mode, const auto& send_reply) {
                  if (mode == callmode::more)
                      send_reply({{"pong", 123}}, [=](auto) {
                          send_reply({{"pong", 123}}, nullptr);
@@ -148,9 +148,9 @@ method EmptyReply() -> ()
                      send_reply({{"pong", 123}}, nullptr);
              }},
             {"VarlinkError",
-             [] varlink_callback { throw varlink_error("org.test.Error", json::object()); }},
-            {"Exception", [] varlink_callback { throw std::exception(); }},
-            {"EmptyReply", [] varlink_callback { return {}; }},
+             [](const auto&, auto) -> json { throw varlink_error("org.test.Error", json::object()); }},
+            {"Exception", [](const auto&, auto) -> json { throw std::exception(); }},
+            {"EmptyReply", [](const auto&, auto) -> json { return json::object(); }},
         });
 
     SECTION("Call a method on an unknown interface")
