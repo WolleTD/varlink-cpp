@@ -69,6 +69,8 @@ struct basic_varlink_message {
         return fqmethod.substr(fqmethod.rfind('.') + 1);
     }
 
+    [[nodiscard]] std::string full_method() const { return json_["method"].get<std::string>(); }
+
     friend bool operator==(const basic_varlink_message& lhs, const basic_varlink_message& rhs) noexcept;
 
   private:
