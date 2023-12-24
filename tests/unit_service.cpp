@@ -9,11 +9,10 @@ TEST_CASE("Varlink service")
 {
     varlink_service service{{"test", "unit", "1", "http://example.org"}};
     auto testcall = [&service](
-                        std::string_view method,
-                        const json& parameters,
-                        const std::function<void(const json&, more_handler)>& callback) {
+                        std::string_view method, const json& parameters, reply_function&& callback) {
         service.message_call(
-            basic_varlink_message({{"method", method}, {"parameters", parameters}}), callback);
+            basic_varlink_message({{"method", method}, {"parameters", parameters}}),
+            std::move(callback));
     };
 
     SECTION("Call org.varlink.service.GetInfo")
@@ -109,17 +108,18 @@ TEST_CASE("Varlink service callbacks")
                         const json& parameters,
                         bool more,
                         bool oneway,
-                        const std::function<void(const json&, more_handler)>& sendmore) {
+                        reply_function&& callback) {
         service.message_call(
             basic_varlink_message(
                 {{"method", method}, {"parameters", parameters}, {"more", more}, {"oneway", oneway}}),
-            sendmore);
+            std::move(callback));
     };
 
     static constexpr std::string_view org_test_varlink = R"INTERFACE(
 interface org.test
 method Test(ping: string) -> (pong: string)
 method TestTypes(ping: string) -> (pong: string)
+method TestTypesMore(ping: string) -> (pong: string)
 method NotImplemented(ping: string) -> (pong: string)
 method VarlinkError(ping: string) -> (pong: string)
 method Exception(ping: string) -> (pong: string)
@@ -139,9 +139,13 @@ method EmptyReply() -> ()
                      send_reply({{"pong", parameters["ping"]}}, nullptr);
              }},
             {"TestTypes",
+             [](const auto&, auto) -> json {
+                 return {{"pong", 123}};
+             }},
+            {"TestTypesMore",
              [](const auto&, auto mode, const auto& send_reply) {
                  if (mode == callmode::more)
-                     send_reply({{"pong", 123}}, [=](auto) {
+                     send_reply({{"pong", "123"}}, [=](auto) {
                          send_reply({{"pong", 123}}, nullptr);
                      });
                  else
@@ -262,7 +266,7 @@ method EmptyReply() -> ()
         REQUIRE(err["parameters"]["what"].get<string>() == "std::exception");
     }
 
-    SECTION("Varlink error on response type error")
+    SECTION("Varlink error on response type error (sync callback)")
     {
         json err;
         testcall("org.test.TestTypes", {{"ping", "123"}}, false, false, [&](auto&& r, auto&&) {
@@ -272,15 +276,26 @@ method EmptyReply() -> ()
         REQUIRE(err["parameters"]["parameter"].get<string>() == "pong");
     }
 
-    SECTION("Varlink error on more response type error")
+    SECTION("Varlink error on response type error (async callback)")
+    {
+        json err;
+        testcall("org.test.TestTypesMore", {{"ping", "123"}}, false, false, [&](auto&& r, auto&&) {
+            err = r;
+        });
+        REQUIRE(err["error"].get<string>() == "org.varlink.service.InvalidParameter");
+        REQUIRE(err["parameters"]["parameter"].get<string>() == "pong");
+    }
+
+    SECTION("Varlink error on second more response type error (async callback)")
     {
         json err;
         size_t num_called = 0;
-        testcall("org.test.TestTypes", {{"ping", "123"}}, true, false, [&](auto&& r, auto&&) {
+        testcall("org.test.TestTypesMore", {{"ping", "123"}}, true, false, [&](auto&& r, auto&& m) {
             num_called++;
             err = r;
+            if (m) m({});
         });
-        REQUIRE(num_called == 1);
+        REQUIRE(num_called == 2);
         REQUIRE(err["error"].get<string>() == "org.varlink.service.InvalidParameter");
         REQUIRE(err["parameters"]["parameter"].get<string>() == "pong");
     }

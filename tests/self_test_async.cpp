@@ -12,14 +12,16 @@
 using namespace varlink;
 using std::string;
 
-void start_timer(net::steady_timer& timer, size_t i, size_t count, const reply_function& send_reply)
+static size_t more_counter = 0;
+
+void start_timer(net::steady_timer& timer, size_t count, const reply_function& send_reply)
 {
     timer.expires_after(std::chrono::milliseconds(10));
-    timer.async_wait([&timer, i, continues = (i < count), count, send_reply](auto ec) mutable {
+    timer.async_wait([&timer, continues = (more_counter < count), count, send_reply](auto ec) mutable {
         if (not ec) {
             send_reply(
-                {{"m", i}},
-                continues ? [=, &timer](auto) { start_timer(timer, i + 1, count, send_reply); }
+                {{"m", more_counter++}},
+                continues ? [=, &timer](auto) { start_timer(timer, count, send_reply); }
                           : more_handler{});
         }
     });
@@ -41,18 +43,19 @@ std::unique_ptr<BaseEnvironment> getEnvironment()
             const size_t count;
             reply_function send_reply;
             net::steady_timer& timer;
-            size_t i{1};
 
-            void operator()(std::error_code)
+            void operator()(std::error_code ec)
             {
+                if (ec) return;
                 if (wait)
-                    start_timer(timer, i, count, send_reply);
+                    start_timer(timer, count, send_reply);
                 else {
-                    json args = {{"m", i}};
-                    send_reply(args, (i++ < count) ? more_handler(*this) : nullptr);
+                    json args = {{"m", more_counter}};
+                    send_reply(args, (more_counter++ < count) ? more_handler(*this) : nullptr);
                 }
             }
         };
+        more_counter = 1;
         r({{"m", 0}}, handler{wait, count, r, timer});
     };
     auto empty_callback = [](const auto&, auto) -> json { return json::object(); };
@@ -177,6 +180,7 @@ TEST_CASE("Testing server with client")
             flag = true;
         });
         REQUIRE(ctx.run() > 0);
+        REQUIRE(more_counter == 1);
         REQUIRE(flag);
     }
 
@@ -190,6 +194,7 @@ TEST_CASE("Testing server with client")
             REQUIRE(flag++ == resp["m"].get<int>());
         });
         REQUIRE(ctx.run() > 0);
+        REQUIRE(more_counter == 6);
         REQUIRE(flag == 6);
     }
 
@@ -230,6 +235,27 @@ TEST_CASE("Testing server with client")
         });
         REQUIRE(ctx.run() > 0);
         REQUIRE(flag);
+    }
+
+    SECTION("Call method org.test.More and don't read all responses")
+    {
+        int flag{0};
+        // We have to use the timeout here, because if the server can send responses without
+        // delay, it cranks out one or two responses before getting an error.
+        auto msg = varlink_message_more("org.test.M", {{"n", 5}, {"t", true}});
+        client.async_call_more(msg, [&](auto ec, const json& resp, bool c) {
+            if (flag == 2) {
+                REQUIRE(ec == net::error::bad_descriptor);
+                return;
+            }
+            REQUIRE(not ec);
+            REQUIRE(c);
+            REQUIRE(flag++ == resp["m"].get<int>());
+            if (flag == 2) client.close();
+        });
+        REQUIRE(ctx.run() > 0);
+        REQUIRE(more_counter == 2);
+        REQUIRE(flag == 2);
     }
 
     SECTION("Call a oneway method")

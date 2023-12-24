@@ -53,7 +53,7 @@ struct async_client {
     template <typename ReplyHandler>
     auto async_call(const varlink_message& message, ReplyHandler&& handler)
     {
-        return net::async_initiate<ReplyHandler, void(std::error_code)>(
+        return net::async_initiate<ReplyHandler, void(std::error_code, json)>(
             initiate_async_call<callmode::basic>(this), handler, message);
     }
 
@@ -67,7 +67,7 @@ struct async_client {
     template <typename ReplyHandler>
     auto async_call_more(const varlink_message_more& message, ReplyHandler&& handler)
     {
-        return net::async_initiate<ReplyHandler, void(std::error_code)>(
+        return net::async_initiate<ReplyHandler, void(std::error_code, json, bool)>(
             initiate_async_call<callmode::more>(this), handler, message);
     }
 
