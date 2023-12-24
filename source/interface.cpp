@@ -19,20 +19,17 @@ varlink_interface::varlink_interface(std::string_view description)
     if (members.empty()) throw std::invalid_argument("At least one member is required");
 }
 
-const detail::member& varlink_interface::find_member(std::string_view name, detail::MemberKind kind) const
+auto varlink_interface::find_member(std::string_view name, detail::MemberKind kind) const -> iterator
 {
-    auto i = std::find_if(members.begin(), members.end(), [&](const auto& e) {
+    return std::find_if(members.begin(), members.end(), [&](const auto& e) {
         return e.name == name && (e.kind == kind || kind == detail::MemberKind::Undefined);
     });
-    if (i == members.end()) throw std::out_of_range(std::string(name));
-    return *i;
 }
 
-bool varlink_interface::has_member(std::string_view name, detail::MemberKind kind) const
+const detail::member& varlink_interface::get_member(std::string_view name, detail::MemberKind kind) const
 {
-    return std::any_of(members.begin(), members.end(), [&](const auto& e) {
-        return e.name == name && (e.kind == kind || kind == detail::MemberKind::Undefined);
-    });
+    if (auto it = find_member(name, kind); it != end()) return *it;
+    throw std::out_of_range(std::string(name));
 }
 
 void varlink_interface::validate( // NOLINT(misc-no-recursion)

@@ -11,35 +11,42 @@ struct invalid_parameter : std::invalid_argument {
 };
 
 struct varlink_interface {
+    using iterator = std::vector<detail::member>::const_iterator;
+
     explicit varlink_interface(std::string_view description);
 
     [[nodiscard]] std::string_view name() const noexcept { return ifname; }
     [[nodiscard]] std::string_view doc() const noexcept { return documentation; }
 
-    [[nodiscard]] const detail::member& method(std::string_view name) const
+    [[nodiscard]] iterator begin() const noexcept { return members.begin(); }
+    [[nodiscard]] iterator end() const noexcept { return members.end(); }
+
+    [[nodiscard]] iterator find_method(std::string_view name) const
     {
         return find_member(name, detail::MemberKind::Method);
     }
-    [[nodiscard]] const detail::member& type(std::string_view name) const
+
+    [[nodiscard]] iterator find_type(std::string_view name) const
     {
         return find_member(name, detail::MemberKind::Type);
     }
-    [[nodiscard]] const detail::member& error(std::string_view name) const
+
+    [[nodiscard]] iterator find_error(std::string_view name) const
     {
         return find_member(name, detail::MemberKind::Error);
     }
 
-    [[nodiscard]] bool has_method(std::string_view name) const noexcept
+    [[nodiscard]] const detail::member& method(std::string_view name) const
     {
-        return has_member(name, detail::MemberKind::Method);
+        return get_member(name, detail::MemberKind::Method);
     }
-    [[nodiscard]] bool has_type(std::string_view name) const noexcept
+    [[nodiscard]] const detail::member& type(std::string_view name) const
     {
-        return has_member(name, detail::MemberKind::Type);
+        return get_member(name, detail::MemberKind::Type);
     }
-    [[nodiscard]] bool has_error(std::string_view name) const noexcept
+    [[nodiscard]] const detail::member& error(std::string_view name) const
     {
-        return has_member(name, detail::MemberKind::Error);
+        return get_member(name, detail::MemberKind::Error);
     }
 
     void validate(
@@ -49,8 +56,8 @@ struct varlink_interface {
         bool collection = false) const;
 
   private:
-    [[nodiscard]] const detail::member& find_member(std::string_view name, detail::MemberKind kind) const;
-    [[nodiscard]] bool has_member(std::string_view name, detail::MemberKind kind) const;
+    [[nodiscard]] iterator find_member(std::string_view name, detail::MemberKind kind) const;
+    [[nodiscard]] const detail::member& get_member(std::string_view name, detail::MemberKind kind) const;
 
     friend std::ostream& operator<<(std::ostream& os, const varlink_interface& interface);
 

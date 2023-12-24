@@ -19,7 +19,7 @@ varlink_service::interface::interface(varlink_interface spec, callback_map callb
     : spec_(std::move(spec)), callbacks_(std::move(callbacks))
 {
     for (auto& callback : callbacks_) {
-        if (not spec_.has_method(callback.first)) {
+        if (spec_.find_method(callback.first) == spec_.end()) {
             throw std::invalid_argument("Callback for unknown method");
         }
     }
@@ -30,7 +30,7 @@ void varlink_service::interface::add_callback(const std::string& methodname, cal
     if (callbacks_.find(methodname) != callbacks_.end()) {
         throw std::invalid_argument("Callback already set");
     }
-    if (not spec_.has_method(methodname)) {
+    if (spec_.find_method(methodname) == spec_.end()) {
         throw std::invalid_argument("Callback for unknown method");
     }
     callbacks_[methodname] = std::move(fn);
@@ -90,10 +90,16 @@ void varlink_service::message_call(
         error("org.varlink.service.InterfaceNotFound", {{"interface", ifname}});
         return;
     }
+    const auto& interface = *interface_it;
+
+    const auto method_it = interface->find_method(methodname);
+    if (method_it == interface->end()) {
+        error("org.varlink.service.MethodNotFound", {{"method", ifname + '.' + methodname}});
+        return;
+    }
+    const auto& m = *method_it;
 
     try {
-        const auto& interface = *interface_it;
-        const auto& m = interface->method(methodname);
         interface->validate(message.parameters(), m.method_parameter_type());
 
         auto& callback = interface.callback(methodname);
@@ -134,9 +140,6 @@ void varlink_service::message_call(
             },
             [](const nullptr_t&) -> void { throw std::bad_function_call{}; }};
         std::visit(visitor, callback);
-    }
-    catch (std::out_of_range&) {
-        error("org.varlink.service.MethodNotFound", {{"method", ifname + '.' + methodname}});
     }
     catch (std::bad_function_call&) {
         error("org.varlink.service.MethodNotImplemented", {{"method", ifname + '.' + methodname}});

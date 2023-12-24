@@ -135,12 +135,9 @@ error ErrorFoo (a: (b: bool, c: int), foo: TypeFoo)
 
     SECTION("varlink_interface, Duplicate")
     {
-        REQUIRE_THROWS(
-            varlink_interface("interface org.test\ntype T()\ntype T()"));
-        REQUIRE_THROWS(varlink_interface(
-            "interface org.test\nmethod F()->()\nmethod F()->()"));
-        REQUIRE_THROWS(
-            varlink_interface("interface org.test\nerror E()\nerror E()"));
+        REQUIRE_THROWS(varlink_interface("interface org.test\ntype T()\ntype T()"));
+        REQUIRE_THROWS(varlink_interface("interface org.test\nmethod F()->()\nmethod F()->()"));
+        REQUIRE_THROWS(varlink_interface("interface org.test\nerror E()\nerror E()"));
     }
 }
 
@@ -148,8 +145,7 @@ TEST_CASE("Varlink interface header")
 {
     SECTION("Parse the interface header with docstring")
     {
-        std::string_view desc =
-            "# Interface\ninterface org.test\n\nmethod F()->()";
+        std::string_view desc = "# Interface\ninterface org.test\n\nmethod F()->()";
         varlink_interface interface{desc};
         REQUIRE("# Interface\n" == interface.doc());
         REQUIRE("org.test" == interface.name());
@@ -158,8 +154,7 @@ TEST_CASE("Varlink interface header")
 
     SECTION("Parse the interface header with missing empty line")
     {
-        std::string_view desc =
-            "# Interface\ninterface org.test\nmethod F()->()";
+        std::string_view desc = "# Interface\ninterface org.test\nmethod F()->()";
         varlink_interface interface{desc};
         REQUIRE("# Interface\n" == interface.doc());
         REQUIRE("org.test" == interface.name());
@@ -177,8 +172,7 @@ TEST_CASE("Varlink interface header")
 
     SECTION("Parse the interface header with method docstring")
     {
-        std::string_view desc =
-            "# Interface\ninterface org.test\n# a method\nmethod F()->()";
+        std::string_view desc = "# Interface\ninterface org.test\n# a method\nmethod F()->()";
         varlink_interface interface{desc};
         REQUIRE("# Interface\n" == interface.doc());
         REQUIRE("org.test" == interface.name());
@@ -187,8 +181,7 @@ TEST_CASE("Varlink interface header")
 
     SECTION("Parse the interface header with method docstring only")
     {
-        std::string_view desc =
-            "interface org.test\n# a method\nmethod F()->()";
+        std::string_view desc = "interface org.test\n# a method\nmethod F()->()";
         varlink_interface interface{desc};
         REQUIRE(interface.doc().empty());
         REQUIRE("org.test" == interface.name());
@@ -197,22 +190,16 @@ TEST_CASE("Varlink interface header")
 
     SECTION("Parse valid interface names")
     {
+        REQUIRE_NOTHROW(varlink_interface("interface org.varlink.service\nmethod F()->()"));
+        REQUIRE_NOTHROW(varlink_interface("interface com.example.0example\nmethod F()->()"));
+        REQUIRE_NOTHROW(varlink_interface("interface com.example.example-dash\nmethod F()->()"));
         REQUIRE_NOTHROW(
-            varlink_interface("interface org.varlink.service\nmethod F()->()"));
-        REQUIRE_NOTHROW(varlink_interface(
-            "interface com.example.0example\nmethod F()->()"));
-        REQUIRE_NOTHROW(varlink_interface(
-            "interface com.example.example-dash\nmethod F()->()"));
-        REQUIRE_NOTHROW(varlink_interface(
-            "interface xn-lgbbat1ad8j.example.algeria\nmethod F()->()"));
+            varlink_interface("interface xn-lgbbat1ad8j.example.algeria\nmethod F()->()"));
         REQUIRE_NOTHROW(varlink_interface("interface a.b\nmethod F()->()"));
         REQUIRE_NOTHROW(varlink_interface("interface a.b.c\nmethod F()->()"));
-        REQUIRE_NOTHROW(
-            varlink_interface("interface a1.b1.c1\nmethod F()->()"));
-        REQUIRE_NOTHROW(
-            varlink_interface("interface a1.b--1.c--1\nmethod F()->()"));
-        REQUIRE_NOTHROW(
-            varlink_interface("interface a--1.b--1.c--1\nmethod F()->()"));
+        REQUIRE_NOTHROW(varlink_interface("interface a1.b1.c1\nmethod F()->()"));
+        REQUIRE_NOTHROW(varlink_interface("interface a1.b--1.c--1\nmethod F()->()"));
+        REQUIRE_NOTHROW(varlink_interface("interface a--1.b--1.c--1\nmethod F()->()"));
         REQUIRE_NOTHROW(varlink_interface("interface a.21.c\nmethod F()->()"));
         REQUIRE_NOTHROW(varlink_interface("interface a.1\nmethod F()->()"));
         REQUIRE_NOTHROW(varlink_interface("interface a.0.0\nmethod F()->()"));
@@ -220,18 +207,13 @@ TEST_CASE("Varlink interface header")
 
     SECTION("Parse invalid interface names")
     {
-        REQUIRE_THROWS(varlink_interface(
-            "interface com.-example.leadinghyphen\nmethod F()->()"));
-        REQUIRE_THROWS(varlink_interface(
-            "interface com.example-.danglinghyphen-\nmethod F()->()"));
-        REQUIRE_THROWS(varlink_interface(
-            "interface Com.example.uppercase-toplevel\nmethod F()->()"));
-        REQUIRE_THROWS(varlink_interface(
-            "interface Co9.example.number-toplevel\nmethod F()->()"));
-        REQUIRE_THROWS(varlink_interface(
-            "interface 1om.example.number-toplevel\nmethod F()->()"));
+        REQUIRE_THROWS(varlink_interface("interface com.-example.leadinghyphen\nmethod F()->()"));
+        REQUIRE_THROWS(varlink_interface("interface com.example-.danglinghyphen-\nmethod F()->()"));
         REQUIRE_THROWS(
-            varlink_interface("interface com.Example\nmethod F()->()"));
+            varlink_interface("interface Com.example.uppercase-toplevel\nmethod F()->()"));
+        REQUIRE_THROWS(varlink_interface("interface Co9.example.number-toplevel\nmethod F()->()"));
+        REQUIRE_THROWS(varlink_interface("interface 1om.example.number-toplevel\nmethod F()->()"));
+        REQUIRE_THROWS(varlink_interface("interface com.Example\nmethod F()->()"));
         REQUIRE_THROWS(varlink_interface("interface ab\nmethod F()->()"));
         REQUIRE_THROWS(varlink_interface("interface .a.b.c\nmethod F()->()"));
         REQUIRE_THROWS(varlink_interface("interface a.b.c.\nmethod F()->()"));
@@ -263,8 +245,7 @@ TEST_CASE("Varlink interface methods")
 
     SECTION("invalid return type")
     {
-        REQUIRE_THROWS(
-            varlink_interface("interface.org.test\nmethod Test()->(a:)"));
+        REQUIRE_THROWS(varlink_interface("interface.org.test\nmethod Test()->(a:)"));
     }
 }
 
@@ -273,8 +254,8 @@ TEST_CASE("Varlink interface member access")
     SECTION("method member checker")
     {
         varlink_interface interface("interface org.test\nmethod Test()->()");
-        REQUIRE(interface.has_method("Test"));
-        REQUIRE_FALSE(interface.has_method("Other"));
+        REQUIRE(interface.find_method("Test") != interface.end());
+        REQUIRE_FALSE(interface.find_method("Other") != interface.end());
         REQUIRE_NOTHROW((void)interface.method("Test"));
         REQUIRE_THROWS_AS((void)interface.method("Other"), std::out_of_range);
     }
@@ -282,8 +263,8 @@ TEST_CASE("Varlink interface member access")
     SECTION("type member checker")
     {
         varlink_interface interface("interface org.test\ntype T()");
-        REQUIRE(interface.has_type("T"));
-        REQUIRE_FALSE(interface.has_type("O"));
+        REQUIRE(interface.find_type("T") != interface.end());
+        REQUIRE_FALSE(interface.find_type("O") != interface.end());
         REQUIRE_NOTHROW((void)interface.type("T"));
         REQUIRE_THROWS_AS((void)interface.type("O"), std::out_of_range);
     }
@@ -291,8 +272,8 @@ TEST_CASE("Varlink interface member access")
     SECTION("error member checker")
     {
         varlink_interface interface("interface org.test\nerror E()");
-        REQUIRE(interface.has_error("E"));
-        REQUIRE_FALSE(interface.has_error("F"));
+        REQUIRE(interface.find_error("E") != interface.end());
+        REQUIRE_FALSE(interface.find_error("F") != interface.end());
         REQUIRE_NOTHROW((void)interface.error("E"));
         REQUIRE_THROWS_AS((void)interface.error("F"), std::out_of_range);
     }
@@ -323,24 +304,15 @@ TEST_CASE("Varlink interface types")
 
     SECTION("Parse invalid type specifications")
     {
-        REQUIRE_THROWS(
-            varlink_interface("interface org.test\ntype I (b: bool[])"));
-        REQUIRE_THROWS(
-            varlink_interface("interface org.test\ntype I (b: bool[ ])"));
-        REQUIRE_THROWS(
-            varlink_interface("interface org.test\ntype I (b: bool[1])"));
-        REQUIRE_THROWS(
-            varlink_interface("interface org.test\ntype I (b: bool[ 1 ])"));
-        REQUIRE_THROWS(
-            varlink_interface("interface org.test\ntype I (b: bool[ 1 1 ])"));
-        REQUIRE_THROWS(
-            varlink_interface("interface org.test\ntype I (b: [ ]bool)"));
-        REQUIRE_THROWS(
-            varlink_interface("interface org.test\ntype I (b: [1]bool)"));
-        REQUIRE_THROWS(
-            varlink_interface("interface org.test\ntype I (b: [ 1 ]bool)"));
-        REQUIRE_THROWS(
-            varlink_interface("interface org.test\ntype I (b: [ 1 1 ]bool)"));
+        REQUIRE_THROWS(varlink_interface("interface org.test\ntype I (b: bool[])"));
+        REQUIRE_THROWS(varlink_interface("interface org.test\ntype I (b: bool[ ])"));
+        REQUIRE_THROWS(varlink_interface("interface org.test\ntype I (b: bool[1])"));
+        REQUIRE_THROWS(varlink_interface("interface org.test\ntype I (b: bool[ 1 ])"));
+        REQUIRE_THROWS(varlink_interface("interface org.test\ntype I (b: bool[ 1 1 ])"));
+        REQUIRE_THROWS(varlink_interface("interface org.test\ntype I (b: [ ]bool)"));
+        REQUIRE_THROWS(varlink_interface("interface org.test\ntype I (b: [1]bool)"));
+        REQUIRE_THROWS(varlink_interface("interface org.test\ntype I (b: [ 1 ]bool)"));
+        REQUIRE_THROWS(varlink_interface("interface org.test\ntype I (b: [ 1 1 ]bool)"));
     }
 
     SECTION("Test enum")
