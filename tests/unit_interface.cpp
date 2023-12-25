@@ -282,7 +282,15 @@ TEST_CASE("Varlink interface member access")
 template <typename... Args>
 type_spec test_spec(Args&&... args)
 {
+    // This warning is fixed in gcc (trunk), so we expect it to be ok in GCC 14
+#if __GNUC__ < 14
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
     return type_spec{vl_struct{{"a", type_spec{std::forward<Args>(args)...}}}};
+#if __GNUC__ < 14
+#pragma GCC diagnostic pop
+#endif
 }
 
 TEST_CASE("Varlink interface types")
