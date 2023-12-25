@@ -7,8 +7,12 @@
 #include <varlink/service.hpp>
 #include <varlink/uri.hpp>
 
+#define VISIT(X) return std::visit([&](auto&& c) { return c.X; }, *client)
+
 namespace varlink {
 struct varlink_client {
+    using wait_type = net::socket_base::wait_type;
+
     explicit varlink_client(net::any_io_executor ex) : ex_(std::move(ex)) {}
 
     varlink_client(net::any_io_executor ex, const varlink_uri& endpoint) : ex_(std::move(ex))
@@ -77,89 +81,97 @@ struct varlink_client {
             endpoint_from_uri(endpoint));
     }
 
-    void close()
+    void close() { VISIT(close()); }
+    void close(std::error_code& ec) { VISIT(close(ec)); }
+
+    void cancel() { VISIT(cancel()); }
+    void cancel(std::error_code& ec) { VISIT(cancel(ec)); }
+
+    bool is_open() { VISIT(is_open()); }
+
+    template <typename ReplyHandler>
+    auto async_call(const varlink_message& message, ReplyHandler&& handler)
     {
-        std::visit([](auto& c) { c.close(); }, *client);
-    }
-    void close(std::error_code& ec)
-    {
-        std::visit([&ec](auto& c) { c.close(ec); }, *client);
+        VISIT(async_call(message, std::forward<ReplyHandler>(handler)));
     }
 
-    void cancel()
+    template <typename ReplyHandler>
+    auto async_call(const std::string_view method, const json& parameters, ReplyHandler&& handler)
     {
-        std::visit([](auto& c) { c.cancel(); }, *client);
-    }
-    void cancel(std::error_code& ec)
-    {
-        std::visit([&ec](auto& c) { c.cancel(ec); }, *client);
+        VISIT(async_call(method, parameters, std::forward<ReplyHandler>(handler)));
     }
 
-    bool is_open()
+    template <typename ReplyHandler>
+    auto async_call_more(const varlink_message_more& message, ReplyHandler&& handler)
     {
-        return std::visit([](auto& c) { return c.is_open(); }, *client);
+        VISIT(async_call_more(message, std::forward<ReplyHandler>(handler)));
     }
 
-    template <typename... Args>
-    auto async_call(Args&&... args)
+    template <typename ReplyHandler>
+    auto async_call_more(const std::string_view method, const json& parameters, ReplyHandler&& handler)
     {
-        return std::visit(
-            [&](auto&& c) { return c.async_call(std::forward<Args>(args)...); }, *client);
+        VISIT(async_call_more(method, parameters, std::forward<ReplyHandler>(handler)));
     }
 
-    template <typename... Args>
-    auto async_call_more(Args&&... args)
+    template <typename ReplyHandler>
+    auto async_call_oneway(const varlink_message_oneway& message, ReplyHandler&& handler)
     {
-        return std::visit(
-            [&](auto&& c) { return c.async_call_more(std::forward<Args>(args)...); }, *client);
+        VISIT(async_call_oneway(message, std::forward<ReplyHandler>(handler)));
     }
 
-    template <typename... Args>
-    auto async_call_oneway(Args&&... args)
+    template <typename ReplyHandler>
+    auto async_call_oneway(const std::string_view method, const json& parameters, ReplyHandler&& handler)
     {
-        return std::visit(
-            [&](auto&& c) { return c.async_call_oneway(std::forward<Args>(args)...); }, *client);
+        VISIT(async_call_oneway(method, parameters, std::forward<ReplyHandler>(handler)));
     }
 
-    template <typename... Args>
-    auto async_call_upgrade(Args&&... args)
+    template <typename ReplyHandler>
+    auto async_call_upgrade(const varlink_message_upgrade& message, ReplyHandler&& handler)
     {
-        return std::visit(
-            [&](auto&& c) { return c.async_call_upgrade(std::forward<Args>(args)...); }, *client);
+        VISIT(async_call_upgrade(message, std::forward<ReplyHandler>(handler)));
     }
 
-    template <typename... Args>
-    auto async_wait(Args&&... args)
+    template <typename ReplyHandler>
+    auto async_call_upgrade(const std::string_view method, const json& parameters, ReplyHandler&& handler)
     {
-        return std::visit(
-            [&](auto&& c) { return c.async_wait(std::forward<Args>(args)...); }, *client);
+        VISIT(async_call_upgrade(method, parameters, std::forward<ReplyHandler>(handler)));
     }
 
-    template <typename... Args>
-    json call(Args&&... args)
+    template <typename WaitHandler>
+    auto async_wait(wait_type w, WaitHandler&& handler)
     {
-        return std::visit([&](auto&& c) { return c.call(std::forward<Args>(args)...); }, *client);
+        VISIT(async_wait(w, std::forward<WaitHandler>(handler)));
     }
 
-    template <typename... Args>
-    std::function<json()> call_more(Args&&... args)
+    json call(const varlink_message& message) { VISIT(call(message)); }
+
+    json call(const std::string_view method, const json& parameters)
     {
-        return std::visit(
-            [&](auto&& c) { return c.call_more(std::forward<Args>(args)...); }, *client);
+        VISIT(call(method, parameters));
     }
 
-    template <typename... Args>
-    void call_oneway(Args&&... args)
+    std::function<json()> call_more(const varlink_message_more& message)
     {
-        return std::visit(
-            [&](auto&& c) { return c.call_oneway(std::forward<Args>(args)...); }, *client);
+        VISIT(call_more(message));
     }
 
-    template <typename... Args>
-    json call_upgrade(Args&&... args)
+    std::function<json()> call_more(const std::string_view method, const json& parameters)
     {
-        return std::visit(
-            [&](auto&& c) { return c.call_upgrade(std::forward<Args>(args)...); }, *client);
+        VISIT(call_more(method, parameters));
+    }
+
+    void call_oneway(const varlink_message_oneway& message) { VISIT(call_oneway(message)); }
+
+    void call_oneway(const std::string_view method, const json& parameters)
+    {
+        VISIT(call_oneway(method, parameters));
+    }
+
+    json call_upgrade(const varlink_message_upgrade& message) { VISIT(call_upgrade(message)); }
+
+    json call_upgrade(const std::string_view method, const json& parameters)
+    {
+        VISIT(call_upgrade(method, parameters));
     }
 
   private:
@@ -167,5 +179,7 @@ struct varlink_client {
     std::optional<varlink_client_variant> client;
 };
 } // namespace varlink
+
+#undef VISIT
 
 #endif
