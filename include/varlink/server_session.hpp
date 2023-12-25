@@ -33,7 +33,7 @@ struct server_session : std::enable_shared_from_this<server_session<Protocol>> {
             try {
                 const basic_varlink_message message{j};
                 self->service_.message_call(
-                    message, [self](const json& reply, const more_handler& moreHandler) {
+                    message, [self](const json& reply, more_handler&& moreHandler) {
                         auto continues = bool(moreHandler);
                         if (reply.is_object()) {
                             auto m = std::make_unique<json>(reply);

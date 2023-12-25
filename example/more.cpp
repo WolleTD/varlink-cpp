@@ -15,8 +15,8 @@ struct example_more_server {
     {
         varlink_service::interface handler(org_example_more_varlink);
         handler.add_callback("Ping", ping);
-        handler.add_callback("TestMore", [this](auto& parameters, auto mode, auto& send_reply) {
-            this->more(parameters, mode, send_reply);
+        handler.add_callback("TestMore", [this](auto& parameters, auto mode, auto&& send_reply) {
+            this->more(parameters, mode, std::move(send_reply));
         });
         handler.add_callback("StopServing", [this](auto&, auto) { return stop(); });
 
@@ -25,7 +25,7 @@ struct example_more_server {
 
     static json ping(const json& parameters, callmode) { return {{"pong", parameters["ping"]}}; }
 
-    void more(const json& parameters, callmode mode, const reply_function& send_reply)
+    void more(const json& parameters, callmode mode, reply_function&& send_reply)
     {
         if (mode == callmode::more) {
             json state = {{"start", true}};

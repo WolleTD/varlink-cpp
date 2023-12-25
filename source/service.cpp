@@ -88,14 +88,14 @@ struct more_reply_handler {
     {
     }
 
-    void operator()(const json::object_t& params, const more_handler& continues) const
+    void operator()(const json::object_t& params, more_handler&& continues) const
     {
         interface.validate(params, return_type);
 
         if (mode == callmode::oneway) { replySender(nullptr, nullptr); }
         else if (mode == callmode::more) {
             json reply = {{"parameters", params}, {"continues", bool(continues)}};
-            replySender(reply, continues);
+            replySender(reply, std::move(continues));
         }
         else if (continues) { // and not more
             throw std::bad_function_call{};
