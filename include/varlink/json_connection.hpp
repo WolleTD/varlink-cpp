@@ -4,16 +4,17 @@
 
 #include <optional>
 #include <varlink/detail/config.hpp>
-#include <varlink/detail/manual_strand.hpp>
 #include <varlink/detail/nl_json.hpp>
 
 #if LIBVARLINK_USE_BOOST
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/io_context.hpp>
+#include <boost/asio/post.hpp>
 #include <boost/asio/write.hpp>
 #else
 #include <asio/buffer.hpp>
 #include <asio/io_context.hpp>
+#include <asio/post.hpp>
 #include <asio/write.hpp>
 #endif
 
@@ -29,10 +30,7 @@ struct json_connection {
     explicit json_connection(net::io_context& ctx) : json_connection(socket_type(ctx)) {}
 
     explicit json_connection(socket_type socket)
-        : readbuf(BUFSIZ),
-          read_end(readbuf.begin()),
-          stream(std::move(socket)),
-          write_strand(stream.get_executor())
+        : readbuf(BUFSIZ), read_end(readbuf.begin()), stream(std::move(socket))
     {
     }
 
@@ -167,19 +165,13 @@ struct json_connection {
         template <typename CompletionHandler>
         void operator()(CompletionHandler&& handler, const json& message)
         {
-            self_->write_strand.push(
-                [self = self_, &message, handler = std::forward<CompletionHandler>(handler)]() mutable {
-                    auto m = std::make_unique<std::string>(message.dump());
-                    auto buffer = net::buffer(m->data(), m->size() + 1);
-                    net::async_write(
-                        self->stream,
-                        buffer,
-                        [handler = std::forward<CompletionHandler>(handler), self, m = std::move(m)](
-                            std::error_code ec, size_t) mutable {
-                            self->write_strand.next();
-                            handler(ec);
-                        });
-                });
+            auto m = std::make_unique<std::string>(message.dump());
+            auto buffer = net::buffer(m->data(), m->size() + 1);
+            net::async_write(
+                self_->stream,
+                buffer,
+                [handler = std::forward<CompletionHandler>(handler), m = std::move(m)](
+                    std::error_code ec, size_t) mutable { handler(ec); });
         }
 
       private:
@@ -190,7 +182,6 @@ struct json_connection {
     byte_buffer readbuf;
     byte_buffer::iterator read_end;
     socket_type stream;
-    detail::manual_strand<executor_type> write_strand;
 };
 } // namespace varlink
 
