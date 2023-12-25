@@ -26,6 +26,7 @@ struct json_connection {
     using socket_type = typename protocol_type::socket;
     using endpoint_type = typename protocol_type::endpoint;
     using executor_type = typename socket_type::executor_type;
+    using wait_type = typename socket_type::wait_type;
 
     explicit json_connection(net::io_context& ctx) : json_connection(socket_type(ctx)) {}
 
@@ -74,6 +75,12 @@ struct json_connection {
     {
         return net::async_initiate<CompletionHandler, void(std::error_code, json)>(
             initiate_async_receive(this), handler);
+    }
+
+    template <typename CompletionHandler>
+    auto async_wait(wait_type w, CompletionHandler&& handler)
+    {
+        return stream.async_wait(w, std::forward<CompletionHandler>(handler));
     }
 
     void send(const json& message)

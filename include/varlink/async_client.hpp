@@ -21,6 +21,7 @@ struct async_client {
     using socket_type = typename protocol_type::socket;
     using endpoint_type = typename protocol_type::endpoint;
     using executor_type = typename socket_type::executor_type;
+    using wait_type = typename socket_type::wait_type;
     using connection_type = json_connection<protocol_type>;
 
     executor_type get_executor() { return connection.get_executor(); }
@@ -109,6 +110,12 @@ struct async_client {
     {
         auto message = varlink_message_upgrade(method, parameters);
         return async_call_upgrade(message, std::forward<ReplyHandler>(handler));
+    }
+
+    template <typename CompletionHandler>
+    auto async_wait(wait_type w, CompletionHandler&& handler)
+    {
+        return connection.async_wait(w, std::forward<CompletionHandler>(handler));
     }
 
     json call(const varlink_message& message) { return call_impl(message)(); }

@@ -129,6 +129,13 @@ struct varlink_client {
     }
 
     template <typename... Args>
+    auto async_wait(Args&&... args)
+    {
+        return std::visit(
+            [&](auto&& c) { return c.async_wait(std::forward<Args>(args)...); }, *client);
+    }
+
+    template <typename... Args>
     json call(Args&&... args)
     {
         return std::visit([&](auto&& c) { return c.call(std::forward<Args>(args)...); }, *client);
