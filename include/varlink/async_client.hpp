@@ -101,7 +101,7 @@ struct async_client {
     template <typename ReplyHandler>
     auto async_call_upgrade(const varlink_message_upgrade& message, ReplyHandler&& handler)
     {
-        return net::async_initiate<ReplyHandler, void(std::error_code)>(
+        return net::async_initiate<ReplyHandler, void(std::error_code, json)>(
             initiate_async_call<callmode::upgrade>(this), handler, message);
     }
 
