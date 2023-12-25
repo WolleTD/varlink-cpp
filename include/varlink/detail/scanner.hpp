@@ -1,8 +1,6 @@
 #ifndef LIBVARLINK_SCANNER_HPP
 #define LIBVARLINK_SCANNER_HPP
 
-#include <optional>
-#include <ostream>
 #include <string>
 #include <utility>
 #include <varlink/detail/member.hpp>

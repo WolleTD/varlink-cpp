@@ -74,7 +74,7 @@ using socket_type = test_client::socket_type;
 
 TEST_CASE("Testing server with client")
 {
-    asio::io_context ctx{};
+    net::io_context ctx{};
     auto client = varlink_client(ctx, Environment::varlink_uri);
 
     SECTION("Call method GetInfo")

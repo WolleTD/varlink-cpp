@@ -95,7 +95,7 @@ method Exception() -> ()
         socket.validate = true;
         setup_test(
             R"({"method":"org.test.Test","parameters":{"ping":"123"},"oneway":true})",
-            asio::buffer(&conn, 0));
+            net::buffer(&conn, 0));
         conn->start();
         REQUIRE(ctx.run() > 0);
     }

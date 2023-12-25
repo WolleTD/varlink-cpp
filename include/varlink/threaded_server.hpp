@@ -5,6 +5,12 @@
 #include <varlink/service.hpp>
 #include <varlink/uri.hpp>
 
+#if LIBVARLINK_USE_BOOST
+#include <boost/asio/thread_pool.hpp>
+#else
+#include <asio/thread_pool.hpp>
+#endif
+
 namespace varlink {
 class threaded_server {
     auto make_async_server(const varlink_uri& uri)

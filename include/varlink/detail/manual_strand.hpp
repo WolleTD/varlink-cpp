@@ -9,9 +9,14 @@
 
 #include <list>
 #include <queue>
-#include <asio/strand.hpp>
 #include <varlink/detail/config.hpp>
 #include <varlink/detail/movable_function.hpp>
+
+#if LIBVARLINK_USE_BOOST
+#include <boost/asio/strand.hpp>
+#else
+#include <asio/strand.hpp>
+#endif
 
 namespace varlink::detail {
 template <typename Executor>

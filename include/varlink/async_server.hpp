@@ -5,6 +5,14 @@
 #include <experimental/filesystem>
 #include <varlink/server_session.hpp>
 
+#if LIBVARLINK_USE_BOOST
+#include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/local/stream_protocol.hpp>
+#else
+#include <asio/ip/tcp.hpp>
+#include <asio/local/stream_protocol.hpp>
+#endif
+
 namespace varlink {
 template <typename Protocol>
 struct async_server : std::enable_shared_from_this<async_server<Protocol>> {

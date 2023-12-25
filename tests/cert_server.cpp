@@ -1,4 +1,5 @@
 #include <iostream>
+#include <mutex>
 #include <varlink/server.hpp>
 
 #include "org.varlink.certification.varlink.hpp"

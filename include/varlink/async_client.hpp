@@ -6,6 +6,14 @@
 #include <varlink/detail/varlink_error.hpp>
 #include <varlink/json_connection.hpp>
 
+#if LIBVARLINK_USE_BOOST
+#include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/local/stream_protocol.hpp>
+#else
+#include <asio/ip/tcp.hpp>
+#include <asio/local/stream_protocol.hpp>
+#endif
+
 namespace varlink {
 template <typename Protocol>
 struct async_client {
@@ -17,8 +25,8 @@ struct async_client {
 
     executor_type get_executor() { return connection.get_executor(); }
 
-    explicit async_client(const asio::any_io_executor& ex) : async_client(socket_type(ex)) {}
-    explicit async_client(asio::io_context& ctx) : async_client(socket_type(ctx)) {}
+    explicit async_client(const net::any_io_executor& ex) : async_client(socket_type(ex)) {}
+    explicit async_client(net::io_context& ctx) : async_client(socket_type(ctx)) {}
 
     explicit async_client(socket_type socket)
         : connection(std::move(socket)), call_strand(get_executor())

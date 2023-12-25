@@ -4,6 +4,14 @@
 #include <varlink/detail/config.hpp>
 #undef unix
 
+#if LIBVARLINK_USE_BOOST
+#include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/local/stream_protocol.hpp>
+#else
+#include <asio/ip/tcp.hpp>
+#include <asio/local/stream_protocol.hpp>
+#endif
+
 namespace varlink {
 
 struct varlink_uri {

@@ -9,14 +9,14 @@
 
 namespace varlink {
 struct varlink_client {
-    explicit varlink_client(asio::any_io_executor ex) : ex_(std::move(ex)) {}
+    explicit varlink_client(net::any_io_executor ex) : ex_(std::move(ex)) {}
 
-    varlink_client(asio::any_io_executor ex, const varlink_uri& endpoint) : ex_(std::move(ex))
+    varlink_client(net::any_io_executor ex, const varlink_uri& endpoint) : ex_(std::move(ex))
     {
         connect(endpoint);
     }
 
-    varlink_client(asio::any_io_executor ex, std::string_view endpoint)
+    varlink_client(net::any_io_executor ex, std::string_view endpoint)
         : varlink_client(std::move(ex), varlink_uri(endpoint))
     {
     }
@@ -24,7 +24,7 @@ struct varlink_client {
     template <
         typename ExecutionContext,
         typename... Args,
-        typename = std::enable_if_t<std::is_convertible_v<ExecutionContext&, asio::execution_context&>>>
+        typename = std::enable_if_t<std::is_convertible_v<ExecutionContext&, net::execution_context&>>>
     explicit varlink_client(ExecutionContext& ctx, Args&&... args)
         : varlink_client(ctx.get_executor(), std::forward<Args>(args)...)
     {
@@ -41,7 +41,7 @@ struct varlink_client {
     varlink_client(varlink_client&& src) noexcept = default;
     varlink_client& operator=(varlink_client&& src) = default;
 
-    [[nodiscard]] asio::any_io_executor get_executor() const { return ex_; }
+    [[nodiscard]] net::any_io_executor get_executor() const { return ex_; }
 
     template <typename ConnectHandler>
     auto async_connect(const varlink_uri& endpoint, ConnectHandler&& handler)
@@ -156,7 +156,7 @@ struct varlink_client {
     }
 
   private:
-    asio::any_io_executor ex_;
+    net::any_io_executor ex_;
     std::optional<varlink_client_variant> client;
 };
 } // namespace varlink

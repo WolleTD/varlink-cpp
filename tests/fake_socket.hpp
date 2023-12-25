@@ -1,5 +1,12 @@
 #pragma once
 #include <varlink/detail/config.hpp>
+
+#if LIBVARLINK_USE_BOOST
+#include <boost/asio/local/stream_protocol.hpp>
+#else
+#include <asio/local/stream_protocol.hpp>
+#endif
+
 using namespace varlink;
 
 struct FakeSocket;

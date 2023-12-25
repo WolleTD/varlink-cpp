@@ -9,17 +9,21 @@
 #endif
 
 #if defined(LIBVARLINK_USE_BOOST)
-#include <boost/asio.hpp>
+#include <boost/asio/error.hpp>
 #else
-#include <asio.hpp>
+#include <asio/error.hpp>
 #endif
 
 namespace varlink {
 
 #if defined(LIBVARLINK_USE_BOOST)
 namespace net = ::boost::asio;
+using error_code = boost::system::error_code;
+using system_error = boost::system::system_error;
 #else
 namespace net = ::asio;
+using error_code = std::error_code;
+using system_error = std::system_error;
 #endif
 
 }

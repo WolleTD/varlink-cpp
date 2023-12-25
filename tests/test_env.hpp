@@ -4,6 +4,7 @@
 using namespace varlink;
 
 #ifdef VARLINK_TEST_ASYNC
+#include <thread>
 #include <varlink/server.hpp>
 using test_server = varlink_server;
 #else

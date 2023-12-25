@@ -7,6 +7,16 @@
 #include <varlink/detail/manual_strand.hpp>
 #include <varlink/detail/nl_json.hpp>
 
+#if LIBVARLINK_USE_BOOST
+#include <boost/asio/buffer.hpp>
+#include <boost/asio/io_context.hpp>
+#include <boost/asio/write.hpp>
+#else
+#include <asio/buffer.hpp>
+#include <asio/io_context.hpp>
+#include <asio/write.hpp>
+#endif
+
 namespace varlink {
 
 template <typename Protocol>
@@ -16,7 +26,7 @@ struct json_connection {
     using endpoint_type = typename protocol_type::endpoint;
     using executor_type = typename socket_type::executor_type;
 
-    explicit json_connection(asio::io_context& ctx) : json_connection(socket_type(ctx)) {}
+    explicit json_connection(net::io_context& ctx) : json_connection(socket_type(ctx)) {}
 
     explicit json_connection(socket_type socket)
         : readbuf(BUFSIZ),

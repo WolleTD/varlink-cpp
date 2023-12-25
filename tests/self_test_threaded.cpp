@@ -1,6 +1,13 @@
+#include <future>
 #include <thread>
 #include <catch2/catch_test_macros.hpp>
 #include <varlink/client.hpp>
+
+#if LIBVARLINK_USE_BOOST
+#include <boost/asio/read.hpp>
+#else
+#include <asio/read.hpp>
+#endif
 
 #ifdef VARLINK_TEST_TCP
 #include "self_tcp.hpp"
