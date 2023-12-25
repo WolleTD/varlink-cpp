@@ -59,7 +59,7 @@ varlink_service::varlink_service(description Description) : desc(std::move(Descr
         return info;
     };
     auto getInterfaceDescription = [this](const json& parameters, callmode) -> json {
-        const auto& ifname = parameters["interface"].get<std::string>();
+        const auto ifname = parameters["interface"].get<std::string>();
 
         if (const auto interface_it = find_interface(ifname); interface_it != interfaces.cend()) {
             std::stringstream ss;
@@ -74,6 +74,43 @@ varlink_service::varlink_service(description Description) : desc(std::move(Descr
         org_varlink_service_varlink,
         {{"GetInfo", getInfo}, {"GetInterfaceDescription", getInterfaceDescription}});
 }
+
+struct more_reply_handler {
+    more_reply_handler(
+        const basic_varlink_message& message,
+        const varlink_interface& interface,
+        const detail::member& method,
+        reply_function&& replySender)
+        : mode(message.mode()),
+          interface(interface),
+          return_type(method.method_return_type()),
+          replySender(std::move(replySender))
+    {
+    }
+
+    void operator()(const json::object_t& params, const more_handler& continues) const
+    {
+        interface.validate(params, return_type);
+
+        if (mode == callmode::oneway) { replySender(nullptr, nullptr); }
+        else if (mode == callmode::more) {
+            json reply = {{"parameters", params}, {"continues", bool(continues)}};
+            replySender(reply, continues);
+        }
+        else if (continues) { // and not more
+            throw std::bad_function_call{};
+        }
+        else {
+            replySender({{"parameters", params}}, nullptr);
+        }
+    };
+
+  private:
+    callmode mode;
+    const varlink_interface& interface;
+    const detail::type_spec& return_type;
+    reply_function replySender;
+};
 
 static void process_call(
     const basic_varlink_message& message,
@@ -103,26 +140,8 @@ static void process_call(
                 // This is not an asynchronous callback and exceptions
                 // will propagate up to the outer try-catch in this fn.
                 // TODO: This isn't true if the callback dispatches async ops
-                auto handler = [mode = message.mode(),
-                                &interface,
-                                &return_type = method.method_return_type(),
-                                replySender = std::move(replySender)](
-                                   const json::object_t& params,
-                                   const more_handler& continues) mutable {
-                    interface->validate(params, return_type);
-
-                    if (mode == callmode::oneway) { replySender(nullptr, nullptr); }
-                    else if (mode == callmode::more) {
-                        json reply = {{"parameters", params}, {"continues", bool(continues)}};
-                        replySender(reply, continues);
-                    }
-                    else if (continues) { // and not more
-                        throw std::bad_function_call{};
-                    }
-                    else {
-                        replySender({{"parameters", params}}, nullptr);
-                    }
-                };
+                auto handler = more_reply_handler(
+                    message, *interface, method, std::move(replySender));
                 mc(message.parameters(), message.mode(), handler);
             },
             [](const nullptr_t&) -> void { throw std::bad_function_call{}; }};
