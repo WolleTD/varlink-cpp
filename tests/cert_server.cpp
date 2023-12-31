@@ -104,7 +104,7 @@ class varlink_certification {
         return {{"mytype", my_object}};
     }
 
-    auto Test10(const json& parameters, callmode, const reply_function& send_reply)
+    auto Test10(const json& parameters, callmode, reply_function&& send_reply)
     {
         auto client_id = check_client_id(parameters);
         assert_method(client_id, "Test10", "Test11");
@@ -250,19 +250,19 @@ int main(int argc, char* argv[])
     auto cert = varlink_certification{};
 
     varlink::varlink_service::interface handler(varlink::org_varlink_certification_varlink);
-    handler.add_callback("Start", varlink_callback_forward(cert.Start));
-    handler.add_callback("Test01", varlink_callback_forward(cert.Test01));
-    handler.add_callback("Test02", varlink_callback_forward(cert.Test02));
-    handler.add_callback("Test03", varlink_callback_forward(cert.Test03));
-    handler.add_callback("Test04", varlink_callback_forward(cert.Test04));
-    handler.add_callback("Test05", varlink_callback_forward(cert.Test05));
-    handler.add_callback("Test06", varlink_callback_forward(cert.Test06));
-    handler.add_callback("Test07", varlink_callback_forward(cert.Test07));
-    handler.add_callback("Test08", varlink_callback_forward(cert.Test08));
-    handler.add_callback("Test09", varlink_callback_forward(cert.Test09));
-    handler.add_callback("Test10", varlink_more_callback_forward(cert.Test10));
-    handler.add_callback("Test11", varlink_callback_forward(cert.Test11));
-    handler.add_callback("End", varlink_callback_forward(cert.End));
+    handler.add_callback("Start", &varlink_certification::Start, &cert);
+    handler.add_callback("Test01", &varlink_certification::Test01, &cert);
+    handler.add_callback("Test02", &varlink_certification::Test02, &cert);
+    handler.add_callback("Test03", &varlink_certification::Test03, &cert);
+    handler.add_callback("Test04", &varlink_certification::Test04, &cert);
+    handler.add_callback("Test05", &varlink_certification::Test05, &cert);
+    handler.add_callback("Test06", &varlink_certification::Test06, &cert);
+    handler.add_callback("Test07", &varlink_certification::Test07, &cert);
+    handler.add_callback("Test08", &varlink_certification::Test08, &cert);
+    handler.add_callback("Test09", &varlink_certification::Test09, &cert);
+    handler.add_callback("Test10", &varlink_certification::Test10, &cert);
+    handler.add_callback("Test11", &varlink_certification::Test11, &cert);
+    handler.add_callback("End", &varlink_certification::End, &cert);
 
     server.add_interface(std::move(handler));
     server.async_serve_forever();
