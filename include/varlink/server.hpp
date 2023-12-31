@@ -38,10 +38,19 @@ class varlink_server {
         std::visit([&](auto&& s) { s.async_serve_forever(); }, server);
     }
 
-    template <typename... Args>
-    void add_interface(Args&&... args)
+    void add_interface(varlink_service::interface&& interface)
     {
-        service.add_interface(std::forward<Args>(args)...);
+        service.add_interface(std::move(interface));
+    }
+
+    void add_interface(varlink_interface&& spec, callback_map&& callbacks = {})
+    {
+        service.add_interface(std::move(spec), std::move(callbacks));
+    }
+
+    void add_interface(std::string_view definition, callback_map&& callbacks = {})
+    {
+        service.add_interface(definition, std::move(callbacks));
     }
 
     auto get_executor()
