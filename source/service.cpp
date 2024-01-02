@@ -172,7 +172,7 @@ static void process_call(
         error("org.varlink.service.InvalidParameter", {{"parameter", e.what()}});
     }
     catch (varlink_error& e) {
-        error(e.what(), e.args());
+        error(e.type(), e.params());
     }
     catch (std::system_error&) {
         // All system_errors here are send-errors, so don't send anymore

@@ -104,6 +104,6 @@ int main(int argc, char* argv[])
         return client.exit_code();
     }
     catch (varlink_error& e) {
-        std::cout << "Failed: " << e.what() << " parameters: " << e.args().dump() << "\n";
+        std::cout << "Failed: " << e.what() << "\n";
     }
 }

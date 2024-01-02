@@ -32,15 +32,20 @@ struct varlink_error_category : std::error_category {
     std::vector<std::string> errors{"no_error"};
 };
 
-struct varlink_error : std::logic_error {
-    varlink_error(const std::string& what, json args)
-        : std::logic_error(what), _args(std::move(args))
+struct varlink_error : std::runtime_error {
+    varlink_error(std::string type, json params)
+        : std::runtime_error(type + " with args: " + params.dump()),
+          type_(std::move(type)),
+          params_(std::move(params))
     {
     }
-    [[nodiscard]] const json& args() const { return _args; }
+
+    [[nodiscard]] const std::string& type() const noexcept { return type_; }
+    [[nodiscard]] const json& params() const noexcept { return params_; }
 
   private:
-    json _args;
+    std::string type_;
+    json params_;
 };
 
 extern inline varlink_error_category& varlink_category()

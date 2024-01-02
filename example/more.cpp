@@ -98,10 +98,6 @@ int main()
         service->run();
         return 0;
     }
-    catch (varlink_error& e) {
-        std::cerr << "Couldn't start service: " << e.what() << e.args() << "\n";
-        return 1;
-    }
     catch (std::exception& e) {
         std::cerr << "Couldn't start service: " << e.what() << "\n";
         return 1;

@@ -50,7 +50,7 @@ int main(int argc, char* argv[])
         return (resp["all_ok"].get<bool>()) ? 0 : 1;
     }
     catch (varlink::varlink_error& e) {
-        std::cout << "Failed: " << e.what() << " parameters: " << e.args().dump() << std::endl;
+        std::cout << "Failed: " << e.what() << std::endl;
         return 1;
     }
 }

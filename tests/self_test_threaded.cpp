@@ -49,16 +49,16 @@ std::unique_ptr<BaseEnvironment> getEnvironment()
     return env;
 }
 
-#define REQUIRE_VARLINK_ERROR(statement, error, parameter, value)  \
-    do {                                                           \
-        try {                                                      \
-            statement;                                             \
-            REQUIRE_THROWS_AS(statement, varlink_error);           \
-        }                                                          \
-        catch (varlink_error & e) {                                \
-            REQUIRE(std::string(e.what()) == (error));             \
-            REQUIRE(e.args()[parameter].get<string>() == (value)); \
-        }                                                          \
+#define REQUIRE_VARLINK_ERROR(statement, error, parameter, value)    \
+    do {                                                             \
+        try {                                                        \
+            statement;                                               \
+            REQUIRE_THROWS_AS(statement, varlink_error);             \
+        }                                                            \
+        catch (varlink_error & e) {                                  \
+            REQUIRE(e.type() == (error));                            \
+            REQUIRE(e.params()[parameter].get<string>() == (value)); \
+        }                                                            \
     } while (false)
 
 TEST_CASE("Testing server with client")
@@ -198,7 +198,7 @@ TEST_CASE("Testing server with client")
             client.call("org.err.E", json{});
         }
         catch (varlink_error& e) {
-            REQUIRE(std::string(e.what()) == "org.varlink.service.InternalError");
+            REQUIRE(e.type() == "org.varlink.service.InternalError");
         }
     }
 

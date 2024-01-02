@@ -61,8 +61,8 @@ TEST_CASE("Client sync call processing")
             REQUIRE(false);
         }
         catch (varlink_error& e) {
-            REQUIRE(std::string_view(e.what()) == "org.test.Error");
-            REQUIRE(e.args()["test"].get<int>() == 1337);
+            REQUIRE(e.type() == "org.test.Error");
+            REQUIRE(e.params()["test"].get<int>() == 1337);
         }
     }
 
