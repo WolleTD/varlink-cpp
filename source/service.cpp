@@ -39,8 +39,10 @@ void varlink_service::interface::add_callback(const std::string& methodname, cal
 [[nodiscard]] auto varlink_service::interface::callback(const std::string& methodname) const
     -> const callback_function&
 {
+    static callback_function null_callback = nullptr;
+
     const auto callback_entry = callbacks_.find(methodname);
-    if (callback_entry == callbacks_.end()) throw std::bad_function_call{};
+    if (callback_entry == callbacks_.end()) return null_callback;
     return callback_entry->second;
 }
 
@@ -89,26 +91,26 @@ struct more_reply_handler {
     {
     }
 
-    void operator()(const json::object_t& params, more_handler&& continues) const
+    void operator()(const json::object_t& params, more_handler&& handler) const
     {
         try {
             interface.validate(params, return_type);
         }
         catch (invalid_parameter& e) {
             error("org.varlink.service.InvalidParameter", {{"parameter", e.what()}}, [=](auto) {
-                if (continues) continues(std::make_error_code(std::errc::invalid_argument));
+                if (handler) handler(std::make_error_code(std::errc::invalid_argument));
             });
             return;
         }
 
         if (mode == callmode::oneway) { replySender(nullptr, nullptr); }
         else if (mode == callmode::more) {
-            json reply = {{"parameters", params}, {"continues", bool(continues)}};
-            replySender(reply, std::move(continues));
+            const json reply = {{"parameters", params}, {"continues", static_cast<bool>(handler)}};
+            replySender(reply, std::move(handler));
         }
-        else if (continues) { // and not more
+        else if (handler) { // and not more
             error("org.varlink.service.MethodNotImplemented", {{"method", method}}, [=](auto) {
-                continues(std::make_error_code(std::errc::operation_not_supported));
+                handler(std::make_error_code(std::errc::operation_not_supported));
             });
         }
         else {
@@ -142,9 +144,6 @@ static void process_call(
     };
 
     try {
-        interface->validate(message.parameters(), method.method_parameter_type());
-
-        auto& callback = interface.callback(message.method());
         auto visitor = overloaded{
             [&](const sync_callback_function& sc) -> void {
                 auto params = sc(message.parameters(), message.mode());
@@ -155,14 +154,13 @@ static void process_call(
                     replySender({{"parameters", params}}, nullptr);
             },
             [&](const async_callback_function& mc) -> void {
-                // This is not an asynchronous callback and exceptions
-                // will propagate up to the outer try-catch in this fn.
-                // TODO: This isn't true if the callback dispatches async ops
                 auto handler = more_reply_handler(
                     message, *interface, method, std::move(replySender));
                 mc(message.parameters(), message.mode(), handler);
             },
             [](const nullptr_t&) -> void { throw std::bad_function_call{}; }};
+
+        auto& callback = interface.callback(message.method());
         std::visit(visitor, callback);
     }
     catch (std::bad_function_call&) {
@@ -173,9 +171,6 @@ static void process_call(
     }
     catch (varlink_error& e) {
         error(e.type(), e.params());
-    }
-    catch (std::system_error&) {
-        // All system_errors here are send-errors, so don't send anymore
     }
     catch (std::exception& e) {
         error("org.varlink.service.InternalError", {{"what", e.what()}});
@@ -201,10 +196,18 @@ void varlink_service::message_call(
 
     const auto method_it = interface->find_method(methodname);
     if (method_it == interface->end()) {
-        error("org.varlink.service.MethodNotFound", {{"method", ifname + '.' + methodname}});
+        error("org.varlink.service.MethodNotFound", {{"method", message.full_method()}});
         return;
     }
     const auto& method = *method_it;
+
+    try {
+        interface->validate(message.parameters(), method.method_parameter_type());
+    }
+    catch (invalid_parameter& e) {
+        error("org.varlink.service.InvalidParameter", {{"parameter", e.what()}});
+        return;
+    }
 
     process_call(message, interface, method, std::move(replySender));
 }
