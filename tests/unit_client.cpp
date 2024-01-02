@@ -1,7 +1,15 @@
+#include <future>
+#include <thread>
 #include <catch2/catch_test_macros.hpp>
 #include <varlink/async_client.hpp>
 
 #include "fake_socket.hpp"
+
+#ifdef LIBVARLINK_USE_BOOST
+#include <boost/asio/thread_pool.hpp>
+#else
+#include <asio/thread_pool.hpp>
+#endif
 
 using namespace varlink;
 using test_client = async_client<fake_proto>;
@@ -241,5 +249,83 @@ TEST_CASE("Client async call processing")
         });
         REQUIRE(ctx.run() > 0);
         REQUIRE(flag);
+    }
+}
+
+TEST_CASE("client: Executor correctness")
+{
+    net::io_context ctx;
+    net::thread_pool tp(1);
+
+    std::promise<std::thread::id> p_tid;
+    auto f_tid = p_tid.get_future();
+    post(tp, [&p_tid]() { p_tid.set_value(std::this_thread::get_id()); });
+    auto this_tid = std::this_thread::get_id();
+    auto pool_tid = f_tid.get();
+
+    auto sock = FakeSocket(ctx);
+
+    auto setup_test = [&](const auto& expected_call, const auto& response) {
+        sock.setup_fake(response);
+        sock.expect(expected_call);
+        return test_client(std::move(sock));
+    };
+
+    p_tid = {};
+    f_tid = p_tid.get_future();
+
+    SECTION("Call: no binding")
+    {
+        auto conn = setup_test(
+            R"({"method":"org.test.Test","parameters":{}})", R"({"parameters":{}})");
+        auto msg = varlink_message("org.test.Test", {});
+        conn.async_call(msg, [&](auto ec, const json&) {
+            REQUIRE(not ec);
+            p_tid.set_value(std::this_thread::get_id());
+        });
+        ctx.run();
+        REQUIRE(f_tid.get() == this_tid);
+    }
+
+    SECTION("Call: bind threadpool")
+    {
+        auto conn = setup_test(
+            R"({"method":"org.test.Test","parameters":{}})", R"({"parameters":{}})");
+        auto msg = varlink_message("org.test.Test", {});
+        conn.async_call(msg, bind_executor(tp, [&](auto ec, const json&) {
+                            REQUIRE(not ec);
+                            p_tid.set_value(std::this_thread::get_id());
+                        }));
+        ctx.run();
+        REQUIRE(f_tid.get() == pool_tid);
+    }
+
+    SECTION("Call: bind threadpool (local error)")
+    {
+        sock.error_on_write = true;
+        auto conn = setup_test(
+            R"({"method":"org.test.Test","parameters":{}})", R"({"parameters":{}})");
+        auto msg = varlink_message("org.test.Test", {});
+        conn.async_call(msg, bind_executor(tp, [&](auto ec, const json&) {
+                            REQUIRE(ec);
+                            p_tid.set_value(std::this_thread::get_id());
+                        }));
+        ctx.run();
+        REQUIRE(f_tid.get() == pool_tid);
+    }
+
+    SECTION("Call: bind threadpool (varlink error)")
+    {
+        auto conn = setup_test(
+            R"({"method":"org.test.Test","parameters":{}})",
+            R"({"error":"org.test.Error","parameters":{}})");
+        auto msg = varlink_message("org.test.Test", {});
+        conn.async_call(msg, bind_executor(tp, [&](auto ec, const json&) {
+                            REQUIRE(ec);
+                            REQUIRE(ec.category() == varlink_category());
+                            p_tid.set_value(std::this_thread::get_id());
+                        }));
+        ctx.run();
+        REQUIRE(f_tid.get() == pool_tid);
     }
 }

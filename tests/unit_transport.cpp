@@ -1,8 +1,16 @@
+#include <future>
+#include <thread>
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <varlink/json_connection.hpp>
 
 #include "fake_socket.hpp"
+
+#ifdef LIBVARLINK_USE_BOOST
+#include <boost/asio/thread_pool.hpp>
+#else
+#include <asio/thread_pool.hpp>
+#endif
 
 using namespace varlink;
 using test_connection = json_connection<fake_proto>;
@@ -272,5 +280,94 @@ TEST_CASE("JSON transport async write")
         });
         REQUIRE(ctx.run() > 0);
         REQUIRE(flag);
+    }
+}
+
+TEST_CASE("json_connection: Executor correctness")
+{
+    net::io_context ctx;
+    net::thread_pool tp(1);
+
+    std::promise<std::thread::id> p_tid;
+    auto f_tid = p_tid.get_future();
+    post(tp, [&p_tid]() { p_tid.set_value(std::this_thread::get_id()); });
+    auto this_tid = std::this_thread::get_id();
+    auto pool_tid = f_tid.get();
+
+    auto sock = FakeSocket(ctx);
+
+    p_tid = {};
+    f_tid = p_tid.get_future();
+
+    SECTION("Send: no binding")
+    {
+        auto conn = test_connection(std::move(sock));
+        conn.async_send({}, [&](auto ec) {
+            REQUIRE(not ec);
+            p_tid.set_value(std::this_thread::get_id());
+        });
+        ctx.run();
+        REQUIRE(f_tid.get() == this_tid);
+    }
+
+    SECTION("Send: bind threadpool")
+    {
+        auto conn = test_connection(std::move(sock));
+        conn.async_send({}, bind_executor(tp, [&](auto ec) {
+                            REQUIRE(not ec);
+                            p_tid.set_value(std::this_thread::get_id());
+                        }));
+        ctx.run();
+        REQUIRE(f_tid.get() == pool_tid);
+    }
+
+    SECTION("Send: bind threadpool (error)")
+    {
+        sock.error_on_write = true;
+        auto conn = test_connection(std::move(sock));
+        conn.async_send({}, bind_executor(tp, [&](auto ec) {
+                            REQUIRE(ec);
+                            p_tid.set_value(std::this_thread::get_id());
+                        }));
+        ctx.run();
+        REQUIRE(f_tid.get() == pool_tid);
+    }
+
+    SECTION("Receive: no binding")
+    {
+        sock.setup_fake(R"({})");
+        auto conn = test_connection(std::move(sock));
+
+        conn.async_receive([&](auto ec, const json&) {
+            REQUIRE(not ec);
+            p_tid.set_value(std::this_thread::get_id());
+        });
+        ctx.run();
+        REQUIRE(f_tid.get() == this_tid);
+    }
+
+    SECTION("Receive: bind threadpool")
+    {
+        sock.setup_fake(R"({})");
+        auto conn = test_connection(std::move(sock));
+
+        conn.async_receive(bind_executor(tp, [&](auto ec, const json&) {
+            REQUIRE(not ec);
+            p_tid.set_value(std::this_thread::get_id());
+        }));
+        ctx.run();
+        REQUIRE(f_tid.get() == pool_tid);
+    }
+
+    SECTION("Receive: bind threadpool (error)")
+    {
+        auto conn = test_connection(std::move(sock));
+
+        conn.async_receive(bind_executor(tp, [&](auto ec, const json&) {
+            REQUIRE(ec);
+            p_tid.set_value(std::this_thread::get_id());
+        }));
+        ctx.run();
+        REQUIRE(f_tid.get() == pool_tid);
     }
 }

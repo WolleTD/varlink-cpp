@@ -170,9 +170,11 @@ struct async_client {
     template <callmode CallMode, typename ReplyHandler>
     void async_read_reply(ReplyHandler&& handler)
     {
+        auto ex = net::get_associated_executor(handler, get_executor());
+
         static_assert(CallMode != callmode::oneway);
-        connection.async_receive(
-            [this, handler = std::forward<ReplyHandler>(handler)](auto ec, json reply) mutable {
+        connection.async_receive(net::bind_executor(
+            ex, [this, handler = std::forward<ReplyHandler>(handler)](auto ec, json reply) mutable {
                 if (reply.contains("error")) {
                     ec = make_varlink_error(reply["error"].get<std::string>());
                 }
@@ -186,7 +188,7 @@ struct async_client {
                 else {
                     handler(ec, reply["parameters"]);
                 }
-            });
+            }));
     }
 
     template <callmode CallMode>
@@ -196,23 +198,27 @@ struct async_client {
         template <typename CompletionHandler>
         void operator()(CompletionHandler&& handler, const typed_varlink_message<CallMode>& message)
         {
+            auto ex = net::get_associated_executor(handler, self_->get_executor());
+
             self_->connection.async_send(
                 message.json_data(),
-                [self = self_, handler = std::forward<CompletionHandler>(handler)](auto ec) mutable {
-                    if constexpr (CallMode == callmode::oneway) { return handler(ec); }
-                    else if (ec) {
-                        if constexpr (CallMode == callmode::more) {
-                            return handler(ec, json{}, false);
+                net::bind_executor(
+                    ex,
+                    [self = self_, handler = std::forward<CompletionHandler>(handler)](auto ec) mutable {
+                        if constexpr (CallMode == callmode::oneway) { return handler(ec); }
+                        else if (ec) {
+                            if constexpr (CallMode == callmode::more) {
+                                return handler(ec, json{}, false);
+                            }
+                            else {
+                                return handler(ec, json{});
+                            }
                         }
                         else {
-                            return handler(ec, json{});
+                            self->template async_read_reply<CallMode>(
+                                std::forward<CompletionHandler>(handler));
                         }
-                    }
-                    else {
-                        self->template async_read_reply<CallMode>(
-                            std::forward<CompletionHandler>(handler));
-                    }
-                });
+                    }));
         }
 
       private:

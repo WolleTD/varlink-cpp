@@ -67,62 +67,53 @@ struct FakeSocket : net::socket_base {
     size_t send(const net::const_buffer& buffer)
     {
         if (error_on_write) { throw std::system_error(net::error::broken_pipe); }
-        else {
-            return write_buffer(sent_data, buffer);
-        }
+        return write_buffer(sent_data, buffer);
     }
 
     template <typename CompletionHandler>
     auto async_write_some(const net::const_buffer& buffer, CompletionHandler&& handler)
     {
-        net::post(
-            ctx_->get_executor(),
-            [this, buffer, handler = std::forward<CompletionHandler>(handler)]() mutable {
-                if (not cancelled) {
-                    if (error_on_write) { return handler(net::error::broken_pipe, 0); }
-                    else {
-                        auto n = send(buffer);
-                        return handler(std::error_code{}, n);
-                    }
-                }
-                else {
-                    return handler(net::error::operation_aborted, 0);
-                }
-            });
+        auto ex = net::get_associated_executor(handler, ctx_->get_executor());
+
+        net::post(ex, [this, buffer, handler = std::forward<CompletionHandler>(handler)]() mutable {
+            if (not cancelled) {
+                if (error_on_write) { return handler(net::error::broken_pipe, 0); }
+                auto n = send(buffer);
+                return handler(std::error_code{}, n);
+            }
+            return handler(net::error::operation_aborted, 0);
+        });
     }
 
     size_t receive(const net::mutable_buffer& buffer)
     {
         if (fake_data.empty()) { throw std::system_error(net::error::eof); }
-        else {
-            const auto max_buffer = std::min(fake_data.size(), buffer.size());
-            const auto read_count = std::min(write_max, max_buffer);
-            std::memcpy(buffer.data(), fake_data.data(), read_count);
-            fake_data.erase(
-                fake_data.begin(), fake_data.begin() + static_cast<ptrdiff_t>(read_count));
-            return read_count;
-        }
+        const auto max_buffer = std::min(fake_data.size(), buffer.size());
+        const auto read_count = std::min(write_max, max_buffer);
+        std::memcpy(buffer.data(), fake_data.data(), read_count);
+        fake_data.erase(fake_data.begin(), fake_data.begin() + static_cast<ptrdiff_t>(read_count));
+        return read_count;
     }
 
     template <typename CompletionHandler>
     auto async_receive(const net::mutable_buffer& buffer, CompletionHandler&& handler)
     {
-        net::post(
-            ctx_->get_executor(),
-            [this, buffer, handler = std::forward<CompletionHandler>(handler)]() mutable {
-                try {
-                    if (not cancelled) {
-                        auto n = receive(buffer);
-                        handler(std::error_code{}, n);
-                    }
-                    else {
-                        handler(net::error::operation_aborted, 0);
-                    }
+        auto ex = net::get_associated_executor(handler, ctx_->get_executor());
+
+        net::post(ex, [this, buffer, handler = std::forward<CompletionHandler>(handler)]() mutable {
+            try {
+                if (not cancelled) {
+                    auto n = receive(buffer);
+                    handler(std::error_code{}, n);
                 }
-                catch (std::system_error& e) {
-                    handler(e.code(), 0);
+                else {
+                    handler(net::error::operation_aborted, 0);
                 }
-            });
+            }
+            catch (std::system_error& e) {
+                handler(e.code(), 0);
+            }
+        });
     }
 
     void cancel() { cancelled = true; }

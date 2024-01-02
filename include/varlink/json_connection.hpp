@@ -7,14 +7,16 @@
 #include <varlink/detail/nl_json.hpp>
 
 #if LIBVARLINK_USE_BOOST
+#include <boost/asio/bind_executor.hpp>
 #include <boost/asio/buffer.hpp>
+#include <boost/asio/dispatch.hpp>
 #include <boost/asio/io_context.hpp>
-#include <boost/asio/post.hpp>
 #include <boost/asio/write.hpp>
 #else
+#include <asio/bind_executor.hpp>
 #include <asio/buffer.hpp>
+#include <asio/dispatch.hpp>
 #include <asio/io_context.hpp>
-#include <asio/post.hpp>
 #include <asio/write.hpp>
 #endif
 
@@ -125,7 +127,7 @@ struct json_connection {
             ec = net::error::invalid_argument;
             return json{};
         }
-    };
+    }
 
     struct initiate_async_receive {
         explicit initiate_async_receive(json_connection* self) : self_(self) {}
@@ -133,11 +135,11 @@ struct json_connection {
         template <typename CompletionHandler>
         void operator()(CompletionHandler&& handler)
         {
+            auto ex = net::get_associated_executor(handler, self_->get_executor());
             std::error_code _ec;
             if (auto _message = self_->read_next_message(_ec); _message) {
-                net::post(
-                    self_->get_executor(),
-                    [_ec, _message, handler = std::forward<CompletionHandler>(handler)]() mutable {
+                net::dispatch(
+                    ex, [_ec, _message, handler = std::forward<CompletionHandler>(handler)]() mutable {
                         handler(_ec, std::move(_message.value()));
                     });
             }
@@ -146,19 +148,17 @@ struct json_connection {
                     net::buffer(
                         &(*self_->read_end),
                         static_cast<size_t>(self_->readbuf.end() - self_->read_end)),
-                    [self = self_, handler = std::forward<CompletionHandler>(handler)](
-                        std::error_code ec, size_t n) mutable {
-                        if (ec) { handler(ec, json{}); }
-                        else {
-                            self->read_end += static_cast<ptrdiff_t>(n);
-                            if (auto message = self->read_next_message(ec); message) {
-                                handler(ec, message.value());
-                            }
+                    net::bind_executor(
+                        ex,
+                        [self = self_, handler = std::forward<CompletionHandler>(handler)](
+                            std::error_code ec, size_t n) mutable {
+                            if (ec) { handler(ec, json{}); }
                             else {
+                                self->read_end += static_cast<ptrdiff_t>(n);
+                                // Reuse parsing at top of this function
                                 self->async_receive(std::forward<CompletionHandler>(handler));
                             }
-                        }
-                    });
+                        }));
             }
         }
 
@@ -172,13 +172,16 @@ struct json_connection {
         template <typename CompletionHandler>
         void operator()(CompletionHandler&& handler, const json& message)
         {
+            auto ex = net::get_associated_executor(handler, self_->get_executor());
             auto m = std::make_unique<std::string>(message.dump());
             auto buffer = net::buffer(m->data(), m->size() + 1);
             net::async_write(
                 self_->stream,
                 buffer,
-                [handler = std::forward<CompletionHandler>(handler), m = std::move(m)](
-                    std::error_code ec, size_t) mutable { handler(ec); });
+                net::bind_executor(
+                    ex,
+                    [handler = std::forward<CompletionHandler>(handler), m = std::move(m)](
+                        std::error_code ec, size_t) mutable { handler(ec); }));
         }
 
       private:
