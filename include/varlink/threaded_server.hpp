@@ -13,24 +13,30 @@
 
 namespace varlink {
 class threaded_server {
-    auto make_async_server(const varlink_uri& uri)
+    auto make_async_server(const varlink_uri& uri, exception_handler ex_handler)
     {
         return std::visit(
             [&](auto&& sockaddr) -> async_server_variant {
-                return server_t<decltype(sockaddr)>({ctx, sockaddr}, service);
+                return server_t<decltype(sockaddr)>({ctx, sockaddr}, service, std::move(ex_handler));
             },
             endpoint_from_uri(uri));
     }
 
   public:
-    threaded_server(const varlink_uri& uri, const varlink_service::description& description)
-        : ctx(4), service(description), server(make_async_server(uri))
+    threaded_server(
+        const varlink_uri& uri,
+        const varlink_service::description& description,
+        exception_handler ex_handler = nullptr)
+        : ctx(4), service(description), server(make_async_server(uri, std::move(ex_handler)))
     {
         std::visit([&](auto&& s) { net::post(ctx, [&]() { s.async_serve_forever(); }); }, server);
     }
 
-    threaded_server(std::string_view uri, const varlink_service::description& description)
-        : threaded_server(varlink_uri(uri), description)
+    threaded_server(
+        std::string_view uri,
+        const varlink_service::description& description,
+        exception_handler ex_handler = nullptr)
+        : threaded_server(varlink_uri(uri), description, std::move(ex_handler))
     {
     }
 

@@ -259,21 +259,35 @@ method EmptyReply() -> ()
     SECTION("Throw std::exception in the callback")
     {
         json err;
-        testcall("org.test.Exception", {{"ping", "test"}}, false, false, [&](auto&& r, auto&&) {
-            err = r;
-        });
+        std::string msg;
+        try {
+            testcall("org.test.Exception", {{"ping", "test"}}, false, false, [&](auto&& r, auto&&) {
+                err = r;
+            });
+        }
+        catch (std::exception& e) {
+            msg = e.what();
+        }
         REQUIRE(err["error"].get<string>() == "org.varlink.service.InternalError");
-        REQUIRE(err["parameters"]["what"].get<string>() == "std::exception");
+        REQUIRE(msg == err["parameters"]["what"].get<string>());
+        REQUIRE(msg == "std::exception");
     }
 
     SECTION("Varlink error on response type error (sync callback)")
     {
         json err;
-        testcall("org.test.TestTypes", {{"ping", "123"}}, false, false, [&](auto&& r, auto&&) {
-            err = r;
-        });
+        std::string msg;
+        try {
+            testcall("org.test.TestTypes", {{"ping", "123"}}, false, false, [&](auto&& r, auto&&) {
+                err = r;
+            });
+        }
+        catch (invalid_parameter& e) {
+            msg = e.what();
+        }
         REQUIRE(err["error"].get<string>() == "org.varlink.service.InvalidParameter");
-        REQUIRE(err["parameters"]["parameter"].get<string>() == "pong");
+        REQUIRE(msg == err["parameters"]["parameter"].get<string>());
+        REQUIRE(msg == "pong");
     }
 
     SECTION("Varlink error on response type error (async callback)")

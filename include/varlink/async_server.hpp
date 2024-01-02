@@ -24,10 +24,7 @@ struct async_server : std::enable_shared_from_this<async_server<Protocol>> {
 
     using std::enable_shared_from_this<async_server>::shared_from_this;
 
-    explicit async_server(
-        acceptor_type acceptor,
-        varlink_service& service,
-        exception_handler ex_handler = nullptr)
+    explicit async_server(acceptor_type acceptor, varlink_service& service, exception_handler ex_handler)
         : acceptor_(std::move(acceptor)), service_(service), ex_handler_(std::move(ex_handler))
     {
     }

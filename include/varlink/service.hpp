@@ -69,7 +69,7 @@ struct varlink_service {
     varlink_service(varlink_service&& src) = delete;
     varlink_service& operator=(varlink_service&&) = delete;
 
-    void message_call(const basic_varlink_message& message, reply_function&& replySender) const noexcept;
+    void message_call(const basic_varlink_message& message, reply_function&& replySender) const;
     void add_interface(interface&& interf);
     void add_interface(varlink_interface&& spec, callback_map&& callbacks = {});
     void add_interface(std::string_view definition, callback_map&& callbacks = {});

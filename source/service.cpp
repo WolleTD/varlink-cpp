@@ -168,18 +168,18 @@ static void process_call(
     }
     catch (invalid_parameter& e) {
         error("org.varlink.service.InvalidParameter", {{"parameter", e.what()}});
+        throw;
     }
     catch (varlink_error& e) {
         error(e.type(), e.params());
     }
     catch (std::exception& e) {
         error("org.varlink.service.InternalError", {{"what", e.what()}});
+        throw;
     }
 }
 
-void varlink_service::message_call(
-    const basic_varlink_message& message,
-    reply_function&& replySender) const noexcept
+void varlink_service::message_call(const basic_varlink_message& message, reply_function&& replySender) const
 {
     const auto error = [=](const std::string& what, const json& params) {
         assert(params.is_object());

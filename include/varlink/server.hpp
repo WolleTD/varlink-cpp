@@ -8,23 +8,31 @@
 
 namespace varlink {
 class varlink_server {
-    auto make_async_server(net::io_context& ctx, const varlink_uri& uri)
+    auto make_async_server(net::io_context& ctx, const varlink_uri& uri, exception_handler ex_handler)
     {
         return std::visit(
             [&](auto&& sockaddr) -> async_server_variant {
-                return server_t<decltype(sockaddr)>({ctx, sockaddr}, service);
+                return server_t<decltype(sockaddr)>({ctx, sockaddr}, service, std::move(ex_handler));
             },
             endpoint_from_uri(uri));
     }
 
   public:
-    varlink_server(net::io_context& ctx, const varlink_uri& uri, const varlink_service::description& description)
-        : service(description), server(make_async_server(ctx, uri))
+    varlink_server(
+        net::io_context& ctx,
+        const varlink_uri& uri,
+        const varlink_service::description& description,
+        exception_handler ex_handler = nullptr)
+        : service(description), server(make_async_server(ctx, uri, std::move(ex_handler)))
     {
     }
 
-    varlink_server(net::io_context& ctx, std::string_view uri, const varlink_service::description& description)
-        : varlink_server(ctx, varlink_uri(uri), description)
+    varlink_server(
+        net::io_context& ctx,
+        std::string_view uri,
+        const varlink_service::description& description,
+        exception_handler ex_handler = nullptr)
+        : varlink_server(ctx, varlink_uri(uri), description, std::move(ex_handler))
     {
     }
 
