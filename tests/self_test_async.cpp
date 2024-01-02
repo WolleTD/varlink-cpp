@@ -81,8 +81,8 @@ TEST_CASE("Testing server with client")
     {
         bool flag{false};
         auto msg = varlink_message("org.varlink.service.GetInfo", {});
-        client.async_call(msg, [&](auto ec, const json& resp) {
-            REQUIRE(not ec);
+        client.async_call(msg, [&](auto eptr, const json& resp) {
+            REQUIRE(not eptr);
             REQUIRE(resp["vendor"].get<string>() == "varlink");
             REQUIRE(resp["product"].get<string>() == "test");
             REQUIRE(resp["version"].get<string>() == "1");
@@ -102,8 +102,8 @@ TEST_CASE("Testing server with client")
         bool flag{false};
         auto msg = varlink_message(
             "org.varlink.service.GetInterfaceDescription", {{"interface", "org.test"}});
-        client.async_call(msg, [&](auto ec, const json& resp) {
-            REQUIRE(not ec);
+        client.async_call(msg, [&](auto eptr, const json& resp) {
+            REQUIRE(not eptr);
             REQUIRE(resp["description"].get<string>() ==
                 "interface org.test\n\n"
                 "method P(p: string) -> (q: string)\n\n"
@@ -120,11 +120,17 @@ TEST_CASE("Testing server with client")
         bool flag{false};
         auto msg = varlink_message(
             "org.varlink.service.GetInterfaceDescription", {{"interface", "org.notfound"}});
-        client.async_call(msg, [&](auto ec, const json& resp) {
-            REQUIRE(ec.category() == varlink_category());
-            REQUIRE(ec.message() == "org.varlink.service.InterfaceNotFound");
+        client.async_call(msg, [&](auto eptr, const json& resp) {
+            REQUIRE(eptr);
+            try {
+                std::rethrow_exception(eptr);
+            }
+            catch (varlink_error& e) {
+                flag = true;
+                REQUIRE(e.type() == "org.varlink.service.InterfaceNotFound");
+                REQUIRE(e.params() == resp);
+            }
             REQUIRE(resp["interface"].get<std::string>() == "org.notfound");
-            flag = true;
         });
         REQUIRE(ctx.run() > 0);
         REQUIRE(flag);
@@ -134,11 +140,17 @@ TEST_CASE("Testing server with client")
     {
         bool flag{false};
         auto msg = varlink_message("org.varlink.service.GetInterfaceDescription", {});
-        client.async_call(msg, [&](auto ec, const json& resp) {
-            REQUIRE(ec.category() == varlink_category());
-            REQUIRE(ec.message() == "org.varlink.service.InvalidParameter");
+        client.async_call(msg, [&](auto eptr, const json& resp) {
+            REQUIRE(eptr);
+            try {
+                std::rethrow_exception(eptr);
+            }
+            catch (varlink_error& e) {
+                flag = true;
+                REQUIRE(e.type() == "org.varlink.service.InvalidParameter");
+                REQUIRE(e.params() == resp);
+            }
             REQUIRE(resp["parameter"].get<std::string>() == "interface");
-            flag = true;
         });
         REQUIRE(ctx.run() > 0);
         REQUIRE(flag);
@@ -148,8 +160,8 @@ TEST_CASE("Testing server with client")
     {
         bool flag{false};
         auto msg = varlink_message("org.test.P", {{"p", "test"}});
-        client.async_call(msg, [&](auto ec, const json& resp) {
-            REQUIRE(not ec);
+        client.async_call(msg, [&](auto eptr, const json& resp) {
+            REQUIRE(not eptr);
             REQUIRE(resp["q"].get<string>() == "test");
             flag = true;
         });
@@ -161,11 +173,17 @@ TEST_CASE("Testing server with client")
     {
         bool flag{false};
         auto msg = varlink_message("org.test.P", {{"q", "invalid"}});
-        client.async_call(msg, [&](auto ec, const json& resp) {
-            REQUIRE(ec.category() == varlink_category());
-            REQUIRE(ec.message() == "org.varlink.service.InvalidParameter");
+        client.async_call(msg, [&](auto eptr, const json& resp) {
+            REQUIRE(eptr);
+            try {
+                std::rethrow_exception(eptr);
+            }
+            catch (varlink_error& e) {
+                flag = true;
+                REQUIRE(e.type() == "org.varlink.service.InvalidParameter");
+                REQUIRE(e.params() == resp);
+            }
             REQUIRE(resp["parameter"].get<std::string>() == "p");
-            flag = true;
         });
         REQUIRE(ctx.run() > 0);
         REQUIRE(flag);
@@ -175,11 +193,17 @@ TEST_CASE("Testing server with client")
     {
         bool flag{false};
         auto msg = varlink_message("org.test.M", {{"n", 5}});
-        client.async_call(msg, [&](auto ec, const json& resp) {
-            REQUIRE(ec.category() == varlink_category());
-            REQUIRE(ec.message() == "org.varlink.service.MethodNotImplemented");
+        client.async_call(msg, [&](auto eptr, const json& resp) {
+            REQUIRE(eptr);
+            try {
+                std::rethrow_exception(eptr);
+            }
+            catch (varlink_error& e) {
+                flag = true;
+                REQUIRE(e.type() == "org.varlink.service.MethodNotImplemented");
+                REQUIRE(e.params() == resp);
+            }
             REQUIRE(resp["method"].get<std::string>() == "org.test.M");
-            flag = true;
         });
         REQUIRE(ctx.run() > 0);
         REQUIRE(more_counter == 1);
@@ -190,8 +214,8 @@ TEST_CASE("Testing server with client")
     {
         int flag{0};
         auto msg = varlink_message_more("org.test.M", {{"n", 5}});
-        client.async_call_more(msg, [&](auto ec, const json& resp, bool c) {
-            REQUIRE(not ec);
+        client.async_call_more(msg, [&](auto eptr, const json& resp, bool c) {
+            REQUIRE(not eptr);
             REQUIRE(c == (flag < 5));
             REQUIRE(flag++ == resp["m"].get<int>());
         });
@@ -204,8 +228,8 @@ TEST_CASE("Testing server with client")
     {
         bool flag{false};
         auto msg = varlink_message("org.test.E", json::object());
-        client.async_call(msg, [&](auto ec, const json& resp) {
-            REQUIRE(not ec);
+        client.async_call(msg, [&](auto eptr, const json& resp) {
+            REQUIRE(not eptr);
             REQUIRE(resp.is_object());
             REQUIRE(resp.empty());
             flag = true;
@@ -220,12 +244,20 @@ TEST_CASE("Testing server with client")
         // We have to use the timeout here, because if the server can send responses without
         // delay, it cranks out one or two responses before getting an error.
         auto msg = varlink_message_more("org.test.M", {{"n", 5}, {"t", true}});
-        client.async_call_more(msg, [&](auto ec, const json& resp, bool c) {
+        client.async_call_more(msg, [&](auto eptr, const json& resp, bool c) {
             if (flag == 2) {
+                REQUIRE(eptr);
+                std::error_code ec;
+                try {
+                    std::rethrow_exception(eptr);
+                }
+                catch (std::system_error& e) {
+                    ec = e.code();
+                }
                 REQUIRE(ec == net::error::bad_descriptor);
                 return;
             }
-            REQUIRE(not ec);
+            REQUIRE(not eptr);
             REQUIRE(c);
             REQUIRE(flag++ == resp["m"].get<int>());
             if (flag == 2) client.close();
@@ -239,8 +271,8 @@ TEST_CASE("Testing server with client")
     {
         bool flag{false};
         auto msg = varlink_message_oneway("org.test.P", {{"p", "test"}});
-        client.async_call_oneway(msg, [&](auto ec) {
-            REQUIRE(not ec);
+        client.async_call_oneway(msg, [&](auto eptr) {
+            REQUIRE(not eptr);
             flag = true;
         });
         REQUIRE(ctx.run() > 0);
@@ -252,13 +284,13 @@ TEST_CASE("Testing server with client")
         bool flag1{false};
         bool flag2{false};
         auto msg1 = varlink_message_oneway("org.test.P", {{"p", "test"}});
-        client.async_call_oneway(msg1, [&](auto ec) {
-            REQUIRE(not ec);
+        client.async_call_oneway(msg1, [&](auto eptr) {
+            REQUIRE(not eptr);
             flag1 = true;
         });
         auto msg2 = varlink_message("org.test.P", {{"p", "test"}});
-        client.async_call(msg2, [&](auto ec, const json& resp) {
-            REQUIRE(not ec);
+        client.async_call(msg2, [&](auto eptr, const json& resp) {
+            REQUIRE(not eptr);
             REQUIRE(resp["q"].get<std::string>() == "test");
             flag2 = true;
         });
@@ -271,8 +303,8 @@ TEST_CASE("Testing server with client")
     {
         bool flag{false};
         auto msg = varlink_message_upgrade("org.test.P", {{"p", "test"}});
-        client.async_call_upgrade(msg, [&](auto ec, const json& resp) {
-            REQUIRE(not ec);
+        client.async_call_upgrade(msg, [&](auto eptr, const json& resp) {
+            REQUIRE(not eptr);
             REQUIRE(resp["q"].get<string>() == "test");
             flag = true;
         });
@@ -284,11 +316,17 @@ TEST_CASE("Testing server with client")
     {
         bool flag{false};
         auto msg = varlink_message("org.notfound.NonExistent", {});
-        client.async_call(msg, [&](auto ec, const json& resp) {
-            REQUIRE(ec.category() == varlink_category());
-            REQUIRE(ec.message() == "org.varlink.service.InterfaceNotFound");
+        client.async_call(msg, [&](auto eptr, const json& resp) {
+            REQUIRE(eptr);
+            try {
+                std::rethrow_exception(eptr);
+            }
+            catch (varlink_error& e) {
+                flag = true;
+                REQUIRE(e.type() == "org.varlink.service.InterfaceNotFound");
+                REQUIRE(e.params() == resp);
+            }
             REQUIRE(resp["interface"].get<std::string>() == "org.notfound");
-            flag = true;
         });
         REQUIRE(ctx.run() > 0);
         REQUIRE(flag);
@@ -298,11 +336,17 @@ TEST_CASE("Testing server with client")
     {
         bool flag{false};
         auto msg = varlink_message("org.test.NonExistent", {});
-        client.async_call(msg, [&](auto ec, const json& resp) {
-            REQUIRE(ec.category() == varlink_category());
-            REQUIRE(ec.message() == "org.varlink.service.MethodNotFound");
+        client.async_call(msg, [&](auto eptr, const json& resp) {
+            REQUIRE(eptr);
+            try {
+                std::rethrow_exception(eptr);
+            }
+            catch (varlink_error& e) {
+                flag = true;
+                REQUIRE(e.type() == "org.varlink.service.MethodNotFound");
+                REQUIRE(e.params() == resp);
+            }
             REQUIRE(resp["method"].get<std::string>() == "org.test.NonExistent");
-            flag = true;
         });
         REQUIRE(ctx.run() > 0);
         REQUIRE(flag);
@@ -312,11 +356,17 @@ TEST_CASE("Testing server with client")
     {
         bool flag{false};
         auto msg = varlink_message("org.err.E", {});
-        client.async_call(msg, [&](auto ec, const json& resp) {
-            REQUIRE(ec.category() == varlink_category());
-            REQUIRE(ec.message() == "org.varlink.service.InternalError");
+        client.async_call(msg, [&](auto eptr, const json& resp) {
+            REQUIRE(eptr);
+            try {
+                std::rethrow_exception(eptr);
+            }
+            catch (varlink_error& e) {
+                flag = true;
+                REQUIRE(e.type() == "org.varlink.service.InternalError");
+                REQUIRE(e.params() == resp);
+            }
             REQUIRE(resp["what"].get<std::string>() == "std::exception");
-            flag = true;
         });
         REQUIRE(ctx.run() > 0);
         REQUIRE(flag);
@@ -335,14 +385,14 @@ TEST_CASE("Testing server with client")
         bool flag{false};
         int more_cnt = 0;
         auto more = varlink_message_more("org.test.M", {{"n", 1}, {"t", true}});
-        client.async_call_more(more, [&](auto ec, const json& resp, bool c) {
-            REQUIRE(not ec);
+        client.async_call_more(more, [&](auto eptr, const json& resp, bool c) {
+            REQUIRE(not eptr);
             REQUIRE(resp["m"].get<int>() == more_cnt++);
             if (not c) more_duration = steady_clock::now() - begin;
         });
         auto ping = varlink_message("org.test.P", {{"p", "test"}});
-        client2.async_call(ping, [&](auto ec, const json& resp) {
-            REQUIRE(not ec);
+        client2.async_call(ping, [&](auto eptr, const json& resp) {
+            REQUIRE(not eptr);
             REQUIRE(resp["q"].get<string>() == "test");
             ping_duration = steady_clock::now() - begin;
             flag = true;
@@ -358,8 +408,8 @@ TEST_CASE("Testing server with client")
         bool flag{false};
         auto msg = varlink_message("org.test.P", {{"p", "test"}});
         auto my_client = std::move(client);
-        my_client.async_call(msg, [&](auto ec, const json& resp) {
-            REQUIRE(not ec);
+        my_client.async_call(msg, [&](auto eptr, const json& resp) {
+            REQUIRE(not eptr);
             REQUIRE(resp["q"].get<string>() == "test");
             flag = true;
         });

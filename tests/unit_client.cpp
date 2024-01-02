@@ -135,8 +135,8 @@ TEST_CASE("Client async call processing")
             R"({"parameters":{"pong":"123"}})");
         bool flag{false};
         auto msg = varlink_message("org.test.Test", {{"ping", "123"}});
-        client->async_call(msg, [&](auto ec, const json& reply) {
-            REQUIRE(not ec);
+        client->async_call(msg, [&](auto eptr, const json& reply) {
+            REQUIRE(not eptr);
             REQUIRE(reply["pong"].get<std::string>() == "123");
             flag = true;
         });
@@ -152,8 +152,8 @@ TEST_CASE("Client async call processing")
             net::buffer(&client, 0));
         bool flag{false};
         auto msg = varlink_message_oneway("org.test.Test", {{"ping", "123"}});
-        client->async_call_oneway(msg, [&](auto ec) {
-            REQUIRE(not ec);
+        client->async_call_oneway(msg, [&](auto eptr) {
+            REQUIRE(not eptr);
             flag = true;
         });
         REQUIRE(ctx.run() > 0);
@@ -172,9 +172,9 @@ TEST_CASE("Client async call processing")
         auto msg = varlink_message_more("org.test.Test", {{"ping", "123"}});
         auto move_only_check = std::make_unique<int>();
         client->async_call_more(
-            msg, [&, moc = std::move(move_only_check)](auto ec, const json& r, bool more) {
+            msg, [&, moc = std::move(move_only_check)](auto eptr, const json& r, bool more) {
                 REQUIRE(moc);
-                REQUIRE(not ec);
+                REQUIRE(not eptr);
                 REQUIRE(was_more == not more);
                 was_more = more;
                 REQUIRE(r["pong"].get<std::string>() == "123");
@@ -193,11 +193,17 @@ TEST_CASE("Client async call processing")
             R"({"error":"org.test.Error","parameters":{"test":1337}})");
         bool flag{false};
         auto msg = varlink_message("org.test.Test", {{"ping", "123"}});
-        client->async_call(msg, [&](std::error_code ec, const json& r) {
-            REQUIRE(ec.category() == varlink_category());
-            REQUIRE(ec.message() == "org.test.Error");
+        client->async_call(msg, [&](std::exception_ptr eptr, const json& r) {
+            REQUIRE(eptr);
+            try {
+                std::rethrow_exception(eptr);
+            }
+            catch (varlink_error& e) {
+                flag = true;
+                REQUIRE(e.type() == "org.test.Error");
+                REQUIRE(e.params()["test"].get<int>() == 1337);
+            }
             REQUIRE(r["test"].get<int>() == 1337);
-            flag = true;
         });
         REQUIRE(ctx.run() > 0);
         REQUIRE(flag);
@@ -211,10 +217,16 @@ TEST_CASE("Client async call processing")
             net::buffer(std::string_view(R"({"parameters":{"pong":)")));
         bool flag{false};
         auto msg = varlink_message("org.test.Test", {{"ping", "123"}});
-        client->async_call(msg, [&](auto ec, const json& r) {
-            REQUIRE(ec == net::error::eof);
+        client->async_call(msg, [&](auto eptr, const json& r) {
+            REQUIRE(eptr);
+            try {
+                std::rethrow_exception(eptr);
+            }
+            catch (std::system_error& e) {
+                flag = true;
+                REQUIRE(e.code() == net::error::eof);
+            }
             REQUIRE(r == nullptr);
-            flag = true;
         });
         REQUIRE(ctx.run() > 0);
         REQUIRE(flag);
@@ -227,7 +239,15 @@ TEST_CASE("Client async call processing")
             R"({"method":"org.test.Test","parameters":{"ping":"123"}})", R"({"parameters":{"pong":)");
         bool flag{false};
         auto msg = varlink_message("org.test.Test", {{"ping", "123"}});
-        client->async_call(msg, [&](auto ec, const json& r) {
+        client->async_call(msg, [&](auto eptr, const json& r) {
+            REQUIRE(eptr);
+            std::error_code ec;
+            try {
+                std::rethrow_exception(eptr);
+            }
+            catch (std::system_error& e) {
+                ec = e.code();
+            }
             REQUIRE(ec == net::error::invalid_argument);
             REQUIRE(r == nullptr);
             flag = true;
@@ -242,7 +262,15 @@ TEST_CASE("Client async call processing")
         setup_test("", "");
         bool flag{false};
         auto msg = varlink_message("org.test.Test", {{"ping", "123"}});
-        client->async_call(msg, [&](auto ec, const json& r) {
+        client->async_call(msg, [&](auto eptr, const json& r) {
+            REQUIRE(eptr);
+            std::error_code ec;
+            try {
+                std::rethrow_exception(eptr);
+            }
+            catch (std::system_error& e) {
+                ec = e.code();
+            }
             REQUIRE(ec == net::error::broken_pipe);
             REQUIRE(r == nullptr);
             flag = true;
@@ -279,8 +307,8 @@ TEST_CASE("client: Executor correctness")
         auto conn = setup_test(
             R"({"method":"org.test.Test","parameters":{}})", R"({"parameters":{}})");
         auto msg = varlink_message("org.test.Test", {});
-        conn.async_call(msg, [&](auto ec, const json&) {
-            REQUIRE(not ec);
+        conn.async_call(msg, [&](auto eptr, const json&) {
+            REQUIRE(not eptr);
             p_tid.set_value(std::this_thread::get_id());
         });
         ctx.run();
@@ -292,8 +320,8 @@ TEST_CASE("client: Executor correctness")
         auto conn = setup_test(
             R"({"method":"org.test.Test","parameters":{}})", R"({"parameters":{}})");
         auto msg = varlink_message("org.test.Test", {});
-        conn.async_call(msg, bind_executor(tp, [&](auto ec, const json&) {
-                            REQUIRE(not ec);
+        conn.async_call(msg, bind_executor(tp, [&](auto eptr, const json&) {
+                            REQUIRE(not eptr);
                             p_tid.set_value(std::this_thread::get_id());
                         }));
         ctx.run();
@@ -306,8 +334,16 @@ TEST_CASE("client: Executor correctness")
         auto conn = setup_test(
             R"({"method":"org.test.Test","parameters":{}})", R"({"parameters":{}})");
         auto msg = varlink_message("org.test.Test", {});
-        conn.async_call(msg, bind_executor(tp, [&](auto ec, const json&) {
-                            REQUIRE(ec);
+        conn.async_call(msg, bind_executor(tp, [&](auto eptr, const json&) {
+                            REQUIRE(eptr);
+                            std::error_code ec;
+                            try {
+                                std::rethrow_exception(eptr);
+                            }
+                            catch (std::system_error& e) {
+                                ec = e.code();
+                            }
+                            REQUIRE(ec == net::error::broken_pipe);
                             p_tid.set_value(std::this_thread::get_id());
                         }));
         ctx.run();
@@ -320,9 +356,16 @@ TEST_CASE("client: Executor correctness")
             R"({"method":"org.test.Test","parameters":{}})",
             R"({"error":"org.test.Error","parameters":{}})");
         auto msg = varlink_message("org.test.Test", {});
-        conn.async_call(msg, bind_executor(tp, [&](auto ec, const json&) {
-                            REQUIRE(ec);
-                            REQUIRE(ec.category() == varlink_category());
+        conn.async_call(msg, bind_executor(tp, [&](auto eptr, const json&) {
+                            REQUIRE(eptr);
+                            std::string err;
+                            try {
+                                std::rethrow_exception(eptr);
+                            }
+                            catch (varlink_error& e) {
+                                err = e.type();
+                            }
+                            REQUIRE(err == "org.test.Error");
                             p_tid.set_value(std::this_thread::get_id());
                         }));
         ctx.run();

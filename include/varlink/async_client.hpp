@@ -59,7 +59,7 @@ struct async_client {
     template <typename ReplyHandler>
     auto async_call(const varlink_message& message, ReplyHandler&& handler)
     {
-        return net::async_initiate<ReplyHandler, void(std::error_code, json)>(
+        return net::async_initiate<ReplyHandler, void(std::exception_ptr, json)>(
             initiate_async_call<callmode::basic>(this), handler, message);
     }
 
@@ -73,7 +73,7 @@ struct async_client {
     template <typename ReplyHandler>
     auto async_call_more(const varlink_message_more& message, ReplyHandler&& handler)
     {
-        return net::async_initiate<ReplyHandler, void(std::error_code, json, bool)>(
+        return net::async_initiate<ReplyHandler, void(std::exception_ptr, json, bool)>(
             initiate_async_call<callmode::more>(this), handler, message);
     }
 
@@ -87,7 +87,7 @@ struct async_client {
     template <typename ReplyHandler>
     auto async_call_oneway(const varlink_message_oneway& message, ReplyHandler&& handler)
     {
-        return net::async_initiate<ReplyHandler, void(std::error_code)>(
+        return net::async_initiate<ReplyHandler, void(std::exception_ptr)>(
             initiate_async_call<callmode::oneway>(this), handler, message);
     }
 
@@ -101,7 +101,7 @@ struct async_client {
     template <typename ReplyHandler>
     auto async_call_upgrade(const varlink_message_upgrade& message, ReplyHandler&& handler)
     {
-        return net::async_initiate<ReplyHandler, void(std::error_code, json)>(
+        return net::async_initiate<ReplyHandler, void(std::exception_ptr, json)>(
             initiate_async_call<callmode::upgrade>(this), handler, message);
     }
 
@@ -175,18 +175,22 @@ struct async_client {
         static_assert(CallMode != callmode::oneway);
         connection.async_receive(net::bind_executor(
             ex, [this, handler = std::forward<ReplyHandler>(handler)](auto ec, json reply) mutable {
+                std::exception_ptr eptr;
+
                 if (reply.contains("error")) {
-                    ec = make_varlink_error(reply["error"].get<std::string>());
+                    eptr = std::make_exception_ptr(varlink_error(reply["error"], reply["parameters"]));
                 }
+                if (ec) { eptr = std::make_exception_ptr(std::system_error(ec)); }
+
                 if constexpr (CallMode == callmode::more) {
                     const auto continues = (not ec and reply_continues(reply));
-                    handler(ec, reply["parameters"], continues);
+                    handler(eptr, reply["parameters"], continues);
                     if (continues) {
                         async_read_reply<CallMode>(std::forward<ReplyHandler>(handler));
                     }
                 }
                 else {
-                    handler(ec, reply["parameters"]);
+                    handler(eptr, reply["parameters"]);
                 }
             }));
     }
@@ -205,13 +209,16 @@ struct async_client {
                 net::bind_executor(
                     ex,
                     [self = self_, handler = std::forward<CompletionHandler>(handler)](auto ec) mutable {
-                        if constexpr (CallMode == callmode::oneway) { return handler(ec); }
-                        else if (ec) {
+                        std::exception_ptr eptr;
+                        if (ec) eptr = std::make_exception_ptr(std::system_error(ec));
+
+                        if constexpr (CallMode == callmode::oneway) { return handler(eptr); }
+                        else if (eptr) {
                             if constexpr (CallMode == callmode::more) {
-                                return handler(ec, json{}, false);
+                                return handler(eptr, json{}, false);
                             }
                             else {
-                                return handler(ec, json{});
+                                return handler(eptr, json{});
                             }
                         }
                         else {

@@ -30,15 +30,15 @@ struct certification_client {
     [[nodiscard]] int exit_code() const { return all_ok ? 0 : 1; }
 
   private:
-    void call_method(size_t method_idx, const varlink::json& params)
+    void call_method(size_t method_idx, const json& params)
     {
         const auto& method_name = test_methods.at(method_idx);
         client_.async_call(
             "org.varlink.certification." + method_name,
             params,
-            [this, method_idx, &method_name](auto ec, varlink::json resp) {
+            [this, method_idx, &method_name](auto eptr, json resp) {
                 std::cout << method_name << ": " << resp << std::endl;
-                if (ec) { throw varlink_error(resp["error"].get<string>(), resp["parameters"]); }
+                if (eptr) { std::rethrow_exception(eptr); }
                 if (method_idx == 0) { client_id = resp["client_id"].get<string>(); }
                 else {
                     resp["client_id"] = client_id;
@@ -54,15 +54,15 @@ struct certification_client {
             });
     }
 
-    void call_method_more(size_t method_idx, const varlink::json& params)
+    void call_method_more(size_t method_idx, const json& params)
     {
         const auto& method_name = test_methods.at(method_idx);
         client_.async_call_more(
             "org.varlink.certification." + method_name,
             params,
-            [this, &method_name](auto ec, varlink::json resp, bool continues) {
+            [this, &method_name](auto eptr, json resp, bool continues) {
                 std::cout << method_name << ": " << resp << std::endl;
-                if (ec) { throw varlink_error(resp["error"].get<string>(), resp["parameters"]); }
+                if (eptr) { std::rethrow_exception(eptr); }
                 resp["client_id"] = client_id;
                 more_replies.push_back(resp["string"].get<string>());
                 if (not continues) {
@@ -72,13 +72,13 @@ struct certification_client {
             });
     }
 
-    void call_method_oneway(size_t method_idx, const varlink::json& params)
+    void call_method_oneway(size_t method_idx, const json& params)
     {
         const auto& method_name = test_methods.at(method_idx);
         client_.async_call_oneway(
-            "org.varlink.certification." + method_name, params, [this, &method_name](auto ec) {
+            "org.varlink.certification." + method_name, params, [this, &method_name](auto eptr) {
                 std::cout << method_name << std::endl;
-                if (ec) { throw std::system_error(ec); }
+                if (eptr) { std::rethrow_exception(eptr); }
                 call_method(12, json{{"client_id", client_id}});
             });
     }
