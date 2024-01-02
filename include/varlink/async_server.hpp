@@ -24,8 +24,11 @@ struct async_server : std::enable_shared_from_this<async_server<Protocol>> {
 
     using std::enable_shared_from_this<async_server>::shared_from_this;
 
-    explicit async_server(acceptor_type acceptor, varlink_service& service)
-        : acceptor_(std::move(acceptor)), service_(service)
+    explicit async_server(
+        acceptor_type acceptor,
+        varlink_service& service,
+        exception_handler ex_handler = nullptr)
+        : acceptor_(std::move(acceptor)), service_(service), ex_handler_(std::move(ex_handler))
     {
     }
 
@@ -72,7 +75,8 @@ struct async_server : std::enable_shared_from_this<async_server<Protocol>> {
                     std::error_code ec, socket_type socket) mutable {
                     std::shared_ptr<session_type> session{};
                     if (!ec) {
-                        session = std::make_shared<session_type>(std::move(socket), self->service_);
+                        session = std::make_shared<session_type>(
+                            std::move(socket), self->service_, self->ex_handler_);
                     }
                     handler_(ec, std::move(session));
                 });
@@ -84,6 +88,7 @@ struct async_server : std::enable_shared_from_this<async_server<Protocol>> {
 
     acceptor_type acceptor_;
     varlink_service& service_;
+    exception_handler ex_handler_;
 };
 
 using async_server_unix = async_server<net::local::stream_protocol>;

@@ -43,10 +43,14 @@ method Exception() -> ()
             {"Exception", [](const auto&, auto) -> json { throw std::exception(); }},
         });
 
+    std::exception_ptr ex_ptr;
+    auto ex_handler = [&](const std::exception_ptr& eptr) { ex_ptr = eptr; };
+    std::string expected_message = "End of file";
+
     auto setup_test = [&](const auto& call, const auto& expected_response) {
         socket.setup_fake(call);
         socket.expect(expected_response);
-        conn = std::make_shared<test_session>(std::move(socket), service);
+        conn = std::make_shared<test_session>(std::move(socket), service, ex_handler);
     };
 
     SECTION("Simple ping call")
@@ -55,8 +59,6 @@ method Exception() -> ()
         setup_test(
             R"({"method":"org.test.Test","parameters":{"ping":"123"}})",
             R"({"parameters":{"pong":"123"}})");
-        conn->start();
-        REQUIRE(ctx.run() > 0);
     }
 
     SECTION("Ping call with wrong type")
@@ -65,8 +67,6 @@ method Exception() -> ()
         setup_test(
             R"({"method":"org.test.Test","parameters":{"ping":123}})",
             R"({"error":"org.varlink.service.InvalidParameter","parameters":{"parameter":"ping"}})");
-        conn->start();
-        REQUIRE(ctx.run() > 0);
     }
 
     SECTION("Ping call with wrong response")
@@ -75,8 +75,6 @@ method Exception() -> ()
         setup_test(
             R"({"method":"org.test.TestTypes","parameters":{"ping":"123"}})",
             R"({"error":"org.varlink.service.InvalidParameter","parameters":{"parameter":"pong"}})");
-        conn->start();
-        REQUIRE(ctx.run() > 0);
     }
 
     SECTION("More call")
@@ -86,8 +84,6 @@ method Exception() -> ()
         resp += '\0';
         resp += R"({"continues":false,"parameters":{"pong":"123"}})";
         setup_test(R"({"method":"org.test.Test","parameters":{"ping":"123"},"more":true})", resp);
-        conn->start();
-        REQUIRE(ctx.run() > 0);
     }
 
     SECTION("Oneway call")
@@ -96,8 +92,6 @@ method Exception() -> ()
         setup_test(
             R"({"method":"org.test.Test","parameters":{"ping":"123"},"oneway":true})",
             net::buffer(&conn, 0));
-        conn->start();
-        REQUIRE(ctx.run() > 0);
     }
 
     SECTION("Oneway call and regular call")
@@ -107,8 +101,6 @@ method Exception() -> ()
         req += '\0';
         req += R"({"method":"org.test.Test","parameters":{"ping":"123"}})";
         setup_test(req, R"({"parameters":{"pong":"123"}})");
-        conn->start();
-        REQUIRE(ctx.run() > 0);
     }
 
     SECTION("Method not found")
@@ -117,8 +109,6 @@ method Exception() -> ()
         setup_test(
             R"({"method":"org.test.NotFound"})",
             R"({"error":"org.varlink.service.MethodNotFound","parameters":{"method":"org.test.NotFound"}})");
-        conn->start();
-        REQUIRE(ctx.run() > 0);
     }
 
     SECTION("Method not implemented")
@@ -127,8 +117,6 @@ method Exception() -> ()
         setup_test(
             R"({"method":"org.test.NotImplemented"})",
             R"({"error":"org.varlink.service.MethodNotImplemented","parameters":{"method":"org.test.NotImplemented"}})");
-        conn->start();
-        REQUIRE(ctx.run() > 0);
     }
 
     SECTION("Method throws varlink_error")
@@ -136,8 +124,6 @@ method Exception() -> ()
         socket.validate = true;
         setup_test(
             R"({"method":"org.test.VarlinkError"})", R"({"error":"org.test.Error","parameters":{}})");
-        conn->start();
-        REQUIRE(ctx.run() > 0);
     }
 
     SECTION("Method throws std::exception")
@@ -146,32 +132,35 @@ method Exception() -> ()
         setup_test(
             R"({"method":"org.test.Exception"})",
             R"({"error":"org.varlink.service.InternalError","parameters":{"what":"std::exception"}})");
-        conn->start();
-        REQUIRE(ctx.run() > 0);
     }
 
     SECTION("Send invalid varlink")
     {
         socket.validate = true;
         setup_test(R"({"dohtem":"org.test.Test"})", net::buffer(&conn, 0));
-        conn->start();
-        REQUIRE(ctx.run() > 0);
+        expected_message = R"(Not a varlink message: {"dohtem":"org.test.Test"})";
     }
 
     SECTION("Send nothing")
     {
         socket.validate = true;
         setup_test(net::buffer(&conn, 0), net::buffer(&conn, 0));
-        conn->start();
-        REQUIRE(ctx.run() > 0);
     }
 
     SECTION("Write error")
     {
         socket.error_on_write = true;
         setup_test(R"({"method":"org.test.NotImplemented"})", "");
-        conn->start();
-        REQUIRE(ctx.run() > 0);
-        // REQUIRE(conn->socket().cancelled);
     }
+
+    conn->start();
+    REQUIRE(ctx.run() > 0);
+    std::string msg;
+    try {
+        if (ex_ptr) std::rethrow_exception(ex_ptr);
+    }
+    catch (std::exception& e) {
+        msg = e.what();
+    }
+    REQUIRE(msg == expected_message);
 }
