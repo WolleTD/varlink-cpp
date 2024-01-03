@@ -28,11 +28,11 @@ method Exception() -> ()
             {"Test",
              [](const auto& parameters, auto mode, const auto& send_reply) {
                  if (mode == callmode::more)
-                     send_reply({{"pong", parameters["ping"]}}, [=](auto) {
-                         send_reply({{"pong", parameters["ping"]}}, nullptr);
+                     send_reply({}, {{"pong", parameters["ping"]}}, [=](auto) {
+                         send_reply({}, {{"pong", parameters["ping"]}}, nullptr);
                      });
                  else
-                     send_reply({{"pong", parameters["ping"]}}, nullptr);
+                     send_reply({}, {{"pong", parameters["ping"]}}, nullptr);
              }},
             {"TestTypes",
              [](const auto&, auto) -> json {
@@ -44,7 +44,11 @@ method Exception() -> ()
         });
 
     std::exception_ptr ex_ptr;
-    auto ex_handler = [&](const std::exception_ptr& eptr) { ex_ptr = eptr; };
+    int ex_handler_called = 0;
+    int expected_calls = 1;
+    auto ex_handler = [&](const std::exception_ptr& eptr) {
+        if (ex_handler_called++ == 0) ex_ptr = eptr;
+    };
     std::string expected_message = "End of file";
 
     auto setup_test = [&](const auto& call, const auto& expected_response) {
@@ -72,6 +76,9 @@ method Exception() -> ()
     SECTION("Ping call with wrong response")
     {
         socket.validate = true;
+        // One for the exception, one for EOF
+        expected_calls = 2;
+        expected_message = "pong";
         setup_test(
             R"({"method":"org.test.TestTypes","parameters":{"ping":"123"}})",
             R"({"error":"org.varlink.service.InvalidParameter","parameters":{"parameter":"pong"}})");
@@ -114,6 +121,9 @@ method Exception() -> ()
     SECTION("Method not implemented")
     {
         socket.validate = true;
+        // One for the exception, one for EOF
+        expected_calls = 2;
+        expected_message = "bad_function_call";
         setup_test(
             R"({"method":"org.test.NotImplemented"})",
             R"({"error":"org.varlink.service.MethodNotImplemented","parameters":{"method":"org.test.NotImplemented"}})");
@@ -122,6 +132,9 @@ method Exception() -> ()
     SECTION("Method throws varlink_error")
     {
         socket.validate = true;
+        // One for the exception, one for EOF
+        expected_calls = 2;
+        expected_message = "org.test.Error with args: {}";
         setup_test(
             R"({"method":"org.test.VarlinkError"})", R"({"error":"org.test.Error","parameters":{}})");
     }
@@ -129,6 +142,9 @@ method Exception() -> ()
     SECTION("Method throws std::exception")
     {
         socket.validate = true;
+        // One for the exception, one for EOF
+        expected_calls = 2;
+        expected_message = "std::exception";
         setup_test(
             R"({"method":"org.test.Exception"})",
             R"({"error":"org.varlink.service.InternalError","parameters":{"what":"std::exception"}})");
@@ -150,6 +166,9 @@ method Exception() -> ()
     SECTION("Write error")
     {
         socket.error_on_write = true;
+        // one for write error and one for EOF, NotImplemented is masked by the write error.
+        expected_calls = 2;
+        expected_message = "Broken pipe";
         setup_test(R"({"method":"org.test.NotImplemented"})", "");
     }
 
@@ -163,4 +182,5 @@ method Exception() -> ()
         msg = e.what();
     }
     REQUIRE(msg == expected_message);
+    REQUIRE(ex_handler_called == expected_calls);
 }

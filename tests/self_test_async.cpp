@@ -20,6 +20,7 @@ void start_timer(net::steady_timer& timer, size_t count, const reply_function& s
     timer.async_wait([&timer, continues = (more_counter < count), count, send_reply](auto ec) mutable {
         if (not ec) {
             send_reply(
+                {},
                 {{"m", more_counter++}},
                 continues ? [=, &timer](auto) { start_timer(timer, count, send_reply); }
                           : more_handler{});
@@ -44,20 +45,20 @@ std::unique_ptr<BaseEnvironment> getEnvironment()
             reply_function send_reply;
             net::steady_timer& timer;
 
-            void operator()(std::error_code ec)
+            void operator()(const std::exception_ptr& eptr)
             {
-                if (ec) return;
+                if (eptr) return;
                 if (wait)
                     start_timer(timer, count, send_reply);
                 else {
                     json args = {{"m", more_counter}};
-                    send_reply(args, (more_counter++ < count) ? more_handler(*this) : nullptr);
+                    send_reply({}, args, (more_counter++ < count) ? more_handler(*this) : nullptr);
                 }
             }
         };
         more_counter = 1;
         net::post(timer.get_executor(), [=, &timer]() {
-            r({{"m", 0}}, handler{wait, count, r, timer});
+            r({}, {{"m", 0}}, handler{wait, count, r, timer});
         });
     };
     auto empty_callback = [](const auto&, auto) -> json { return json::object(); };

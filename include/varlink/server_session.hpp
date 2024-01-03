@@ -36,11 +36,12 @@ struct server_session : std::enable_shared_from_this<server_session<Protocol>> {
 
                 const basic_varlink_message message{j};
                 self->service_.message_call(
-                    message, [self](const json& reply, more_handler&& handler) {
+                    message,
+                    [self](const std::exception_ptr& eptr, const json& reply, more_handler&& handler) {
                         const auto continues = static_cast<bool>(handler);
                         if (reply.is_object()) {
                             auto m = std::make_unique<json>(reply);
-                            self->async_send_reply(std::move(m), std::move(handler));
+                            self->async_send_reply(eptr, std::move(m), std::move(handler));
                         }
                         if (not continues) { self->start(); }
                     });
@@ -52,18 +53,23 @@ struct server_session : std::enable_shared_from_this<server_session<Protocol>> {
     }
 
   private:
-    void async_send_reply(std::unique_ptr<json> message, more_handler&& handler)
+    void async_send_reply(
+        const std::exception_ptr& eptr,
+        std::unique_ptr<json> message,
+        more_handler&& handler)
     {
         auto& data = *message;
         connection.async_send(
             data,
-            [m = std::move(message), self = shared_from_this(), handler = std::move(handler)](
-                auto ec) mutable {
-                if (ec and self->ex_handler_) {
-                    self->ex_handler_(std::make_exception_ptr(std::system_error(ec)));
-                }
+            [eptr = eptr,
+             m = std::move(message),
+             self = shared_from_this(),
+             handler = std::move(handler)](auto ec) mutable {
+                if (ec) eptr = std::make_exception_ptr(std::system_error(ec));
+
+                if (eptr and self->ex_handler_) { self->ex_handler_(eptr); }
                 else if (handler) {
-                    handler(ec);
+                    handler(eptr);
                 }
             });
     }

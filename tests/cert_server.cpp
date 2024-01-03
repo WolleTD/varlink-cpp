@@ -116,18 +116,18 @@ class varlink_certification {
             reply_function send_reply;
             size_t counter{0};
 
-            void operator()(std::error_code)
+            void operator()(const std::exception_ptr&)
             {
                 if (++counter < 10) {
-                    send_reply({{"string", "Reply number " + std::to_string(counter)}}, *this);
+                    send_reply({}, {{"string", "Reply number " + std::to_string(counter)}}, *this);
                 }
                 else {
                     std::cerr << "Sending final message" << std::endl;
-                    send_reply({{"string", "Reply number 10"}}, nullptr);
+                    send_reply({}, {{"string", "Reply number 10"}}, nullptr);
                 }
             }
         };
-        handler{this, send_reply}(std::error_code{});
+        handler{this, send_reply}(std::exception_ptr{});
     }
 
     auto Test11(const json& parameters, callmode) -> json

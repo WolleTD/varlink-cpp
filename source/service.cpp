@@ -91,40 +91,37 @@ struct more_reply_handler {
     {
     }
 
-    void operator()(const json::object_t& params, more_handler&& handler) const
+    void operator()(std::exception_ptr eptr, const json& params, more_handler&& handler) const
     {
+        auto error = [&](const std::string& what, const json& params2) {
+            assert(params.is_object());
+            replySender(eptr, {{"error", what}, {"parameters", params2}}, std::move(handler));
+        };
+
         try {
             interface.validate(params, return_type);
         }
         catch (invalid_parameter& e) {
-            error("org.varlink.service.InvalidParameter", {{"parameter", e.what()}}, [=](auto) {
-                if (handler) handler(std::make_error_code(std::errc::invalid_argument));
-            });
+            eptr = std::current_exception();
+            error("org.varlink.service.InvalidParameter", {{"parameter", e.what()}});
             return;
         }
 
-        if (mode == callmode::oneway) { replySender(nullptr, nullptr); }
+        if (mode == callmode::oneway) { replySender(eptr, nullptr, nullptr); }
         else if (mode == callmode::more) {
             const json reply = {{"parameters", params}, {"continues", static_cast<bool>(handler)}};
-            replySender(reply, std::move(handler));
+            replySender(eptr, reply, std::move(handler));
         }
         else if (handler) { // and not more
-            error("org.varlink.service.MethodNotImplemented", {{"method", method}}, [=](auto) {
-                handler(std::make_error_code(std::errc::operation_not_supported));
-            });
+            eptr = std::make_exception_ptr(std::bad_function_call());
+            error("org.varlink.service.MethodNotImplemented", {{"method", method}});
         }
         else {
-            replySender({{"parameters", params}}, nullptr);
+            replySender(eptr, {{"parameters", params}}, nullptr);
         }
     }
 
   private:
-    void error(const std::string& what, const json& params, more_handler&& handler) const
-    {
-        assert(params.is_object());
-        replySender({{"error", what}, {"parameters", params}}, std::move(handler));
-    }
-
     callmode mode;
     std::string method;
     const varlink_interface& interface;
@@ -140,7 +137,7 @@ static void process_call(
 {
     const auto error = [=](const std::string& what, const json& params) {
         assert(params.is_object());
-        replySender({{"error", what}, {"parameters", params}}, nullptr);
+        replySender(std::current_exception(), {{"error", what}, {"parameters", params}}, nullptr);
     };
 
     try {
@@ -149,9 +146,9 @@ static void process_call(
                 auto params = sc(message.parameters(), message.mode());
                 interface->validate(params, method.method_return_type());
                 if (message.mode() == callmode::oneway)
-                    replySender(nullptr, nullptr);
+                    replySender({}, nullptr, nullptr);
                 else
-                    replySender({{"parameters", params}}, nullptr);
+                    replySender({}, {{"parameters", params}}, nullptr);
             },
             [&](const async_callback_function& mc) -> void {
                 auto handler = more_reply_handler(
@@ -168,14 +165,12 @@ static void process_call(
     }
     catch (invalid_parameter& e) {
         error("org.varlink.service.InvalidParameter", {{"parameter", e.what()}});
-        throw;
     }
     catch (varlink_error& e) {
         error(e.type(), e.params());
     }
     catch (std::exception& e) {
         error("org.varlink.service.InternalError", {{"what", e.what()}});
-        throw;
     }
 }
 
@@ -183,7 +178,7 @@ void varlink_service::message_call(const basic_varlink_message& message, reply_f
 {
     const auto error = [=](const std::string& what, const json& params) {
         assert(params.is_object());
-        replySender({{"error", what}, {"parameters", params}}, nullptr);
+        replySender({}, {{"error", what}, {"parameters", params}}, nullptr);
     };
     const auto ifname = message.interface();
     const auto methodname = message.method();

@@ -28,10 +28,10 @@ struct example_more_server {
         if (mode == callmode::more) {
             json state = {{"start", true}};
             auto n = parameters["n"].get<size_t>();
-            send_reply({{"state", state}}, [this, send_reply, n](auto) {
+            send_reply({}, {{"state", state}}, [this, send_reply, n](auto) {
                 json state;
                 state["progress"] = 0;
-                send_reply({{"state", state}}, [this, send_reply, n](auto) {
+                send_reply({}, {{"state", state}}, [this, send_reply, n](auto) {
                     start_timer(1, n, send_reply);
                 });
             });
@@ -61,14 +61,14 @@ struct example_more_server {
             if (not ec) {
                 json state = json::object();
                 state["progress"] = (100 / count) * i;
-                send_reply({{"state", state}}, [this](auto ec) {
+                send_reply({}, {{"state", state}}, [this](auto ec) {
                     if (ec) { timer.cancel(); }
                 });
                 if (i < count) { start_timer(i + 1, count, send_reply); }
                 else {
                     state.erase("progress");
                     state["end"] = true;
-                    send_reply({{"state", state}}, nullptr);
+                    send_reply({}, {{"state", state}}, nullptr);
                 }
             }
         });

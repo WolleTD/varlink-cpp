@@ -7,8 +7,8 @@
 
 namespace varlink {
 
-using more_handler = std::function<void(std::error_code)>;
-using reply_function = std::function<void(json, more_handler&&)>;
+using more_handler = std::function<void(std::exception_ptr)>;
+using reply_function = std::function<void(std::exception_ptr, json, more_handler&&)>;
 
 using sync_callback_function = std::function<json(const json&, callmode)>;
 using async_callback_function = std::function<void(const json&, callmode, reply_function&&)>;
